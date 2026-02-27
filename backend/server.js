@@ -21,6 +21,7 @@ const bcrypt      = require('bcrypt');
 const fetch       = require('node-fetch');
 const path        = require('path');
 const fs          = require('fs');
+const ExcelJS     = require('exceljs');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const app           = express();
@@ -111,6 +112,17 @@ db.exec(`
     date        TEXT    PRIMARY KEY,
     calls       INTEGER NOT NULL DEFAULT 0,
     updated_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS user_etfs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    ticker     TEXT    NOT NULL,
+    name       TEXT,
+    provider   TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, ticker),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
   CREATE INDEX IF NOT EXISTS idx_tx_portfolio ON transactions(portfolio_id);
@@ -904,6 +916,79 @@ app.get('/api/etf/list', (_req, res) => {
   res.json({ etfs: PREDEFINED_ETFS });
 });
 
+// ── GET /api/etf/search?q= — live Yahoo + AV fallback ────────────────────────
+app.get('/api/etf/search', async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) return res.json({ results: PREDEFINED_ETFS });
+
+  const qUpper = q.toUpperCase();
+
+  // 1) Always include matching presets first
+  const presets = PREDEFINED_ETFS.filter(e =>
+    e.ticker.toUpperCase().includes(qUpper) || e.name.toUpperCase().includes(qUpper)
+  );
+  const seen = new Set(presets.map(e => e.ticker.toUpperCase()));
+
+  // 2) Live Yahoo Finance autocomplete
+  let liveResults = [];
+  try {
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=15&newsCount=0&listsCount=0&enableFuzzyQuery=false&enableEnhancedTrivialQuery=true`;
+    const r = await fetch(url, {
+      timeout: 6000,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+    });
+    if (r.ok) {
+      const data = await r.json();
+      liveResults = (data.quotes || [])
+        .filter(q => q.quoteType === 'ETF' && q.symbol)
+        .map(q => ({
+          ticker:   q.symbol,
+          name:     q.shortname || q.longname || q.symbol,
+          provider: q.exchDisp  || q.exchange  || '',
+          source:   'yahoo_search',
+          isPreset: false,
+        }))
+        .filter(r => !seen.has(r.ticker.toUpperCase()))
+        .slice(0, 12);
+    }
+  } catch(e) {
+    log.warn('Yahoo ETF search failed:', e.message);
+  }
+
+  // 3) AV fallback if Yahoo returned nothing
+  if (!liveResults.length) {
+    try {
+      const AV_KEY = process.env.AV_API_KEY || process.env.ALPHAVANTAGE_API_KEY || '';
+      if (AV_KEY) {
+        const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(q)}&apikey=${AV_KEY}`;
+        const r = await fetch(url, { timeout: 6000 });
+        if (r.ok) {
+          const data = await r.json();
+          liveResults = (data.bestMatches || [])
+            .filter(m => m['3. type'] === 'ETF')
+            .map(m => ({
+              ticker:   m['1. symbol'],
+              name:     m['2. name'],
+              provider: m['4. region'] || '',
+              source:   'av_search',
+              isPreset: false,
+            }))
+            .filter(r => !seen.has(r.ticker.toUpperCase()))
+            .slice(0, 10);
+        }
+      }
+    } catch(e) {
+      log.warn('AV ETF search failed:', e.message);
+    }
+  }
+
+  // Mark presets
+  const presetsMarked = presets.map(p => ({ ...p, isPreset: true }));
+
+  res.json({ results: [...presetsMarked, ...liveResults] });
+});
+
+
 // ── GET /api/etf/:ticker/holdings ────────────────────────────────────────────
 app.get('/api/etf/:ticker/holdings', async (req, res) => {
   const raw    = req.params.ticker.replace('_', '.');
@@ -961,12 +1046,452 @@ app.get('/api/etf/:ticker/holdings', async (req, res) => {
   res.json({ ticker, holdings, fetched_at: now, from_cache: false });
 });
 
-// ── GET /api/etf/search?q= ────────────────────────────────────────────────────
-app.get('/api/etf/search', (_req, res) => {
-  const q = (_req.query.q || '').trim().toUpperCase();
-  if (!q) return res.json({ results: PREDEFINED_ETFS });
-  const results = PREDEFINED_ETFS.filter(e =>
-    e.ticker.includes(q) || e.name.toUpperCase().includes(q)
-  );
-  res.json({ results });
+// ════════════════════════════════════════════════════════════════════════════
+// USER SAVED ETFs
+// ════════════════════════════════════════════════════════════════════════════
+
+// Simple user-id header auth (same pattern as rest of app — stateless, no JWT)
+function getUserId(req) {
+  const uid = req.headers['x-user-id'];
+  return uid ? parseInt(uid, 10) : null;
+}
+
+// GET /api/user/etfs  — list saved ETFs for a user
+app.get('/api/user/etfs', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return err(res, 401, 'x-user-id header required');
+  const rows = db.prepare(
+    'SELECT ticker, name, provider, created_at FROM user_etfs WHERE user_id=? ORDER BY created_at ASC'
+  ).all(userId);
+  res.json({ etfs: rows });
+});
+
+// POST /api/user/etfs  — save an ETF for a user
+app.post('/api/user/etfs', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return err(res, 401, 'x-user-id header required');
+  const { ticker, name, provider } = req.body;
+  if (!ticker) return err(res, 400, 'ticker required');
+  try {
+    db.prepare(
+      'INSERT OR IGNORE INTO user_etfs (user_id, ticker, name, provider) VALUES (?, ?, ?, ?)'
+    ).run(userId, ticker.toUpperCase(), name||null, provider||null);
+    const etfs = db.prepare(
+      'SELECT ticker, name, provider, created_at FROM user_etfs WHERE user_id=? ORDER BY created_at ASC'
+    ).all(userId);
+    res.json({ ok: true, etfs });
+  } catch(e) {
+    err(res, 500, e.message);
+  }
+});
+
+// DELETE /api/user/etfs/:ticker  — remove a saved ETF
+app.delete('/api/user/etfs/:ticker', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return err(res, 401, 'x-user-id header required');
+  db.prepare('DELETE FROM user_etfs WHERE user_id=? AND ticker=?')
+    .run(userId, req.params.ticker.toUpperCase());
+  const etfs = db.prepare(
+    'SELECT ticker, name, provider, created_at FROM user_etfs WHERE user_id=? ORDER BY created_at ASC'
+  ).all(userId);
+  res.json({ ok: true, etfs });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// EXCEL EXPORT / IMPORT / TEMPLATE  — auth required
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/portfolios/import/template  — download blank import template ─────
+app.get('/api/portfolios/import/template', (req, res) => {
+  const tplPath = path.join(__dirname, 'static', 'import_template.xlsx');
+  if (!fs.existsSync(tplPath)) return err(res, 404, 'Template not found');
+  res.setHeader('Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition',
+    'attachment; filename="portfolio_import_template.xlsx"');
+  res.sendFile(tplPath);
+});
+
+
+// ── GET /api/portfolios/:id/export  — download transactions as CSV ───────────
+app.get('/api/portfolios/:id/export', async (req, res) => {
+  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  const pid  = req.params.id;
+  const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
+                  .get(pid, getUserId(req));
+  if (!port) return err(res, 404, 'Portfolio not found');
+
+  const txs = db.prepare(`
+    SELECT date, type, symbol, name, quantity, price, currency, price_usd, notes
+    FROM transactions WHERE portfolio_id=? AND deleted_at IS NULL
+    ORDER BY date ASC, id ASC
+  `).all(pid);
+
+  // Build CSV (RFC 4180)
+  const COLS = ['date','type','symbol','name','quantity','price','currency','price_usd','notes','portfolio'];
+  const esc  = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+
+  const lines = [COLS.join(',')];
+  for (const t of txs) {
+    lines.push([
+      t.date, t.type, t.symbol,
+      esc(t.name),
+      t.quantity, t.price, t.currency,
+      t.price_usd ?? '', esc(t.notes),
+      esc(port.name),  // portfolio name for multi-portfolio import
+    ].join(','));
+  }
+  const csv = lines.join('\r\n');
+
+  const safe     = port.name.replace(/[^a-z0-9_-]/gi, '_');
+  const dateStr  = new Date().toISOString().slice(0,10);
+  const filename = `${safe}_${dateStr}.csv`;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send('\uFEFF' + csv);  // BOM for Excel auto-detection of UTF-8
+});
+
+// ── POST /api/portfolios/:id/import  — import transactions from .xlsx ─────────
+const multer = require('multer');
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    const ok = file.mimetype.includes('spreadsheet') ||
+               file.mimetype.includes('excel') ||
+               file.mimetype === 'text/csv' ||
+               file.mimetype === 'application/csv' ||
+               file.originalname.endsWith('.xlsx') ||
+               file.originalname.endsWith('.csv');
+    ok ? cb(null, true) : cb(new Error('Only .xlsx or .csv files are supported'));
+  }
+});
+
+// Helper: look up historical close price + currency for a symbol on a given date
+async function lookupPriceForImport(symbol, date) {
+  try {
+    const cacheKey = `${symbol.toUpperCase()}_hist10y_splits`;
+    let data;
+    const cached = db.prepare(
+      `SELECT data FROM quotes_cache WHERE symbol=? AND datetime(updated_at) > datetime('now', '-60 minutes')`
+    ).get(cacheKey);
+    if (cached) {
+      data = JSON.parse(cached.data);
+    } else {
+      // Request split events explicitly so we can un-adjust the close prices
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+                  `?range=15y&interval=1d&events=splits%7Cdividends`;
+      const r = await fetch(url, { headers:{ 'User-Agent':'Mozilla/5.0' }, timeout:10000 });
+      if (!r.ok) return null;
+      data = await r.json();
+      db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo', CURRENT_TIMESTAMP)")
+        .run(cacheKey, JSON.stringify(data));
+    }
+
+    const result = data.chart?.result?.[0];
+    if (!result) return null;
+
+    const meta       = result.meta ?? {};
+    const timestamps = result.timestamp ?? [];
+    const closes     = result.indicators?.quote?.[0]?.close ?? [];
+    const currency   = meta.currency ?? 'USD';
+    const targetTs   = Math.floor(new Date(date + 'T18:00:00Z').getTime() / 1000);
+
+    // Collect all splits that occurred AFTER the target date.
+    // Yahoo always returns split-adjusted closes, so to get the real
+    // historical price we multiply back by every split ratio that
+    // happened after the transaction date.
+    const splitEvents = Object.values(result.events?.splits ?? {});
+    let splitMultiplier = 1;
+    for (const s of splitEvents) {
+      if (s.date > targetTs) {
+        // e.g. 10:1 split → numerator=10, denominator=1 → multiply by 10
+        splitMultiplier *= (s.numerator / s.denominator);
+      }
+    }
+
+    // Find closest trading day on or before target date
+    let bestIdx = -1, bestDiff = Infinity;
+    for (let i = 0; i < timestamps.length; i++) {
+      if (closes[i] == null) continue;
+      if (timestamps[i] > targetTs + 86400 * 3) continue;
+      const diff = targetTs - timestamps[i];
+      if (diff >= 0 && diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+    if (bestIdx === -1) return null;
+
+    const adjustedClose   = closes[bestIdx];
+    const unadjustedClose = adjustedClose * splitMultiplier;
+
+    if (splitMultiplier !== 1) {
+      log.info(`Split-adjust ${symbol} on ${date}: close=${adjustedClose.toFixed(4)} × ${splitMultiplier} = ${unadjustedClose.toFixed(4)} (${splitEvents.length} split event(s))`);
+    }
+
+    return { price: unadjustedClose, currency, splitMultiplier };
+  } catch(e) {
+    log.warn('lookupPriceForImport failed:', symbol, date, e.message);
+    return null;
+  }
+}
+
+app.post('/api/portfolios/:id/import', upload.single('file'), async (req, res) => {
+  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  const pid = req.params.id;
+  const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
+                  .get(pid, getUserId(req));
+  if (!port) return err(res, 404, 'Portfolio not found');
+  if (!req.file) return err(res, 400, 'No file uploaded');
+
+  const isCSV = req.file.originalname.toLowerCase().endsWith('.csv') ||
+                req.file.mimetype === 'text/csv' ||
+                req.file.mimetype === 'application/csv';
+
+  // ── Parse input into uniform { col, rows_raw } structure ─────────────────
+  let col = {};      // column name → 0-based index
+  let rawRows = [];  // array of string arrays (one per data row)
+
+  if (isCSV) {
+    // Parse CSV (RFC 4180, UTF-8 with optional BOM)
+    let text = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, ''); // strip BOM
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) return err(res, 400, 'CSV file is empty');
+
+    // Parse one CSV line handling quoted fields
+    const parseCSVLine = (line) => {
+      const fields = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQ) {
+          if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+          else if (ch === '"') inQ = false;
+          else cur += ch;
+        } else {
+          if (ch === '"') inQ = true;
+          else if (ch === ',') { fields.push(cur); cur = ''; }
+          else cur += ch;
+        }
+      }
+      fields.push(cur);
+      return fields.map(f => f.trim());
+    };
+
+    // Find header row
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      const f = parseCSVLine(lines[i]).map(v => v.toLowerCase());
+      if (f.includes('date') && f.includes('symbol') && f.includes('type')) {
+        headerIdx = i;
+        f.forEach((h, idx) => { if (h) col[h] = idx; });
+        break;
+      }
+    }
+    if (headerIdx === -1) return err(res, 400, 'Could not find header row in CSV (needs: date, symbol, type, quantity)');
+
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+      rawRows.push(parseCSVLine(lines[i]));
+    }
+  } else {
+    // Parse XLSX
+    const wb = new ExcelJS.Workbook();
+    try {
+      await wb.xlsx.load(req.file.buffer);
+    } catch(e) {
+      return err(res, 400, 'Could not read Excel file: ' + e.message);
+    }
+
+    const ws = wb.getWorksheet('Transactions') || wb.worksheets[0];
+    if (!ws) return err(res, 400, 'No worksheet found in file');
+
+    let headerRowNum = 0;
+    let headerArr = null;
+    ws.eachRow((row, rowNum) => {
+      if (headerArr) return;
+      const vals = row.values.map(v => String(v||'').toLowerCase().trim());
+      if (vals.includes('date') && vals.includes('symbol') && vals.includes('type')) {
+        headerArr = vals; headerRowNum = rowNum;
+      }
+    });
+    if (!headerArr) return err(res, 400, 'Could not find header row (needs: date, symbol, type, quantity)');
+    headerArr.forEach((h, i) => { if (h) col[h] = i; });
+
+    ws.eachRow((row, rowNum) => {
+      if (rowNum <= headerRowNum) return;
+      // Convert XLSX row to string array (1-based to 0-based)
+      const maxIdx = Math.max(...Object.values(col));
+      const arr = [];
+      for (let i = 0; i <= maxIdx + 1; i++) {
+        const v = row.getCell(i+1).value;
+        if (v instanceof Date) arr.push(v.toISOString().slice(0,10));
+        else arr.push(v === null || v === undefined ? '' : String(v).trim());
+      }
+      rawRows.push(arr);
+    });
+  }
+
+  // ── Unified row processing ────────────────────────────────────────────────
+  const getField = (arr, field) => {
+    const idx = col[field];
+    if (idx === undefined || idx >= arr.length) return '';
+    return (arr[idx] || '').trim();
+  };
+
+  // price and currency are now OPTIONAL — looked up from Yahoo if missing
+  const REQUIRED = ['date','type','symbol','quantity'];
+  const missing = REQUIRED.filter(f => col[f] === undefined);
+  if (missing.length) return err(res, 400, `Missing required columns: ${missing.join(', ')}`);
+
+  const VALID_TYPES = new Set(['BUY','SELL']);
+  const VALID_CCY   = new Set(['USD','EUR','CHF','GBP']);
+  const DATE_RE     = /^\d{4}-\d{2}-\d{2}$/;
+  const EXAMPLE_DATES = new Set(['2024-01-15','2024-02-20','2024-03-10']);
+  const EXAMPLE_SYMS  = new Set(['AAPL','SAP.DE']);
+
+  const rows = [], skipped = [];
+
+  rawRows.forEach((arr, idx) => {
+    const rowNum = idx + 1;
+    const date     = getField(arr, 'date');
+    const type     = getField(arr, 'type').toUpperCase();
+    const symbol   = getField(arr, 'symbol').toUpperCase();
+    const quantity = parseFloat(getField(arr, 'quantity'));
+    const priceRaw = getField(arr, 'price');
+    const ccy      = getField(arr, 'currency').toUpperCase();
+    const name     = getField(arr, 'name') || null;
+    const priceUsd = parseFloat(getField(arr, 'price_usd')) || 0;
+    const notes    = getField(arr, 'notes') || null;
+
+    if (!date && !symbol) return; // blank row
+
+    // Skip example rows
+    if (EXAMPLE_SYMS.has(symbol) && EXAMPLE_DATES.has(date)) {
+      skipped.push({ row:rowNum, reason:'example row skipped' }); return;
+    }
+
+    const errors = [];
+    if (!DATE_RE.test(date))              errors.push(`invalid date "${date}" — use YYYY-MM-DD`);
+    if (!VALID_TYPES.has(type))           errors.push(`type must be BUY or SELL`);
+    if (!symbol)                          errors.push('symbol is empty');
+    if (isNaN(quantity) || quantity <= 0) errors.push(`quantity must be > 0`);
+    if (ccy && !VALID_CCY.has(ccy))       errors.push(`currency must be USD/EUR/CHF/GBP, got "${ccy}"`);
+
+    if (errors.length) { skipped.push({ row:rowNum, symbol, reason: errors.join('; ') }); return; }
+
+    const price = priceRaw ? parseFloat(priceRaw) : null;
+    rows.push({
+      date, type, symbol, name, quantity,
+      price:    (price > 0) ? price : null,    // null = needs Yahoo lookup
+      currency: ccy || null,                    // null = needs Yahoo lookup
+      price_usd: priceUsd,
+      notes,
+      _row: rowNum,
+    });
+  });
+
+  if (!rows.length) {
+    return res.status(400).json({
+      error: 'No valid rows found',
+      skipped,
+      hint: skipped.length ? 'Check the skipped rows for validation errors' : 'File appears empty',
+    });
+  }
+  if (rows.length > 500) return err(res, 400, `Too many rows (${rows.length}). Maximum is 500.`);
+
+  // ── Phase 1: Yahoo price lookup for rows missing price or currency ────────
+  const needLookup = rows.filter(r => !r.price || !r.currency);
+  const lookupCache = {}; // "SYMBOL|date" → { price, currency }
+  const lookupFailed = [];
+
+  for (const r of needLookup) {
+    const k = `${r.symbol}|${r.date}`;
+    if (!lookupCache[k]) {
+      const result = await lookupPriceForImport(r.symbol, r.date);
+      lookupCache[k] = result; // may be null
+    }
+    const lu = lookupCache[k];
+    if (lu) {
+      if (!r.price)    r.price    = lu.price;
+      if (!r.currency) r.currency = lu.currency;
+      if (lu.splitMultiplier && lu.splitMultiplier !== 1) {
+        r._splitMultiplier = lu.splitMultiplier;
+      }
+    } else {
+      lookupFailed.push({ row: r._row, symbol: r.symbol,
+        reason: `Could not look up price for ${r.symbol} on ${r.date}` });
+    }
+  }
+
+  // Remove rows where lookup failed
+  const validRows = rows.filter(r => r.price > 0 && r.currency);
+  lookupFailed.forEach(f => skipped.push(f));
+
+  if (!validRows.length) {
+    return res.status(400).json({
+      error: 'No rows could be imported — price lookup failed for all rows',
+      skipped: [...skipped, ...lookupFailed],
+    });
+  }
+
+  // ── Phase 2: FX conversion to USD for non-USD rows ───────────────────────
+  const fxCache = {};
+  for (const r of validRows) {
+    if (r.currency === 'USD') { if (!r.price_usd) r.price_usd = r.price; continue; }
+    if (r.price_usd > 0) continue;
+    const cacheKey = `hist_${r.date}_${r.currency}_USD`;
+    const tryCache = fxCache[cacheKey] ?? db.prepare('SELECT rate FROM fx_cache WHERE pair=?').get(cacheKey)?.rate;
+    if (tryCache) { r.price_usd = r.price * tryCache; fxCache[cacheKey] = tryCache; continue; }
+    try {
+      const fxRes = await fetch(`https://api.frankfurter.app/${r.date}?from=${r.currency}&to=USD`);
+      if (fxRes.ok) {
+        const fxData = await fxRes.json();
+        const rate = fxData.rates?.USD;
+        if (rate) {
+          r.price_usd = r.price * rate;
+          fxCache[cacheKey] = rate;
+          db.prepare('INSERT OR REPLACE INTO fx_cache (pair, rate, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+            .run(cacheKey, rate);
+        }
+      }
+    } catch(e) { log.warn('FX lookup failed during import:', r.date, r.currency); }
+    if (!r.price_usd) r.price_usd = r.price; // fallback: use local price
+  }
+
+  // ── Phase 3: Insert ───────────────────────────────────────────────────────
+  const inserted = [];
+  const insertTx = db.prepare(`
+    INSERT INTO transactions (portfolio_id, symbol, name, quantity, price, price_usd, date, type, currency, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertMany = db.transaction((rows) => {
+    for (const r of rows) {
+      const result = insertTx.run(pid, r.symbol, r.name, r.quantity, r.price,
+        r.price_usd || r.price, r.date, r.type, r.currency, r.notes);
+      inserted.push({ id: result.lastInsertRowid, symbol: r.symbol, date: r.date });
+    }
+  });
+
+  try {
+    insertMany(validRows);
+  } catch(e) {
+    return err(res, 500, 'Database error during import: ' + e.message);
+  }
+
+  const priceLookedUp  = needLookup.filter(r => validRows.includes(r)).length;
+  const splitAdjusted  = validRows.filter(r => r._splitMultiplier && r._splitMultiplier !== 1).length;
+  log.info(`Import: ${inserted.length} rows into portfolio ${pid} (${port.name}), ${priceLookedUp} prices from Yahoo, ${splitAdjusted} split-adjusted`);
+  res.json({
+    imported: inserted.length,
+    skipped:  skipped.length,
+    skippedRows: skipped,
+    priceLookedUp,
+    splitAdjusted,
+    portfolio: { id: port.id, name: port.name },
+  });
 });

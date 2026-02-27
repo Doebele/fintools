@@ -8,7 +8,7 @@ import {
   PanelLeft, LayoutDashboard, BarChart2, List, Layers, GitMerge,
   RefreshCw, Settings, LogOut, Plus, CheckSquare, Square,
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
-  ChevronLeft, Search, TrendingUp,
+  ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 
@@ -83,16 +83,25 @@ function useGlobalStyles() {
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 const BASE = "/api";
 async function apiFetch(path, opts = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-    ...opts,
-  });
+  const { isForm, ...fetchOpts } = opts;
+  const headers = isForm
+    ? (opts.headers || {})  // let browser set multipart boundary
+    : { "Content-Type": "application/json", ...(opts.headers || {}) };
+  const res = await fetch(BASE + path, { headers, ...fetchOpts });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `HTTP ${res.status}`);
   }
   return res.json();
 }
+
+const etfApi = {
+  list:   (userId)           => apiFetch(`/user/etfs`, { headers:{ 'x-user-id': String(userId) } }),
+  save:   (userId, etf)      => apiFetch(`/user/etfs`, { method:"POST", body: JSON.stringify(etf),
+                                  headers:{ 'x-user-id': String(userId) } }),
+  remove: (userId, ticker)   => apiFetch(`/user/etfs/${encodeURIComponent(ticker)}`,
+                                  { method:"DELETE", headers:{ 'x-user-id': String(userId) } }),
+};
 
 const userApi = {
   register: (username, pin)   => apiFetch("/users/register",   { method:"POST", body: JSON.stringify({ username, pin }) }),
@@ -108,6 +117,20 @@ const txApi = {
   update:    (id, tx)  => apiFetch(`/transactions/${id}`,            { method:"PUT",  body: JSON.stringify(tx) }),
   delete:    (id)      => apiFetch(`/transactions/${id}`,            { method:"DELETE" }),
   recalcFX:  ()        => apiFetch(`/transactions/recalculate-fx`,   { method:"POST" }),
+  exportCsv:   async (pid, userId) => {
+    const res = await fetch(`/api/portfolios/${pid}/export`,
+      { headers: { 'x-user-id': String(userId) } });
+    if (!res.ok) { const b = await res.json().catch(()=>({})); throw new Error(b.error||`HTTP ${res.status}`); }
+    const blob = await res.blob();
+    const cd   = res.headers.get('content-disposition') || '';
+    const name = cd.match(/filename="([^"]+)"/)?.[1] || 'export.csv';
+    return { blob, name };
+  },
+  importXlsx:  (pid, file)  => {
+    const fd = new FormData(); fd.append("file", file);
+    return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true });
+  },
+  importTemplate: () => `/api/portfolios/import/template`,
 };
 const quotesApi = {
   batch: (symbols, source, apiKey) => apiFetch("/quotes/batch", {
@@ -382,8 +405,330 @@ function LoginScreen({ onLogin, onEtfMode }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// IMPORT / EXPORT MODAL
+// ════════════════════════════════════════════════════════════════════════════
+function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone }) {
+  const [tab,        setTab]        = useState("export");
+  const [selPort,    setSelPort]    = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
+  const [file,       setFile]       = useState(null);
+  const [importing,  setImporting]  = useState(false);
+  const [result,     setResult]     = useState(null);  // { imported, skipped, skippedRows }
+  const [importErr,  setImportErr]  = useState(null);
+  const fileRef = useRef(null);
+
+  const selectedPort = portfolios.find(p => p.id === Number(selPort) || p.id === selPort);
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  const [exporting, setExporting] = useState(false);
+  const [exportErr, setExportErr] = useState(null);
+
+  const handleExport = async () => {
+    if (!selPort || !user) return;
+    setExporting(true); setExportErr(null);
+    try {
+      const { blob, name } = await txApi.exportCsv(selPort, user.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch(e) {
+      setExportErr(e.message || "Export failed");
+    }
+    setExporting(false);
+  };
+
+  // ── Import ────────────────────────────────────────────────────────────────
+  const handleImport = async () => {
+    if (!file || !selPort) return;
+    setImporting(true); setResult(null); setImportErr(null);
+    try {
+      const data = await txApi.importXlsx(selPort, file);
+      setResult(data);
+      if (data.imported > 0) onImportDone();
+    } catch(e) {
+      setImportErr(e.message || "Import failed");
+    }
+    setImporting(false);
+  };
+
+  const isValidFile = (f) => f && (f.name.endsWith('.xlsx') || f.name.endsWith('.csv'));
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (isValidFile(f)) { setFile(f); setResult(null); setImportErr(null); }
+  };
+
+  const btnStyle = (active) => ({
+    flex:1, padding:"8px 0", border:"none", cursor:"pointer",
+    borderRadius:8, fontSize:12, fontWeight:700, fontFamily:"inherit",
+    background: active ? THEME.accent : "rgba(255,255,255,0.05)",
+    color: active ? "#fff" : THEME.text3,
+    transition:"all 0.15s",
+  });
+
+  const PortSelect = () => (
+    <div style={{ marginBottom:16 }}>
+      <label style={{ fontSize:11, color:THEME.text3, display:"block", marginBottom:5 }}>
+        Portfolio
+      </label>
+      <select value={selPort} onChange={e=>setSelPort(e.target.value)}
+        style={{ width:"100%", padding:"8px 10px", borderRadius:8,
+          border:`1px solid ${THEME.border}`, background:THEME.bg,
+          color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
+        {portfolios.map(p => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.72)",
+      backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
+      justifyContent:"center", zIndex:2000 }}
+      onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
+
+      <div style={{ width:420, background:THEME.surface, borderRadius:18,
+        border:`1px solid ${THEME.border}`,
+        boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
+        padding:"24px 24px 20px", position:"relative" }}>
+
+        {/* Header */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+          marginBottom:18 }}>
+          <div style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>
+            Import / Export
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none",
+            cursor:"pointer", color:THEME.text3, display:"flex", padding:4, borderRadius:7 }}>
+            <X size={16}/>
+          </button>
+        </div>
+
+        {/* Tab switcher */}
+        <div style={{ display:"flex", gap:6, padding:4,
+          background:"rgba(0,0,0,0.3)", borderRadius:10, marginBottom:20 }}>
+          <button style={btnStyle(tab==="export")} onClick={()=>{setTab("export");setResult(null);}}>
+            <FileDown size={13} style={{marginRight:5,verticalAlign:"middle"}}/>
+            Export Excel
+          </button>
+          <button style={btnStyle(tab==="import")} onClick={()=>{setTab("import");setResult(null);}}>
+            <Upload size={13} style={{marginRight:5,verticalAlign:"middle"}}/>
+            Import Excel
+          </button>
+        </div>
+
+        {/* ── EXPORT TAB ─────────────────────────────────────────────────── */}
+        {tab === "export" && (
+          <div>
+            <PortSelect/>
+            <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 16px",
+              lineHeight:1.5 }}>
+              Downloads all transactions of the selected portfolio as a formatted
+              Excel file. The file can be re-imported to another portfolio.
+            </p>
+            {exportErr && (
+              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:10,
+                background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
+                fontSize:11, color:THEME.red, display:"flex", gap:6 }}>
+                <AlertCircle size={12} style={{flexShrink:0,marginTop:1}}/> {exportErr}
+              </div>
+            )}
+            <button onClick={handleExport} disabled={!selPort||exporting}
+              style={{ width:"100%", padding:"11px 0", borderRadius:10,
+                border:"none", background:THEME.accent, color:"#fff",
+                fontSize:13, fontWeight:700, cursor:(selPort&&!exporting)?"pointer":"not-allowed",
+                fontFamily:"inherit", display:"flex", alignItems:"center",
+                justifyContent:"center", gap:8, opacity:(selPort&&!exporting)?1:0.4 }}>
+              {exporting
+                ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={15}/></span> Exporting…</>
+                : <><FileDown size={15}/> {selectedPort ? `Download "${selectedPort.name}" as CSV` : "Select a portfolio"}</>}
+            </button>
+          </div>
+        )}
+
+        {/* ── IMPORT TAB ─────────────────────────────────────────────────── */}
+        {tab === "import" && (
+          <div>
+            <PortSelect/>
+
+            {/* Template download */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+              padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
+              border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:THEME.accent }}>
+                  Import Template
+                </div>
+                <div style={{ fontSize:10, color:THEME.text3, marginTop:1 }}>
+                  Download the template with instructions & dropdown validation
+                </div>
+              </div>
+              <a href={txApi.importTemplate()} download
+                style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px",
+                  borderRadius:8, border:`1px solid ${THEME.accent}`,
+                  color:THEME.accent, fontSize:11, fontWeight:600,
+                  textDecoration:"none", background:"transparent",
+                  whiteSpace:"nowrap" }}>
+                <FileDown size={12}/> Template
+              </a>
+            </div>
+
+            {/* File drop zone */}
+            <div
+              onDragOver={e=>e.preventDefault()}
+              onDrop={handleDrop}
+              onClick={()=>fileRef.current?.click()}
+              style={{ border:`2px dashed ${file ? THEME.accent : THEME.border}`,
+                borderRadius:10, padding:"20px 16px", textAlign:"center",
+                cursor:"pointer", background: file?"rgba(59,130,246,0.06)":"transparent",
+                transition:"all 0.15s", marginBottom:14 }}>
+              <input ref={fileRef} type="file" accept=".xlsx,.csv"
+                style={{ display:"none" }}
+                onChange={e=>{ const f=e.target.files[0]; if(isValidFile(f)){setFile(f);setResult(null);setImportErr(null);}}}/>
+              {file ? (
+                <div>
+                  <FileUp size={20} style={{ color:THEME.accent, marginBottom:4 }}/>
+                  <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>
+                    {file.name}
+                  </div>
+                  <div style={{ fontSize:10, color:THEME.text3, marginTop:2 }}>
+                    {(file.size/1024).toFixed(1)} KB — click to change
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <Upload size={20} style={{ color:THEME.text3, marginBottom:6 }}/>
+                  <div style={{ fontSize:12, color:THEME.text2 }}>
+                    Drop .xlsx file here or click to browse
+                  </div>
+                  <div style={{ fontSize:10, color:THEME.text3, marginTop:4 }}>
+                    Supports the import template and exported files
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Required columns info */}
+            <div style={{ fontSize:10, color:THEME.text3, marginBottom:14,
+              padding:"8px 10px", background:"rgba(0,0,0,0.2)", borderRadius:8,
+              lineHeight:1.6 }}>
+              <span style={{ color:THEME.text2, fontWeight:600 }}>Required: </span>
+              date · type · symbol · quantity
+              <br/>
+              <span style={{ color:THEME.accent, fontWeight:600 }}>Auto-lookup (optional): </span>
+              <span style={{ color:THEME.text3 }}>price & currency are fetched from Yahoo Finance if blank</span>
+              <br/>
+              <span style={{ color:THEME.text2, fontWeight:600 }}>Optional: </span>
+              name · price_usd · notes · portfolio
+            </div>
+
+            {/* Error */}
+            {importErr && (
+              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
+                background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
+                fontSize:11, color:THEME.red, display:"flex", gap:7 }}>
+                <AlertCircle size={13} style={{flexShrink:0, marginTop:1}}/>
+                {importErr}
+              </div>
+            )}
+
+            {/* Result */}
+            {result && (
+              <div style={{ padding:"10px 12px", borderRadius:8, marginBottom:12,
+                background:"rgba(34,197,94,0.08)", border:"1px solid rgba(34,197,94,0.25)" }}>
+                <div style={{ fontSize:13, fontWeight:700, color:THEME.green, marginBottom:4 }}>
+                  ✓ Imported {result.imported} transaction{result.imported!==1?"s":""}
+                </div>
+                {result.priceLookedUp > 0 && (
+                  <div style={{ fontSize:11, color:THEME.text3, marginBottom:2 }}>
+                    {result.priceLookedUp} price{result.priceLookedUp!==1?"s":""} fetched from Yahoo Finance
+                  </div>
+                )}
+                {result.splitAdjusted > 0 && (
+                  <div style={{ fontSize:11, color:THEME.yellow ?? "#fbbf24", marginBottom:2,
+                    display:"flex", alignItems:"center", gap:5 }}>
+                    <span>⚡</span>
+                    {result.splitAdjusted} transaction{result.splitAdjusted!==1?"s":""} split-adjusted (historical price corrected for stock splits)
+                  </div>
+                )}
+                {result.skipped > 0 && (
+                  <div style={{ fontSize:11, color:THEME.yellow ?? "#fbbf24" }}>
+                    {result.skipped} row{result.skipped!==1?"s":""} skipped
+                    {result.skippedRows?.length > 0 && (
+                      <div style={{ marginTop:4, fontSize:10, color:THEME.text3,
+                        maxHeight:80, overflowY:"auto" }}>
+                        {result.skippedRows.map((r,i)=>(
+                          <div key={i}>Row {r.row}{r.symbol?` (${r.symbol})`:""}: {r.reason}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button onClick={handleImport}
+              disabled={!file || !selPort || importing}
+              style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
+                background: file&&selPort ? THEME.accent : "rgba(255,255,255,0.05)",
+                color: file&&selPort ? "#fff" : THEME.text3,
+                fontSize:13, fontWeight:700, cursor: file&&selPort?"pointer":"default",
+                fontFamily:"inherit", display:"flex", alignItems:"center",
+                justifyContent:"center", gap:8, transition:"all 0.15s" }}>
+              {importing
+                ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={14}/></span> Importing…</>
+                : <><Upload size={14}/> Import into {selectedPort?`"${selectedPort.name}"`:"portfolio"}</>}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // RAIL NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
+const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => (
+  <button onClick={onClick} title={!open ? label : undefined}
+    className={active ? undefined : "rail-btn"}
+    style={{
+      display:"flex", alignItems:"center", gap:10,
+      width:"100%", padding: open ? "9px 12px" : "9px 0",
+      justifyContent: open ? "flex-start" : "center",
+      borderRadius:9, border:"none", cursor:"pointer",
+      background: active ? "rgba(59,130,246,0.15)" : "transparent",
+      color: active ? THEME.accent : (color || THEME.text3),
+      fontSize:12, fontWeight: active ? 700 : 500,
+      fontFamily:THEME.font, transition:"background 0.12s, color 0.12s",
+      position:"relative",
+    }}>
+    <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
+    {open && <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>}
+    {badge && (
+      <span style={{
+        marginLeft:"auto", flexShrink:0,
+        background:"rgba(59,130,246,0.2)", color:THEME.accent,
+        fontSize:9, fontWeight:700, borderRadius:4, padding:"2px 5px",
+      }}>{badge}</span>
+    )}
+  </button>
+);
+
+const RailSection = ({ label, open=true }) => open && (
+  <div style={{ fontSize:9, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
+    letterSpacing:"0.10em", padding:"12px 12px 4px", opacity:0.7 }}>{label}</div>
+);
+
+const Divider = () => (
+  <div style={{ height:1, background:THEME.border2, margin:"6px 8px" }}/>
+);
+
 function Rail({
   open, onToggle,
   user, portfolios, activePortfolioIds, onTogglePortfolio,
@@ -395,43 +740,12 @@ function Rail({
   dataSource,
   currency, onCurrency,
   onRecalcFX,
+  onImportExport,
+  onEtfExplorer,
 }) {
   const w = open ? RAIL_EXPANDED : RAIL_COLLAPSED;
 
-  const RailBtn = ({ icon, label, active, onClick, color, badge }) => (
-    <button onClick={onClick} title={!open ? label : undefined}
-      className={active ? undefined : "rail-btn"}
-      style={{
-        display:"flex", alignItems:"center", gap:10,
-        width:"100%", padding: open ? "9px 12px" : "9px 0",
-        justifyContent: open ? "flex-start" : "center",
-        borderRadius:9, border:"none", cursor:"pointer",
-        background: active ? "rgba(59,130,246,0.15)" : "transparent",
-        color: active ? THEME.accent : (color || THEME.text3),
-        fontSize:12, fontWeight: active ? 700 : 500,
-        fontFamily:THEME.font, transition:"background 0.12s, color 0.12s",
-        position:"relative",
-      }}>
-      <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
-      {open && <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>}
-      {badge && (
-        <span style={{
-          marginLeft:"auto", flexShrink:0,
-          background:"rgba(59,130,246,0.2)", color:THEME.accent,
-          fontSize:9, fontWeight:700, borderRadius:4, padding:"2px 5px",
-        }}>{badge}</span>
-      )}
-    </button>
-  );
 
-  const RailSection = ({ label }) => open && (
-    <div style={{ fontSize:9, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-      letterSpacing:"0.10em", padding:"12px 12px 4px", opacity:0.7 }}>{label}</div>
-  );
-
-  const Divider = () => (
-    <div style={{ height:1, background:THEME.border2, margin:"6px 8px" }}/>
-  );
 
   return (
     <div style={{
@@ -442,24 +756,38 @@ function Rail({
       overflow:"hidden",
       transition:"width 0.22s cubic-bezier(0.4,0,0.2,1)",
     }}>
-      {/* Top: brand + toggle */}
+      {/* Top: brand + ETF toggle + collapse */}
       <div style={{
         height:60, display:"flex", alignItems:"center",
         borderBottom:`1px solid ${THEME.border}`,
-        padding: open ? "0 14px" : "0",
-        justifyContent: open ? "space-between" : "center",
-        flexShrink:0,
+        padding: open ? "0 10px 0 14px" : "0",
+        justifyContent: open ? "flex-start" : "center",
+        gap:6, flexShrink:0,
       }}>
         {open && (
-          <div style={{ fontFamily:THEME.serif, fontSize:18, fontWeight:400,
+          <div style={{ flex:1, fontFamily:THEME.serif, fontSize:18, fontWeight:400,
             letterSpacing:"-0.01em", userSelect:"none" }}>
             Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
           </div>
         )}
+        {/* ETF Explorer quick-switch */}
+        {open && onEtfExplorer && (
+          <button onClick={onEtfExplorer}
+            title="Open ETF Explorer"
+            style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 9px",
+              borderRadius:7, border:`1px solid ${THEME.border}`,
+              background:"rgba(255,255,255,0.04)", color:THEME.accent,
+              fontSize:10, fontWeight:600, cursor:"pointer",
+              fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.12s",
+              flexShrink:0 }}>
+            <TrendingUp size={11}/> ETF
+          </button>
+        )}
         <button onClick={onToggle}
           style={{ background:"transparent", border:"none", cursor:"pointer",
             color:THEME.text3, display:"flex", padding:6, borderRadius:7,
-            transition:"color 0.15s" }}
+            transition:"color 0.15s", flexShrink:0,
+            marginLeft: open ? 0 : "auto", marginRight: open ? 0 : "auto" }}
           title={open ? "Collapse sidebar" : "Expand sidebar"}>
           <PanelLeft size={18} style={{ transform: open ? "none" : "scaleX(-1)" }}/>
         </button>
@@ -469,21 +797,21 @@ function Rail({
       <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", padding:"8px 6px" }}>
 
         {/* Views */}
-        <RailSection label="Views"/>
-        <RailBtn icon={<LayoutDashboard size={16}/>} label="TreeMap"
+        <RailSection open={open} label="Views"/>
+        <RailBtn open={open} icon={<LayoutDashboard size={16}/>} label="TreeMap"
           active={activeTab==="holdings"}
           onClick={() => onTab("holdings")}/>
-        <RailBtn icon={<BarChart2 size={16}/>} label="Bar Chart"
+        <RailBtn open={open} icon={<BarChart2 size={16}/>} label="Bar Chart"
           active={activeTab==="chart"}
           onClick={() => onTab("chart")}/>
-        <RailBtn icon={<List size={16}/>} label="Transactions"
+        <RailBtn open={open} icon={<List size={16}/>} label="Transactions"
           active={activeTab==="transactions"}
           onClick={() => onTab("transactions")}/>
 
         <Divider/>
 
         {/* Portfolios */}
-        <RailSection label="Portfolios"/>
+        <RailSection open={open} label="Portfolios"/>
         {portfolios.map(p => {
           const isActive = activePortfolioIds.includes(p.id);
           return (
@@ -535,7 +863,7 @@ function Rail({
         <Divider/>
 
         {/* Actions */}
-        <RailSection label="Actions"/>
+        <RailSection open={open} label="Actions"/>
         {/* Add Transaction — dashed pill, same style as New Portfolio but blue */}
         {open ? (
           <button onClick={() => onTab("_addtx")}
@@ -551,21 +879,24 @@ function Rail({
             <Plus size={13}/> Add Transaction
           </button>
         ) : (
-          <RailBtn icon={<Plus size={16}/>} label="Add Transaction"
+          <RailBtn open={open} icon={<Plus size={16}/>} label="Add Transaction"
             color={THEME.accent} onClick={() => onTab("_addtx")}/>
         )}
-        <RailBtn icon={fetching ? <span className="spin" style={{display:"flex"}}><RefreshCw size={16}/></span> : <RefreshCw size={16}/>}
+        <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:"flex"}}><RefreshCw size={16}/></span> : <RefreshCw size={16}/>}
           label="Refresh Quotes" onClick={onRefresh}/>
         {onRecalcFX && (
-          <RailBtn icon={<span style={{fontSize:12}}>⟳$</span>} label="Recalc FX Costs"
+          <RailBtn open={open} icon={<span style={{fontSize:12}}>⟳$</span>} label="Recalc FX Costs"
             onClick={onRecalcFX}
             color={THEME.yellow ?? "#fbbf24"}/>
         )}
+        <RailBtn open={open} icon={<FileDown size={16}/>} label="Import / Export"
+          onClick={onImportExport}/>
+
 
         <Divider/>
 
         {/* Currency */}
-        <RailSection label="Currency"/>
+        <RailSection open={open} label="Currency"/>
         <div style={{
           padding: open ? "2px 8px" : "2px 0",
           display:"flex", flexDirection:"column",
@@ -629,17 +960,18 @@ function Rail({
           })}
         </div>
 
-        <Divider/>
+      </div>  {/* end scrollable body */}
 
-        {/* Account */}
-        <RailSection label="Account"/>
+      {/* ─── Bottom: Account (pinned) ─────────────────────────────── */}
+      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"6px 6px 8px", flexShrink:0 }}>
+        {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
+          textTransform:"uppercase", letterSpacing:"0.10em",
+          padding:"6px 6px 4px", opacity:0.7 }}>Account</div>}
         {open && user && (
-          <div style={{ padding:"6px 12px 8px", display:"flex", alignItems:"center", gap:8 }}>
-            <div style={{
-              width:26, height:26, borderRadius:"50%",
+          <div style={{ padding:"2px 6px 6px", display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{ width:26, height:26, borderRadius:"50%",
               background:"rgba(59,130,246,0.2)", display:"flex",
-              alignItems:"center", justifyContent:"center", flexShrink:0,
-            }}>
+              alignItems:"center", justifyContent:"center", flexShrink:0 }}>
               <User size={12} style={{ color:THEME.accent }}/>
             </div>
             <div>
@@ -650,9 +982,9 @@ function Rail({
             </div>
           </div>
         )}
-        <RailBtn icon={<Settings size={16}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
+        <RailBtn open={open} icon={<Settings size={16}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
           onClick={onSettings}/>
-        <RailBtn icon={<LogOut size={16}/>} label="Sign Out" onClick={onLogout} color={THEME.text3}/>
+        <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out" onClick={onLogout} color={THEME.text3}/>
       </div>
     </div>
   );
@@ -1143,8 +1475,12 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
           <div>
             <div style={{ fontFamily:THEME.mono, fontSize:20, fontWeight:700, color:"#fff" }}>{data.symbol}</div>
-            {data.longName && <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginTop:2, maxWidth:190,
-              whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{data.longName}</div>}
+            {(data.longName || data.name) && (
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginTop:2, maxWidth:190,
+                whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                {data.longName || data.name}
+              </div>
+            )}
           </div>
           <div style={{ fontSize:15, fontWeight:700, color:perfColor }}>{fmtPct(perf)}</div>
         </div>
@@ -2201,6 +2537,7 @@ const ETF_PERIODS = [
   { key:"Intraday", label:"1D" }, { key:"1W", label:"1W" },
   { key:"1M", label:"1M" }, { key:"YTD", label:"YTD" },
   { key:"1Y", label:"1Y" }, { key:"2Y", label:"2Y" },
+  { key:"Max", label:"Max" },
 ];
 
 const PREDEFINED_ETFS_CLIENT = [
@@ -2224,7 +2561,9 @@ function buildEtfNodes(holdings, quotes, period) {
       if (period === "Intraday") {
         return q.changePct ?? null;
       }
-      const refClose = q.refs?.[period];
+      // For Max we use the earliest available ref (5Y if available, else 2Y)
+      const refKey = period === "Max" ? (q.refs?.["5Y"] ? "5Y" : "2Y") : period;
+      const refClose = q.refs?.[refKey];
       if (refClose != null && q.price > 0) {
         return ((q.price - refClose) / refClose) * 100;
       }
@@ -2246,32 +2585,375 @@ function buildEtfNodes(holdings, quotes, period) {
   });
 }
 
+// ── Save ETF Modal — login prompt or direct save ─────────────────────────────
+function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
+  const [mode,    setMode]    = useState(user ? "save" : "choose"); // choose|login|register|save
+  const [uname,   setUname]   = useState("");
+  const [pin,     setPin]     = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+  const [showPin, setShowPin] = useState(false);
+
+  // If user already logged in, save immediately on mount
+  useEffect(() => {
+    if (user && mode === "save") {
+      doSave(user);
+    }
+  }, []); // eslint-disable-line
+
+  const doSave = async (u) => {
+    setLoading(true); setError(null);
+    try {
+      const res = await etfApi.save(u.id, { ticker: etf.ticker, name: etf.name, provider: etf.provider });
+      onSaved(u, res.etfs || []);
+    } catch(e) {
+      setError(e.message);
+      setLoading(false);
+    }
+  };
+
+  const handleAuth = async () => {
+    setLoading(true); setError(null);
+    try {
+      const loggedIn = mode === "register"
+        ? await userApi.register(uname, pin)
+        : await userApi.login(uname, pin);
+      onLogin(loggedIn);
+      await doSave(loggedIn);
+    } catch(e) {
+      setError(e.message);
+      setLoading(false);
+    }
+  };
+
+  const overlay = {
+    position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
+    backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
+    justifyContent:"center", zIndex:3000,
+  };
+  const card = {
+    width:340, background:THEME.surface, borderRadius:16,
+    border:`1px solid ${THEME.border}`,
+    boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
+    padding:"22px 22px 18px", position:"relative",
+  };
+  const inp = {
+    width:"100%", padding:"9px 12px", borderRadius:9,
+    border:`1px solid ${THEME.border}`, background:"rgba(255,255,255,0.05)",
+    color:THEME.text1, fontSize:12, fontFamily:"inherit",
+    outline:"none", boxSizing:"border-box", marginBottom:10,
+  };
+  const btn = (primary) => ({
+    width:"100%", padding:"10px 0", borderRadius:9, border:"none",
+    background: primary ? THEME.accent : "rgba(255,255,255,0.06)",
+    color: primary ? "#fff" : THEME.text3,
+    fontSize:12, fontWeight:700, cursor:"pointer",
+    fontFamily:"inherit", marginTop:4, transition:"all 0.12s",
+  });
+
+  // ETF pill header
+  const EtfPill = () => (
+    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16,
+      padding:"8px 12px", borderRadius:10,
+      background:"rgba(59,130,246,0.08)", border:`1px solid rgba(59,130,246,0.2)` }}>
+      <div style={{ width:32, height:32, borderRadius:7, background:"rgba(59,130,246,0.15)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontFamily:"'JetBrains Mono',monospace", fontSize:8, fontWeight:800,
+        color:THEME.accent, flexShrink:0 }}>
+        {etf.ticker.slice(0,5).replace(/\.(DE|SW|L|PA)$/,'')}
+      </div>
+      <div>
+        <div style={{ fontSize:12, fontWeight:700, color:THEME.text1 }}>{etf.name || etf.ticker}</div>
+        {etf.provider && <div style={{ fontSize:10, color:THEME.text3 }}>{etf.provider}</div>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={overlay} onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div style={card}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:THEME.text1 }}>
+            {user || mode==="save" ? "Save ETF" : "Save to My Account"}
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none",
+            cursor:"pointer", color:THEME.text3, display:"flex", padding:4 }}>
+            <X size={15}/>
+          </button>
+        </div>
+
+        <EtfPill/>
+
+        {/* Saving spinner */}
+        {loading && (
+          <div style={{ textAlign:"center", padding:"16px 0", color:THEME.text3, fontSize:12 }}>
+            <span className="spin" style={{ display:"inline-flex", marginRight:6 }}><RefreshCw size={14}/></span>
+            {mode==="save" ? "Saving…" : "Signing in…"}
+          </div>
+        )}
+
+        {/* Error */}
+        {error && !loading && (
+          <div style={{ padding:"7px 10px", borderRadius:8, marginBottom:10,
+            background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
+            fontSize:11, color:THEME.red, display:"flex", gap:6 }}>
+            <AlertCircle size={12} style={{flexShrink:0,marginTop:1}}/> {error}
+          </div>
+        )}
+
+        {/* Choose: login or register */}
+        {mode === "choose" && !loading && (
+          <div>
+            <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 14px", lineHeight:1.5 }}>
+              To save this ETF to your watchlist, sign in or create a free account.
+            </p>
+            <button style={btn(true)} onClick={()=>setMode("login")}>
+              <User size={12} style={{marginRight:6,verticalAlign:"middle"}}/>
+              Sign in to existing account
+            </button>
+            <button style={btn(false)} onClick={()=>setMode("register")}>
+              <Plus size={12} style={{marginRight:6,verticalAlign:"middle"}}/>
+              Create new account
+            </button>
+          </div>
+        )}
+
+        {/* Login / Register form */}
+        {(mode === "login" || mode === "register") && !loading && (
+          <div>
+            <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 12px" }}>
+              {mode==="register" ? "Create a new account" : "Sign in to your account"}
+            </p>
+            <input value={uname} onChange={e=>setUname(e.target.value)}
+              placeholder="Username" style={inp}/>
+            <div style={{ position:"relative" }}>
+              <input value={pin} onChange={e=>setPin(e.target.value)}
+                type={showPin?"text":"password"} placeholder="PIN (4+ digits)"
+                onKeyDown={e=>e.key==="Enter"&&handleAuth()}
+                style={{...inp, paddingRight:36}}/>
+              <button onClick={()=>setShowPin(v=>!v)}
+                style={{ position:"absolute", right:10, top:"50%",
+                  transform:"translateY(-65%)", background:"none",
+                  border:"none", cursor:"pointer", color:THEME.text3, display:"flex" }}>
+                {showPin ? <EyeOff size={13}/> : <Eye size={13}/>}
+              </button>
+            </div>
+            <button style={btn(true)} onClick={handleAuth}
+              disabled={!uname.trim()||!pin}>
+              {mode==="register" ? "Create account & save" : "Sign in & save"}
+            </button>
+            <button style={{...btn(false), marginTop:6}} onClick={()=>setMode("choose")}>
+              ← Back
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Confirm Modal ─────────────────────────────────────────────────────
+function DeleteEtfModal({ etf, onConfirm, onCancel }) {
+  return (
+    <div style={{
+      position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
+      backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
+      justifyContent:"center", zIndex:4000,
+    }} onClick={e => { if(e.target===e.currentTarget) onCancel(); }}>
+      <div style={{
+        width:320, background:"#1a1d23", borderRadius:16,
+        border:"1px solid rgba(239,68,68,0.3)",
+        boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
+        padding:"22px 22px 18px",
+      }}>
+        {/* Icon */}
+        <div style={{ width:40, height:40, borderRadius:10, marginBottom:14,
+          background:"rgba(239,68,68,0.12)", display:"flex",
+          alignItems:"center", justifyContent:"center" }}>
+          <Trash2 size={18} style={{ color:"#ef4444" }}/>
+        </div>
+        <div style={{ fontSize:15, fontWeight:700, color:"#f1f5f9", marginBottom:6 }}>
+          Remove ETF?
+        </div>
+        {/* ETF pill */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, margin:"12px 0 16px",
+          padding:"8px 12px", borderRadius:10,
+          background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ width:36, height:36, borderRadius:8, flexShrink:0,
+            background:"rgba(59,130,246,0.12)", display:"flex",
+            alignItems:"center", justifyContent:"center" }}>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:7,
+              fontWeight:800, color:"#60a5fa", textAlign:"center", lineHeight:1.1 }}>
+              {etf.ticker.replace(/\.(DE|SW|L|PA)$/,"").slice(0,5)}
+            </span>
+          </div>
+          <div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
+              fontWeight:700, color:"#60a5fa", letterSpacing:"0.05em" }}>{etf.ticker}</div>
+            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
+              {etf.name || etf.ticker}
+            </div>
+          </div>
+        </div>
+        <p style={{ fontSize:11, color:"#64748b", margin:"0 0 18px", lineHeight:1.5 }}>
+          This will remove the ETF from your custom list. This action cannot be undone.
+        </p>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={onCancel} style={{
+            flex:1, padding:"9px 0", borderRadius:9, border:"1px solid rgba(255,255,255,0.1)",
+            background:"rgba(255,255,255,0.05)", color:"#94a3b8",
+            fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+          }}>Cancel</button>
+          <button onClick={onConfirm} style={{
+            flex:1, padding:"9px 0", borderRadius:9, border:"none",
+            background:"rgba(239,68,68,0.15)", color:"#ef4444",
+            fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            transition:"background 0.12s",
+          }}
+          onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.25)"}
+          onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}>
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ETF Rail ─────────────────────────────────────────────────────────────────
 function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrency,
-                   fetching, onRefreshQuotes }) {
-  const [search,    setSearch]    = useState("");
-  const [searching, setSearching] = useState(false);
-  const [results,   setResults]   = useState([]);
+                   fetching, onRefreshQuotes,
+                   user, savedEtfs, onSaveEtf, onRemoveEtf, onSwitchToPortfolio,
+                   onBack, onSignOut }) {
+  const [search,      setSearch]      = useState("");
+  const [searching,   setSearching]   = useState(false);
+  const [results,     setResults]     = useState([]);
+  const [searchErr,   setSearchErr]   = useState(null);
+  // Custom ETFs: found via search, staged locally until saved to profile
+  const [customEtfs,  setCustomEtfs]  = useState([]);
+  // Delete confirmation: { etf, from } where from = 'custom' | 'saved'
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [savingCustom,  setSavingCustom]  = useState(false);
   const searchTimer = useRef(null);
+  const inputRef    = useRef(null);
   const w = open ? 220 : 52;
 
+  // Live search with debounce
   useEffect(() => {
     clearTimeout(searchTimer.current);
-    if (!search.trim()) { setResults([]); return; }
-    setSearching(true);
+    const q = search.trim();
+    if (!q) { setResults([]); setSearchErr(null); return; }
+    setSearching(true); setSearchErr(null);
     searchTimer.current = setTimeout(async () => {
       try {
-        const d = await fetch(`${ETF_BASE}/etf/search?q=${encodeURIComponent(search)}`).then(r=>r.json());
+        const d = await fetch(`${ETF_BASE}/etf/search?q=${encodeURIComponent(q)}`).then(r=>r.json());
         setResults(d.results || []);
-      } catch { setResults([]); }
+      } catch(e) {
+        setResults([]);
+        setSearchErr("Search failed");
+      }
       setSearching(false);
-    }, 400);
+    }, 350);
     return () => clearTimeout(searchTimer.current);
   }, [search]);
 
-  const displayList = search.trim() ? results : PREDEFINED_ETFS_CLIENT;
+  const inSearch   = !!search.trim();
+  const displayList = inSearch ? results : PREDEFINED_ETFS_CLIENT;
+
+  // Split results into presets vs live when searching
+  const presetResults = inSearch ? results.filter(r => r.isPreset) : [];
+  const liveResults   = inSearch ? results.filter(r => !r.isPreset) : [];
+
+  const handleSelect = (ticker) => {
+    onSelect(ticker);
+    setSearch("");
+    setResults([]);
+  };
+
+  const EtfItem = ({ etf, isActive }) => (
+    <button onClick={() => handleSelect(etf.ticker)}
+      className={isActive ? undefined : "rail-btn"}
+      style={{
+        width:"100%", display:"flex", alignItems:"center",
+        gap: open?9:0, padding: open?"7px 10px":"8px 0",
+        justifyContent: open?"flex-start":"center",
+        borderRadius:9, border:"none", cursor:"pointer",
+        background: isActive?"rgba(59,130,246,0.15)":"transparent",
+        color: isActive?THEME.accent:THEME.text3,
+        fontFamily:THEME.font, transition:"background 0.12s",
+        fontWeight: isActive?700:500, textAlign:"left",
+      }}>
+      {/* Ticker badge */}
+      <div style={{
+        flexShrink:0, width:36, height:36,
+        background: isActive?"rgba(59,130,246,0.2)":"rgba(255,255,255,0.06)",
+        borderRadius:8, display:"flex", alignItems:"center",
+        justifyContent:"center", padding:"0 2px",
+      }}>
+        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:7,
+          lineHeight:1.1, textAlign:"center", fontWeight:800,
+          color: isActive?THEME.accent:THEME.text2 }}>
+          {etf.ticker.length <= 5
+            ? etf.ticker.replace('.DE','').replace('.SW','').replace('.LON','')
+            : etf.ticker.slice(0,5)}
+        </span>
+      </div>
+      {open && (
+        <div style={{ overflow:"hidden", flex:1 }}>
+          <div style={{ fontSize:11, fontWeight:700,
+            color: isActive?THEME.accent:THEME.text1,
+            whiteSpace:"nowrap", overflow:"hidden",
+            textOverflow:"ellipsis" }}>
+            {etf.name}
+          </div>
+          <div style={{ fontSize:9, color: isActive?THEME.accent:THEME.text3, marginTop:1,
+            display:"flex", alignItems:"center", gap:4 }}>
+            <span style={{ whiteSpace:"nowrap", overflow:"hidden",
+              textOverflow:"ellipsis", maxWidth:120 }}>
+              {etf.provider || etf.ticker}
+            </span>
+            {etf.isPreset && (
+              <span style={{ fontSize:7, padding:"1px 4px", borderRadius:3,
+                background:"rgba(59,130,246,0.15)", color:THEME.accent,
+                fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em",
+                flexShrink:0 }}>preset</span>
+            )}
+          </div>
+        </div>
+      )}
+    </button>
+  );
+
+  // EtfItem row with hover-visible trash button and confirmation
+  const EtfItemWithTrash = ({ etf, isActive, onDelete }) => {
+    const [hovered, setHovered] = useState(false);
+    return (
+      <div style={{ display:"flex", alignItems:"center", gap:2, position:"relative" }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <EtfItem etf={etf} isActive={isActive}/>
+        </div>
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          title="Remove ETF"
+          style={{
+            flexShrink:0, background:"none", border:"none",
+            cursor:"pointer", color: THEME.red ?? "#ef4444",
+            padding:"5px 4px", borderRadius:5, display:"flex",
+            opacity: hovered ? 1 : 0,
+            transform: hovered ? "scale(1)" : "scale(0.7)",
+            transition:"opacity 0.15s, transform 0.15s",
+            pointerEvents: hovered ? "auto" : "none",
+          }}>
+          <Trash2 size={13}/>
+        </button>
+      </div>
+    );
+  };
 
   return (
+    <>
     <div style={{
       width:w, minWidth:w, height:"100vh",
       background:THEME.surface, borderRight:`1px solid ${THEME.border}`,
@@ -2280,8 +2962,8 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       overflow:"hidden", flexShrink:0, zIndex:10,
     }}>
       {/* Header */}
-      <div style={{ padding:"0 12px", height:52, display:"flex", alignItems:"center",
-        gap:10, borderBottom:`1px solid ${THEME.border}`, flexShrink:0 }}>
+      <div style={{ padding:"0 10px", height:52, display:"flex", alignItems:"center",
+        gap:6, borderBottom:`1px solid ${THEME.border}`, flexShrink:0 }}>
         {open && (
           <div style={{ flex:1 }}>
             <div style={{ fontFamily:THEME.serif, fontSize:20, fontWeight:400,
@@ -2292,30 +2974,58 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               letterSpacing:"0.10em", marginTop:-2 }}>Explorer</div>
           </div>
         )}
+        {/* Mode switcher — only shown when logged in */}
+        {open && onSwitchToPortfolio && (
+          <button onClick={onSwitchToPortfolio}
+            title="Switch to Portfolio View"
+            style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 8px",
+              borderRadius:7, border:`1px solid ${THEME.border}`,
+              background:"rgba(255,255,255,0.04)", color:THEME.text3,
+              fontSize:10, fontWeight:600, cursor:"pointer",
+              fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.12s" }}>
+            <LayoutDashboard size={11}/> Portfolio
+          </button>
+        )}
         <button onClick={onToggle} style={{
           background:"none", border:"none", cursor:"pointer",
           color:THEME.text3, display:"flex", padding:4, borderRadius:7,
-          marginLeft:open?0:"auto", marginRight:open?0:"auto",
+          marginLeft: open ? 0 : "auto", marginRight: open ? 0 : "auto",
         }}><PanelLeft size={16}/></button>
       </div>
 
-      {/* Search */}
+      {/* Search input */}
       <div style={{ padding: open?"8px 10px 4px":"8px 6px 4px", flexShrink:0 }}>
         {open ? (
           <div style={{ position:"relative" }}>
-            <Search size={12} style={{ position:"absolute", left:9, top:"50%",
-              transform:"translateY(-50%)", color:THEME.text3, pointerEvents:"none" }}/>
-            <input value={search} onChange={e => setSearch(e.target.value)}
+            {searching
+              ? <span className="spin" style={{ position:"absolute", left:9, top:"50%",
+                  transform:"translateY(-50%)", display:"flex",
+                  color:THEME.accent, pointerEvents:"none" }}>
+                  <RefreshCw size={12}/>
+                </span>
+              : <Search size={12} style={{ position:"absolute", left:9, top:"50%",
+                  transform:"translateY(-50%)", color:THEME.text3, pointerEvents:"none" }}/>
+            }
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
               placeholder="Ticker or name…"
-              style={{ width:"100%", padding:"6px 28px 6px 28px",
-                background:"rgba(255,255,255,0.05)", border:`1px solid ${THEME.border}`,
+              style={{
+                width:"100%", padding:"7px 28px 7px 28px",
+                background:"rgba(255,255,255,0.05)", border:`1px solid ${inSearch ? THEME.accent+"44" : THEME.border}`,
                 borderRadius:8, color:THEME.text1, fontSize:11,
-                fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}/>
+                fontFamily:"inherit", outline:"none", boxSizing:"border-box",
+                transition:"border-color 0.15s",
+              }}/>
             {search && (
-              <button onClick={() => { setSearch(""); setResults([]); }} style={{
-                position:"absolute", right:7, top:"50%", transform:"translateY(-50%)",
-                background:"none", border:"none", cursor:"pointer",
-                color:THEME.text3, display:"flex", padding:0 }}><X size={11}/></button>
+              <button onClick={() => { setSearch(""); setResults([]); inputRef.current?.focus(); }}
+                style={{ position:"absolute", right:7, top:"50%",
+                  transform:"translateY(-50%)", background:"none",
+                  border:"none", cursor:"pointer", color:THEME.text3,
+                  display:"flex", padding:0 }}>
+                <X size={11}/>
+              </button>
             )}
           </div>
         ) : (
@@ -2327,59 +3037,176 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         )}
       </div>
 
-      {/* ETF list */}
+      {/* Results list */}
       <div style={{ flex:1, overflowY:"auto", padding: open?"2px 8px":"2px 4px" }}>
-        {open && (
-          <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", padding:"4px 4px 6px" }}>
-            {search.trim()
-              ? (searching ? "Searching…" : `${results.length} results`)
-              : "Presets"}
+
+        {/* ── Searching state ── */}
+        {open && inSearch && searching && (
+          <div style={{ padding:"12px 8px", display:"flex", alignItems:"center",
+            gap:8, color:THEME.text3, fontSize:11 }}>
+            <span className="spin" style={{ display:"flex" }}><RefreshCw size={12}/></span>
+            Searching Yahoo Finance…
           </div>
         )}
-        {displayList.map(etf => {
-          const isActive = selectedTicker === etf.ticker;
-          return (
-            <button key={etf.ticker} onClick={() => onSelect(etf.ticker)}
-              className={isActive ? undefined : "rail-btn"}
-              style={{
-                width:"100%", display:"flex", alignItems:"center",
-                gap: open?9:0, padding: open?"7px 10px":"8px 0",
-                justifyContent: open?"flex-start":"center",
-                borderRadius:9, border:"none", cursor:"pointer",
-                background: isActive?"rgba(59,130,246,0.15)":"transparent",
-                color: isActive?THEME.accent:THEME.text3,
-                fontFamily:THEME.font, transition:"background 0.12s",
-                fontWeight: isActive?700:500, textAlign:"left",
-              }}>
-              <div style={{
-                flexShrink:0, width:36, height:36,
-                background: isActive?"rgba(59,130,246,0.2)":"rgba(255,255,255,0.06)",
-                borderRadius:8, display:"flex", alignItems:"center",
-                justifyContent:"center", fontSize:8, fontWeight:800,
-                color: isActive?THEME.accent:THEME.text2, letterSpacing:"0.04em",
-                padding:"0 2px",
-              }}>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:7,
-                  lineHeight:1, textAlign:"center" }}>
-                  {etf.ticker.length <= 5
-                    ? etf.ticker.replace('.DE','').replace('.SW','')
-                    : etf.ticker.slice(0,4)}
-                </span>
-              </div>
-              {open && (
-                <div style={{ overflow:"hidden", flex:1 }}>
-                  <div style={{ fontSize:11, fontWeight:700,
-                    color: isActive?THEME.accent:THEME.text1,
-                    whiteSpace:"nowrap", overflow:"hidden",
-                    textOverflow:"ellipsis" }}>{etf.name}</div>
-                  <div style={{ fontSize:9, color: isActive?THEME.accent:THEME.text3,
-                    marginTop:1 }}>{etf.provider || etf.ticker}</div>
+        {/* ── Error ── */}
+        {open && searchErr && (
+          <div style={{ padding:"10px 8px", fontSize:11, color:THEME.red,
+            display:"flex", alignItems:"center", gap:6 }}>
+            <AlertCircle size={12}/> {searchErr}
+          </div>
+        )}
+        {/* ── No results ── */}
+        {open && inSearch && !searching && !searchErr && results.length === 0 && (
+          <div style={{ padding:"14px 8px", textAlign:"center", color:THEME.text3,
+            fontSize:11, lineHeight:1.5 }}>
+            No ETFs found for<br/>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace",
+              color:THEME.text2 }}>"{search}"</span>
+          </div>
+        )}
+
+        {/* ── PRESETS ── */}
+        {open && (
+          <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+            letterSpacing:"0.08em", padding:"4px 4px 6px" }}>Presets</div>
+        )}
+        {(inSearch ? presetResults : PREDEFINED_ETFS_CLIENT).map(etf => (
+          <EtfItem key={etf.ticker} etf={etf} isActive={selectedTicker===etf.ticker}/>
+        ))}
+
+        {/* ── SAVED ETFs (server-persisted) — always visible, not searching ── */}
+        {open && !inSearch && savedEtfs && savedEtfs.length > 0 && (
+          <>
+            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
+              <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+                letterSpacing:"0.08em" }}>Saved</div>
+              <div style={{ flex:1, height:1, background:THEME.border }}/>
+              <div style={{ fontSize:9, color:THEME.text3 }}>{savedEtfs.length}</div>
+            </div>
+            {savedEtfs.map(etf => (
+              <EtfItemWithTrash key={etf.ticker} etf={etf}
+                isActive={selectedTicker===etf.ticker}
+                onDelete={() => setDeleteConfirm({ etf, from:"saved" })}/>
+            ))}
+          </>
+        )}
+
+        {/* ── CUSTOM ETFs — locally staged, shown always below presets ── */}
+        {open && !inSearch && customEtfs.length > 0 && (
+          <>
+            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
+              <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+                letterSpacing:"0.08em" }}>Custom</div>
+              <div style={{ flex:1, height:1, background:THEME.border }}/>
+              <div style={{ fontSize:9, color:THEME.text3 }}>{customEtfs.length}</div>
+            </div>
+            {customEtfs.map(etf => (
+              <EtfItemWithTrash key={etf.ticker} etf={etf}
+                isActive={selectedTicker===etf.ticker}
+                onDelete={() => setDeleteConfirm({ etf, from:"custom" })}/>
+            ))}
+            {/* Save button — only if not all are already in savedEtfs */}
+            {(() => {
+              const unsaved = customEtfs.filter(
+                e => !savedEtfs?.some(s => s.ticker === e.ticker)
+              );
+              if (!unsaved.length) return null;
+              return (
+                <button
+                  onClick={async () => {
+                    setSavingCustom(true);
+                    if (!user) {
+                      // trigger login modal via onSaveEtf with first unsaved
+                      onSaveEtf && onSaveEtf(unsaved[0]);
+                      setSavingCustom(false);
+                      return;
+                    }
+                    // save all unsaved
+                    let lastEtfs = savedEtfs || [];
+                    for (const etf of unsaved) {
+                      try {
+                        const r = await etfApi.save(user.id, etf);
+                        lastEtfs = r.etfs || lastEtfs;
+                      } catch(e) { console.error("Save failed:", e); }
+                    }
+                    onSaveEtf && onSaveEtf(null, lastEtfs); // signal saved
+                    setSavingCustom(false);
+                  }}
+                  disabled={savingCustom}
+                  style={{
+                    width:"100%", marginTop:8, padding:"7px 0",
+                    borderRadius:9, border:"1px dashed rgba(59,130,246,0.4)",
+                    background:"rgba(59,130,246,0.06)",
+                    color: savingCustom ? THEME.text3 : THEME.accent,
+                    fontSize:11, fontWeight:600, cursor:"pointer",
+                    fontFamily:"inherit", display:"flex",
+                    alignItems:"center", justifyContent:"center", gap:6,
+                    transition:"all 0.15s",
+                  }}>
+                  {savingCustom
+                    ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={12}/></span> Saving…</>
+                    : <><span style={{fontSize:14}}>☁</span> Save {unsaved.length === 1 ? "to" : `${unsaved.length} to`} profile</>}
+                </button>
+              );
+            })()}
+          </>
+        )}
+
+        {/* ── LIVE SEARCH RESULTS (non-preset) ── */}
+        {open && inSearch && !searching && liveResults.length > 0 && (
+          <>
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 4px 4px" }}>
+              <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+                letterSpacing:"0.08em" }}>Search results</div>
+              <div style={{ flex:1, height:1, background:THEME.border }}/>
+              <div style={{ fontSize:9, color:THEME.text3 }}>{liveResults.length}</div>
+            </div>
+            {liveResults.map(etf => {
+              const inCustom = customEtfs.some(c => c.ticker === etf.ticker);
+              const inSaved  = savedEtfs?.some(s => s.ticker === etf.ticker);
+              const added    = inCustom || inSaved;
+              return (
+                <div key={etf.ticker} style={{ display:"flex", alignItems:"center", gap:2 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <EtfItem etf={etf} isActive={selectedTicker===etf.ticker}/>
+                  </div>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (added) return;
+                      // Add to local custom list, then select it
+                      setCustomEtfs(prev =>
+                        prev.some(c => c.ticker === etf.ticker) ? prev : [...prev, etf]
+                      );
+                      handleSelect(etf.ticker);
+                    }}
+                    title={added ? "Added to list" : "Add to Custom list"}
+                    style={{
+                      flexShrink:0, background:"none", border:"none",
+                      cursor: added ? "default" : "pointer",
+                      color: added ? THEME.accent : THEME.text3,
+                      padding:"4px 5px", borderRadius:5, display:"flex",
+                      fontSize:15, lineHeight:1,
+                      opacity: added ? 1 : 0.5, transition:"all 0.12s",
+                    }}
+                    onMouseEnter={e=>{ if(!added) e.currentTarget.style.opacity=1; }}
+                    onMouseLeave={e=>{ if(!added) e.currentTarget.style.opacity=0.5; }}>
+                    {added ? "★" : "☆"}
+                  </button>
                 </div>
-              )}
-            </button>
-          );
-        })}
+              );
+            })}
+          </>
+        )}
+
+        {/* Closed-rail: show search icon */}
+        {!open && (
+          <button onClick={onToggle} style={{ width:"100%", background:"none",
+            border:"none", cursor:"pointer", color:THEME.text3,
+            display:"flex", justifyContent:"center", padding:"6px 0" }}>
+            <Search size={14}/>
+          </button>
+        )}
       </div>
 
       {/* Divider */}
@@ -2426,25 +3253,65 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         })}
       </div>
 
-      {/* Divider + Refresh */}
-      <div style={{ height:1, background:THEME.border2, margin:"0 8px 4px", flexShrink:0 }}/>
-      <div style={{ padding: open?"2px 8px 10px":"2px 4px 10px", flexShrink:0 }}>
-        <button onClick={onRefreshQuotes} className="rail-btn"
-          style={{ display:"flex", alignItems:"center", gap:open?10:0,
-            padding:open?"7px 10px":"7px 0", width:"100%",
-            justifyContent:open?"flex-start":"center",
-            border:"none", borderRadius:9, background:"transparent",
-            cursor:"pointer", color:THEME.text3, fontFamily:THEME.font,
-            fontSize:12, fontWeight:500, transition:"background 0.12s" }}>
-          <span className="rail-icon" style={{ display:"flex", flexShrink:0 }}>
-            {fetching
-              ? <span className="spin" style={{ display:"flex" }}><RefreshCw size={15}/></span>
-              : <RefreshCw size={15}/>}
-          </span>
-          {open && "Refresh Quotes"}
-        </button>
+      {/* ─── Bottom: Account (pinned) ────────────────────────────── */}
+      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 6px 8px", flexShrink:0 }}>
+        {/* Refresh row */}
+        <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:'flex'}}><RefreshCw size={15}/></span> : <RefreshCw size={15}/>}
+          label="Refresh Quotes" onClick={onRefreshQuotes}/>
+        <div style={{ height:1, background:THEME.border, margin:"4px 0" }}/>
+        {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
+          textTransform:"uppercase", letterSpacing:"0.10em",
+          padding:"4px 6px 4px", opacity:0.7 }}>Account</div>}
+        {user ? (
+          <>
+            {open && (
+              <div style={{ padding:"2px 6px 6px", display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:26, height:26, borderRadius:"50%",
+                  background:"rgba(59,130,246,0.2)", display:"flex",
+                  alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <User size={12} style={{ color:THEME.accent }}/>
+                </div>
+                <div>
+                  <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>{user.username}</div>
+                  <div style={{ fontSize:9, color:THEME.text3 }}>ETF Explorer</div>
+                </div>
+              </div>
+            )}
+            {onSwitchToPortfolio && (
+              <RailBtn open={open} icon={<LayoutDashboard size={16}/>} label="Portfolio View"
+                onClick={onSwitchToPortfolio}/>
+            )}
+            {onSignOut && (
+              <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out"
+                onClick={onSignOut} color={THEME.text3}/>
+            )}
+          </>
+        ) : (
+          onBack && (
+            <RailBtn open={open} icon={<User size={16}/>} label="Sign In"
+              onClick={onBack} color={THEME.accent}/>
+          )
+        )}
       </div>
     </div>
+
+    {/* Delete confirmation modal */}
+    {deleteConfirm && (
+      <DeleteEtfModal
+        etf={deleteConfirm.etf}
+        onCancel={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          const { etf, from } = deleteConfirm;
+          setDeleteConfirm(null);
+          if (from === "custom") {
+            setCustomEtfs(prev => prev.filter(e => e.ticker !== etf.ticker));
+          } else {
+            onRemoveEtf && onRemoveEtf(etf.ticker);
+          }
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -2519,9 +3386,58 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
   );
 }
 
+// ── Inline Sparkline for holdings table ──────────────────────────────────────
+function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
+  const pts = useMemo(() => {
+    if (!chartData) return null;
+    const r = chartData.chart?.result?.[0];
+    if (!r) return null;
+    const ts  = r.timestamp ?? [];
+    const cls = r.indicators?.quote?.[0]?.close ?? [];
+    // For non-intraday periods, restrict range
+    let startTs = 0;
+    if (period !== "Intraday" && period !== "Max") {
+      const now = Date.now() / 1000;
+      const days = period==="1W"?7:period==="1M"?30:period==="YTD"?null:period==="1Y"?365:730;
+      if (days) startTs = now - days*86400;
+      else { const jan1 = new Date(new Date().getFullYear(),0,1); startTs=jan1.getTime()/1000; }
+    }
+    const filtered = ts.map((t,i)=>({t,v:cls[i]}))
+      .filter(p=>p.v!=null && p.t>=startTs);
+    if (filtered.length < 2) return null;
+    return filtered;
+  }, [chartData, period]);
+
+  if (!pts) return <div style={{ width:W, height:H }}/>;
+
+  const xs = pts.map(p=>p.t), ys = pts.map(p=>p.v);
+  const minY=Math.min(...ys), maxY=Math.max(...ys), rangeY=maxY-minY||1;
+  const sx = t=>((t-xs[0])/(xs[xs.length-1]-xs[0]))*(W-2)+1;
+  const sy = v=>H-((v-minY)/rangeY)*(H-4)-2;
+  const polyPts = pts.map(p=>`${sx(p.t).toFixed(1)},${sy(p.v).toFixed(1)}`).join(" ");
+  const lx=sx(xs[xs.length-1]), ly=sy(ys[ys.length-1]);
+  const col = isPos ? "#4ade80" : "#f87171";
+
+  return (
+    <svg width={W} height={H} style={{ display:"block" }}>
+      <defs>
+        <linearGradient id={`sg-${xs[0]}-${isPos}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={col} stopOpacity="0.3"/>
+          <stop offset="100%" stopColor={col} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <polyline
+        points={polyPts + ` ${W},${H} 0,${H}`}
+        fill={`url(#sg-${xs[0]}-${isPos})`}/>
+      <polyline points={polyPts} fill="none" stroke={col} strokeWidth="1.2"/>
+      <circle cx={lx} cy={ly} r="2" fill={col}/>
+    </svg>
+  );
+}
+
 // ── ETF Holdings Table ────────────────────────────────────────────────────────
-function EtfHoldingsTable({ holdings, quotes, currency, rates, onRefreshHoldings,
-                            refreshing, fetchedAt }) {
+function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
+                            onRefreshHoldings, refreshing, fetchedAt, period, onPeriod }) {
   const rate = rates[currency] ?? 1;
   const cSym = CCY_SYM[currency] ?? "$";
 
@@ -2530,9 +3446,18 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates, onRefreshHoldings
       .sort((a,b) => b.weight - a.weight)
       .map(h => {
         const q = quotes[h.symbol];
-        return { ...h, price:q?.price??null, changePercent:q?.changePct??null };
+        // Compute perf for selected period
+        const perf = (() => {
+          if (!q) return null;
+          if (period === "Intraday") return q.changePct ?? null;
+          const refKey = period === "Max" ? (q.refs?.["5Y"] ? "5Y" : "2Y") : period;
+          const ref = q.refs?.[refKey];
+          if (ref != null && q.price > 0) return ((q.price - ref) / ref) * 100;
+          return q.changePct ?? null;
+        })();
+        return { ...h, price:q?.price??null, perf, shortName:q?.shortName||q?.name||null };
       }),
-    [holdings, quotes]
+    [holdings, quotes, period]
   );
 
   const lastUpdated = fetchedAt
@@ -2541,26 +3466,35 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates, onRefreshHoldings
         hour:"2-digit", minute:"2-digit" })
     : null;
 
+  const periodLabel = period === "Intraday" ? "1D" : period;
+
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
-      {/* Toolbar */}
-      <div style={{ padding:"8px 16px", borderBottom:`1px solid ${THEME.border2}`,
-        display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
-        <div style={{ flex:1 }}>
-          <span style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>
-            {holdings.length} Holdings
-          </span>
-          {lastUpdated && (
-            <span style={{ fontSize:10, color:THEME.text3, marginLeft:10 }}>
-              · Updated {lastUpdated}
-            </span>
-          )}
+      {/* Toolbar: period selector + refresh */}
+      <div style={{ padding:"0 16px 0 16px", borderBottom:`1px solid ${THEME.border2}`,
+        display:"flex", alignItems:"center", gap:4, flexShrink:0, height:44 }}>
+        {/* Period buttons */}
+        {ETF_PERIODS.map(p => (
+          <button key={p.key} onClick={()=>onPeriod(p.key)} style={{
+            padding:"4px 10px", border:"none", cursor:"pointer",
+            background:period===p.key?"rgba(59,130,246,0.15)":"transparent",
+            color:period===p.key?THEME.accent:THEME.text3,
+            fontSize:11, fontWeight:700, fontFamily:"inherit",
+            borderBottom:period===p.key?`2px solid ${THEME.accent}`:"2px solid transparent",
+            borderRadius:"6px 6px 0 0", transition:"all 0.12s" }}>{p.label}</button>
+        ))}
+        <div style={{ flex:1 }}/>
+        {/* Holdings count + last update */}
+        <div style={{ fontSize:10, color:THEME.text3, marginRight:8, textAlign:"right" }}>
+          {holdings.length} holdings
+          {lastUpdated && <span style={{ marginLeft:8 }}>· Updated {lastUpdated}</span>}
         </div>
+        {/* Refresh Holdings */}
         <button onClick={onRefreshHoldings}
-          style={{ display:"flex", alignItems:"center", gap:6,
+          style={{ display:"flex", alignItems:"center", gap:5,
             padding:"5px 12px", borderRadius:8, border:`1px solid ${THEME.border}`,
             background:"transparent", color:THEME.text2, fontSize:11,
-            fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+            fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
           <span style={{ display:"flex" }}>
             {refreshing
               ? <span className="spin" style={{ display:"flex" }}><RefreshCw size={12}/></span>
@@ -2569,65 +3503,98 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates, onRefreshHoldings
           Refresh Holdings
         </button>
       </div>
+
       {/* Table */}
       <div style={{ flex:1, overflowY:"auto" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
           <thead>
             <tr style={{ borderBottom:`1px solid ${THEME.border2}` }}>
-              {["#","Symbol","Name","Weight","Price","1D"].map(h => (
-                <th key={h} style={{ padding:"8px 12px",
-                  textAlign:["#","Weight","Price","1D"].includes(h)?"right":"left",
+              {["#","Symbol","Name","Weight","Trend","Price",periodLabel].map(h => (
+                <th key={h} style={{ padding:"7px 12px",
+                  textAlign:["#","Weight","Price",periodLabel].includes(h)?"right":"left",
                   fontSize:9, fontWeight:700, color:THEME.text3,
                   textTransform:"uppercase", letterSpacing:"0.07em",
-                  position:"sticky", top:0, background:THEME.bg }}>{h}</th>
+                  position:"sticky", top:0, background:THEME.bg,
+                  whiteSpace:"nowrap" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((h, i) => {
-              const pColor = h.changePercent==null ? THEME.text3
-                : h.changePercent>=0 ? THEME.green : THEME.red;
+              const isPos = (h.perf ?? 0) >= 0;
+              const pColor = h.perf==null ? THEME.text3
+                : isPos ? THEME.green : THEME.red;
+              const chartData = chartDataMap.current?.[h.symbol] ?? null;
               return (
                 <tr key={h.symbol}
                   style={{ borderBottom:`1px solid rgba(255,255,255,0.03)`, cursor:"default" }}
                   onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <td style={{ padding:"7px 12px", textAlign:"right",
+
+                  {/* # */}
+                  <td style={{ padding:"6px 12px", textAlign:"right",
                     color:THEME.text3, fontSize:10,
                     fontFamily:"'JetBrains Mono',monospace" }}>{i+1}</td>
-                  <td style={{ padding:"7px 12px" }}>
+
+                  {/* Symbol + shortName */}
+                  <td style={{ padding:"6px 12px", whiteSpace:"nowrap" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:7 }}>
                       <div style={{ width:6, height:6, borderRadius:"50%", flexShrink:0,
-                        background:getPerfColor(h.changePercent??0) }}/>
-                      <span style={{ fontWeight:700, color:THEME.text1,
-                        fontFamily:"'JetBrains Mono',monospace",
-                        fontSize:11 }}>{h.symbol}</span>
+                        background:getPerfColor(h.perf??0) }}/>
+                      <div>
+                        <div style={{ fontWeight:700, color:THEME.text1,
+                          fontFamily:"'JetBrains Mono',monospace",
+                          fontSize:11, lineHeight:1.2 }}>{h.symbol}</div>
+                        {h.shortName && (
+                          <div style={{ fontSize:9, color:THEME.text3, lineHeight:1.2,
+                            maxWidth:120, overflow:"hidden", textOverflow:"ellipsis",
+                            whiteSpace:"nowrap" }}>{h.shortName}</div>
+                        )}
+                      </div>
                     </div>
                   </td>
-                  <td style={{ padding:"7px 12px", color:THEME.text2, maxWidth:200,
+
+                  {/* Name */}
+                  <td style={{ padding:"6px 12px", color:THEME.text2, maxWidth:180,
                     whiteSpace:"nowrap", overflow:"hidden",
                     textOverflow:"ellipsis" }}>{h.name}</td>
-                  <td style={{ padding:"7px 12px", textAlign:"right" }}>
+
+                  {/* Weight bar */}
+                  <td style={{ padding:"6px 12px", textAlign:"right" }}>
                     <div style={{ display:"flex", alignItems:"center",
                       justifyContent:"flex-end", gap:6 }}>
                       <div style={{ height:4, borderRadius:2, flexShrink:0,
                         width:Math.max(4, Math.round(h.weight*8)),
                         background:`rgba(59,130,246,${0.3+h.weight/20})` }}/>
                       <span style={{ fontFamily:"'JetBrains Mono',monospace",
-                        color:THEME.text1, fontSize:11 }}>
+                        color:THEME.text1, fontSize:11, minWidth:44, textAlign:"right" }}>
                         {h.weight.toFixed(2)}%
                       </span>
                     </div>
                   </td>
-                  <td style={{ padding:"7px 12px", textAlign:"right",
+
+                  {/* Sparkline */}
+                  <td style={{ padding:"3px 12px", textAlign:"left" }}>
+                    <HoldingSparkline
+                      chartData={chartData}
+                      period={period}
+                      isPos={isPos}
+                      W={80} H={26}/>
+                  </td>
+
+                  {/* Price */}
+                  <td style={{ padding:"6px 12px", textAlign:"right",
                     fontFamily:"'JetBrains Mono',monospace",
                     color:h.price?THEME.text1:THEME.text3 }}>
                     {h.price ? `${cSym}${(h.price*rate).toFixed(2)}` : "—"}
                   </td>
-                  <td style={{ padding:"7px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace", color:pColor }}>
-                    {h.changePercent!=null
-                      ? `${h.changePercent>=0?"+":""}${h.changePercent.toFixed(2)}%`
+
+                  {/* Period perf */}
+                  <td style={{ padding:"6px 12px", textAlign:"right",
+                    fontFamily:"'JetBrains Mono',monospace", color:pColor,
+                    fontWeight:600 }}>
+                    {h.perf!=null
+                      ? `${h.perf>=0?"+":""}${h.perf.toFixed(2)}%`
                       : "—"}
                   </td>
                 </tr>
@@ -2641,7 +3608,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates, onRefreshHoldings
 }
 
 // ── ETF Explorer main component ───────────────────────────────────────────────
-function EtfExplorer({ onBack }) {
+function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut }) {
   useGlobalStyles();
 
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
@@ -2663,6 +3630,8 @@ function EtfExplorer({ onBack }) {
   const [fetching,          setFetching]          = useState(false);
   const chartDataMap = useRef({});
   const tooltipTimer = useRef(null);
+  const [savedEtfs,   setSavedEtfs]   = useState(initialSavedEtfs || []);
+  const [saveModal,   setSaveModal]   = useState(null); // etf object to save, or null
 
   // FX rates
   useEffect(() => {
@@ -2671,14 +3640,18 @@ function EtfExplorer({ onBack }) {
   }, []);
 
   // Load holdings
+  const [dynamicName, setDynamicName] = useState(null); // name from API for non-preset ETFs
+
   const loadHoldings = useCallback(async (ticker, force=false) => {
-    setLoadingHoldings(true); setHoldingsError(null);
+    setLoadingHoldings(true); setHoldingsError(null); setDynamicName(null);
     try {
       const url = `${ETF_BASE}/etf/${encodeURIComponent(ticker.replace(".","_"))}/holdings`;
       const data = await fetch(url).then(r=>r.json());
       if (data.error) throw new Error(data.error);
       setHoldings(data.holdings||[]);
       setFetchedAt(data.fetched_at||null);
+      // Store any name returned from the API (useful for non-preset ETFs)
+      if (data.name) setDynamicName(data.name);
       try { localStorage.setItem(ETF_LS_KEY, ticker); } catch {}
     } catch(e) { setHoldingsError(e.message); setHoldings([]); }
     setLoadingHoldings(false);
@@ -2706,14 +3679,33 @@ function EtfExplorer({ onBack }) {
     setFetching(false);
   }, [holdings]);
 
-  useEffect(() => { if (holdings.length>0) fetchQuotes(); },
-    [holdings]); // eslint-disable-line
+  useEffect(() => {
+    if (!holdings.length) return;
+    fetchQuotes();
+    // Preload chart data for all holdings (needed for sparklines in table view)
+    holdings.forEach(h => {
+      if (!chartDataMap.current[h.symbol]) {
+        quotesApi.raw(h.symbol).then(d => {
+          if (d) chartDataMap.current[h.symbol] = d;
+        }).catch(()=>{});
+      }
+    });
+  }, [holdings]); // eslint-disable-line
 
   // Nodes
   const nodes = useMemo(()=>buildEtfNodes(holdings,quotes,period),
     [holdings,quotes,period]);
 
-  const etfMeta = PREDEFINED_ETFS_CLIENT.find(e=>e.ticker===selectedTicker);
+  // etfMeta: look up from presets first, then savedEtfs, then construct minimal from ticker
+  const etfMeta = useMemo(() => {
+    const preset = PREDEFINED_ETFS_CLIENT.find(e => e.ticker === selectedTicker);
+    if (preset) return preset;
+    const saved  = savedEtfs.find(e => e.ticker === selectedTicker);
+    if (saved)  return saved;
+    // For live-searched ETFs we may have name in holdings response meta
+    if (selectedTicker) return { ticker: selectedTicker, name: null, provider: null };
+    return null;
+  }, [selectedTicker, savedEtfs]);
 
   // Tooltip
   const handleCellHover = useCallback((e,cell) => {
@@ -2744,6 +3736,27 @@ function EtfExplorer({ onBack }) {
         selectedTicker={selectedTicker} onSelect={setSelectedTicker}
         currency={currency} onCurrency={setCurrency}
         fetching={fetching} onRefreshQuotes={fetchQuotes}
+        user={user}
+        savedEtfs={savedEtfs}
+        onSaveEtf={(etf, directList) => {
+          if (directList) {
+            // All custom ETFs saved in bulk — update savedEtfs directly
+            setSavedEtfs(directList);
+          } else if (etf) {
+            // Single ETF save — open auth modal
+            setSaveModal(etf);
+          }
+        }}
+        onRemoveEtf={async (ticker) => {
+          if (!user) return;
+          try {
+            const res = await etfApi.remove(user.id, ticker);
+            setSavedEtfs(res.etfs || []);
+          } catch(e) { console.error("Remove ETF failed", e); }
+        }}
+        onSwitchToPortfolio={onSwitchToPortfolio}
+        onBack={onBack}
+        onSignOut={onSignOut || (onSwitchToPortfolio ? () => { onBack(); } : null)}
       />
 
       <div style={{ flex:1, display:"flex", flexDirection:"column",
@@ -2754,16 +3767,7 @@ function EtfExplorer({ onBack }) {
           borderBottom:`1px solid ${THEME.border}`,
           display:"flex", alignItems:"center", padding:"0 16px",
           gap:2, flexShrink:0 }}>
-          {/* Back */}
-          <button onClick={onBack} style={{
-            display:"flex", alignItems:"center", gap:6,
-            padding:"5px 10px", borderRadius:8, border:"none",
-            background:"rgba(255,255,255,0.05)", color:THEME.text3,
-            cursor:"pointer", fontSize:11, fontFamily:"inherit",
-            marginRight:8, transition:"all 0.12s" }}>
-            <ChevronLeft size={13}/> Sign In
-          </button>
-          <div style={{ width:1, height:20, background:THEME.border, marginRight:8 }}/>
+
           {[
             { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"  },
             { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart" },
@@ -2789,14 +3793,16 @@ function EtfExplorer({ onBack }) {
                 <RefreshCw size={13}/>
               </span>
             )}
-            {etfMeta && (
+            {selectedTicker && (
               <div style={{ fontSize:11, color:THEME.text3 }}>
                 <span style={{ fontWeight:700, color:THEME.accent,
                   fontFamily:"'JetBrains Mono',monospace" }}>
                   {selectedTicker}
                 </span>
-                <span style={{ margin:"0 6px" }}>·</span>
-                {etfMeta.name}
+                {(etfMeta?.name || dynamicName) && (
+                  <><span style={{ margin:"0 6px" }}>·</span>
+                  {etfMeta?.name || dynamicName}</>
+                )}
               </div>
             )}
             {holdingsError && (
@@ -2811,7 +3817,7 @@ function EtfExplorer({ onBack }) {
         {/* Summary bar */}
         <EtfSummaryBar etfMeta={etfMeta} nodes={nodes} fetchErrors={fetchErrors}/>
 
-        {/* Period toolbar */}
+        {/* Period toolbar — shown for TreeMap and BarChart tabs */}
         {activeTab !== "transactions" && (
           <div style={{ padding:"0 16px 0 22px", display:"flex", alignItems:"center",
             borderBottom:`1px solid ${THEME.border}`, height:46,
@@ -2872,8 +3878,10 @@ function EtfExplorer({ onBack }) {
           ) : (
             <EtfHoldingsTable
               holdings={holdings} quotes={quotes}
+              chartDataMap={chartDataMap}
               currency={currency} rates={rates}
               fetchedAt={fetchedAt}
+              period={period} onPeriod={setPeriod}
               onRefreshHoldings={()=>loadHoldings(selectedTicker,true)}
               refreshing={loadingHoldings}/>
           )}
@@ -2887,6 +3895,16 @@ function EtfExplorer({ onBack }) {
           chartData={chartDataMap.current[tooltip.data.symbol]}
           chartDataIntraday={chartDataMap.current[`${tooltip.data.symbol}_1d`]}/>
       )}
+    {/* Save ETF modal */}
+    {saveModal && (
+      <SaveEtfModal
+        etf={saveModal}
+        user={user}
+        onClose={() => setSaveModal(null)}
+        onLogin={(loggedIn) => { onLogin && onLogin(loggedIn); }}
+        onSaved={(u, etfs) => { setSavedEtfs(etfs); setSaveModal(null); }}
+      />
+    )}
     </div>
   );
 }
@@ -2916,6 +3934,8 @@ export default function App() {
   const [showAddTx,  setShowAddTx]  = useState(false);
   const [editTx,     setEditTx]     = useState(null); // {portfolioId, tx}
   const [showAddPort,setShowAddPort]= useState(false);
+  const [showImportExport, setShowImportExport] = useState(false);
+  const [savedEtfs,       setSavedEtfs]        = useState([]);
   const [showSettings,setShowSettings]=useState(false);
   const [tooltip,    setTooltip]    = useState(null);
 
@@ -2939,6 +3959,7 @@ export default function App() {
   // ── Login handler ─────────────────────────────────────────────────────────
   const handleLogin = useCallback(async (userData) => {
     setUser(userData);
+    etfApi.list(userData.id).then(res => setSavedEtfs(res.etfs || [])).catch(()=>{});
     const ports = userData.portfolios ?? [];
     setPortfolios(ports);
     setActivePortfolioIds(ports.map(p => p.id)); // all active by default
@@ -3264,7 +4285,19 @@ export default function App() {
   }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  if (etfMode) return <EtfExplorer onBack={() => setEtfMode(false)}/>;
+  if (etfMode) return (
+    <EtfExplorer
+      onBack={() => setEtfMode(false)}
+      user={user}
+      savedEtfs={savedEtfs}
+      onLogin={(loggedIn) => {
+        setUser(loggedIn);
+        etfApi.list(loggedIn.id).then(r => setSavedEtfs(r.etfs||[])).catch(()=>{});
+      }}
+      onSwitchToPortfolio={user ? () => setEtfMode(false) : null}
+      onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
+    />
+  );
   if (!user) return <LoginScreen onLogin={handleLogin} onEtfMode={() => setEtfMode(true)}/>;
 
   if (!initialized) return (
@@ -3297,6 +4330,8 @@ export default function App() {
           dataSource={dataSource}
           currency={currency} onCurrency={setCurrency}
           onRecalcFX={handleRecalcFX}
+          onImportExport={() => setShowImportExport(true)}
+          onEtfExplorer={() => setEtfMode(true)}
         />
 
         {/* ── MAIN CONTENT ───────────────────────────────────────────── */}
@@ -3443,6 +4478,17 @@ export default function App() {
             defaultPortfolioId={editTx.portfolioId}
             initialTx={{ ...editTx.tx, portfolio_id:editTx.portfolioId }}
             editMode/>
+        )}
+        {showImportExport && (
+          <ImportExportModal
+            portfolios={portfolios}
+            activePortfolioIds={activePortfolioIds}
+            user={user}
+            onClose={() => setShowImportExport(false)}
+            onImportDone={() => {
+              setShowImportExport(false);
+              handleRefresh();
+            }}/>
         )}
         {showAddPort && (
           <AddPortfolioModal onClose={() => setShowAddPort(false)} onAdd={handleAddPortfolio}/>
