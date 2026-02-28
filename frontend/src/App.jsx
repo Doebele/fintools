@@ -1228,29 +1228,31 @@ function Rail({
             </div>
           </div>
         )}
-        <RailBtn open={open} icon={<Settings size={16}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
+        {/* Data source settings (small, collapsed-friendly) */}
+        <RailBtn open={open} icon={<Settings size={14}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
           onClick={onSettings}/>
 
-        {/* ── Display mode toggle ──────────────────────── */}
+        {/* ── ETF Explorer link — mirrors "Portfolio View" in EtfRail ── */}
+        {onEtfExplorer && (
+          <RailBtn open={open} icon={<TrendingUp size={16}/>} label="ETF Explorer"
+            onClick={onEtfExplorer} color={THEME.accent}/>
+        )}
+
+        {/* ── Display mode toggle — same as EtfRail ── */}
         {onToggleDisplayMode && (
           <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
             {open ? (
-              /* Expanded: pill toggle with label */
               <div style={{ display:"flex", alignItems:"center", gap:8,
                 padding:"6px 10px", borderRadius:8,
                 background:"rgba(255,255,255,0.04)",
                 border:`1px solid ${THEME.border}` }}>
-                <span style={{ fontSize:10, color:THEME.text3, flex:1,
-                  whiteSpace:"nowrap" }}>View mode</span>
+                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
                 <div style={{ display:"flex", gap:2, padding:"2px",
                   borderRadius:6, background:"rgba(0,0,0,0.25)",
                   border:`1px solid ${THEME.border}` }}>
                   {[["pro","Pro"],["comfort","A11Y"]].map(([m, lbl]) => (
-                    <button key={m}
-                      onClick={() => onToggleDisplayMode(m)}
-                      title={m==="pro"
-                        ? "Compact — maximum information density"
-                        : "Comfort — larger text (WCAG AA)"}
+                    <button key={m} onClick={() => onToggleDisplayMode(m)}
+                      title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
                       style={{
                         padding:"3px 8px", borderRadius:5, border:"none",
                         background: displayMode===m
@@ -1258,16 +1260,13 @@ function Rail({
                           : "transparent",
                         color: displayMode===m ? THEME.text1 : THEME.text3,
                         fontSize:9, fontWeight:700, cursor:"pointer",
-                        fontFamily:"inherit", transition:"all 0.15s",
-                        letterSpacing:"0.04em",
+                        fontFamily:"inherit", transition:"all 0.15s", letterSpacing:"0.04em",
                       }}>{lbl}</button>
                   ))}
                 </div>
               </div>
             ) : (
-              /* Collapsed: icon-only button */
-              <button
-                onClick={onToggleDisplayMode}
+              <button onClick={onToggleDisplayMode}
                 title={displayMode==="pro" ? "Switch to Comfort mode (A11Y)" : "Switch to Pro mode"}
                 style={{
                   width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
@@ -1275,9 +1274,7 @@ function Rail({
                   borderRadius:7, display:"flex", justifyContent:"center",
                   alignItems:"center", transition:"all 0.15s",
                 }}>
-                <span style={{ fontSize:14, lineHeight:1 }}>
-                  {displayMode==="comfort" ? "👁" : "🔬"}
-                </span>
+                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? "👁" : "🔬"}</span>
               </button>
             )}
           </div>

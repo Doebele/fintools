@@ -1943,9 +1943,12 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
             }}>{v>=1000?`${v/1000}K`:v} {currency}</button>
           ))}
           {annualTotal > 0 && (
-            <div style={{ marginLeft:"auto", fontSize:11, color:C.green, fontFamily:C.mono,
-              fontWeight:700 }}>
-              Est. annual income: {cSym}{(annualTotal*rate).toFixed(0)}
+            <div style={{ marginLeft:"auto", display:"flex", alignItems:"baseline", gap:6 }}>
+              <span style={{ fontSize:10, color:C.text3 }}>Est. annual</span>
+              <span style={{ fontSize:20, fontFamily:C.mono, fontWeight:700, color:C.green,
+                letterSpacing:"-0.03em" }}>
+                {cSym}{(annualTotal*rate).toFixed(0)}
+              </span>
             </div>
           )}
         </div>
@@ -1961,16 +1964,30 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
         </div>
       )}
 
-      {/* Annual total strip (portfolio mode) */}
+      {/* Annual total strip (portfolio mode) — prominent hero display */}
       {!isEtfMode && annualTotal > 0 && (
-        <div style={{ padding:"4px 22px 8px", flexShrink:0 }}>
-          <span style={{ fontSize:11, color:C.text3 }}>Est. annual income: </span>
-          <span style={{ fontFamily:C.mono, fontSize:13, fontWeight:700, color:C.green }}>
-            {cSym}{(annualTotal*rate).toFixed(0)}
-          </span>
-          <span style={{ fontSize:10, color:C.text3, marginLeft:6 }}>
-            ({events.filter(e=>e.isEstimate).length > 0 ? "incl. estimated dates" : "confirmed dates"})
-          </span>
+        <div style={{ padding:"8px 22px 10px", flexShrink:0,
+          background:"rgba(74,222,128,0.04)", borderBottom:`1px solid rgba(74,222,128,0.12)` }}>
+          <div style={{ display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", flexDirection:"column" }}>
+              <span style={{ fontSize:9, color:C.text3, textTransform:"uppercase",
+                letterSpacing:"0.08em", fontWeight:700 }}>Est. Annual Dividends</span>
+              <span style={{ fontFamily:C.mono, fontSize:30, fontWeight:700, color:C.green,
+                letterSpacing:"-0.04em", lineHeight:1.1 }}>
+                {cSym}{(annualTotal*rate).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})}
+              </span>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+              <span style={{ fontFamily:C.mono, fontSize:13, fontWeight:600,
+                color:"rgba(74,222,128,0.7)" }}>
+                {cSym}{((annualTotal*rate)/12).toFixed(0)}<span style={{ fontSize:9,
+                  color:C.text3, fontWeight:400, marginLeft:3 }}>/mo</span>
+              </span>
+              <span style={{ fontSize:9, color:C.text3 }}>
+                {events.filter(e=>e.isEstimate).length > 0 ? "incl. estimated" : "confirmed dates"}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
