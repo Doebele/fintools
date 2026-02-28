@@ -4610,6 +4610,8 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 isEtfMode={true}
                 currency={currency}
                 rates={rates}
+                onCellHover={handleCellHover}
+                onCellLeave={handleCellLeave}
                 onRefreshDivs={() => {
                   divFetching.current.clear();
                   setDivCache({});
@@ -5287,7 +5289,9 @@ export default function App() {
                   divCache={portfolioDivCache}
                   isEtfMode={false}
                   currency={currency}
-                  rates={rates}/>
+                  rates={rates}
+                  onCellHover={handleCellHover}
+                  onCellLeave={handleCellLeave}/>
               </div>
             )}
           </div>

@@ -1646,7 +1646,7 @@ function estimateDates(divData, symbol) {
 }
 
 // Bar chart sub-component for monthly income
-function DivBarChart({ monthly, currency, cSym, rate, symColors, year }) {
+function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolHover, onSymbolLeave }) {
   const maxVal   = Math.max(...monthly.map(m=>m.totalUSD), 0.01);
   const nowMonth = new Date().getMonth();
   const nowYear  = new Date().getFullYear();
@@ -1693,8 +1693,13 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year }) {
             {m.events.map(ev => (
               <div key={ev.symbol+ev.exDate} style={{ display:"flex",
                 justifyContent:"space-between", gap:8, fontSize:10, marginBottom:2 }}>
-                <span style={{ color:symColors[ev.symbol]||C.accent,
-                  fontFamily:C.mono, fontWeight:700 }}>{ev.symbol}</span>
+                <span
+                  onMouseEnter={onSymbolHover ? e => onSymbolHover(e, ev.symbol) : undefined}
+                  onMouseLeave={onSymbolLeave}
+                  style={{ color:symColors[ev.symbol]||C.accent,
+                    fontFamily:C.mono, fontWeight:700,
+                    cursor: onSymbolHover ? "pointer" : "default",
+                  }}>{ev.symbol}</span>
                 <span style={{ color:C.text2 }}>
                   {ev.totalUSD ? `${cSym}${(ev.totalUSD*rate).toFixed(2)}` : "—"}
                 </span>
@@ -1791,7 +1796,7 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year }) {
   );
 }
 
-export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, currency, rates, onRefreshDivs }) {
+export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, currency, rates, onRefreshDivs, onCellHover, onCellLeave }) {
   const rate = rates[currency] ?? 1;
   const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
   const now  = new Date();
@@ -1877,6 +1882,34 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
   }, [events]);
 
   const annualTotal = monthly.reduce((s,m)=>s+m.totalUSD, 0);
+
+  // Build a lookup map from allNodes for tooltip data (symbol → full node)
+  const nodeMap = useMemo(() => {
+    const m = {};
+    for (const n of (allNodes || [])) m[n.symbol] = n;
+    return m;
+  }, [allNodes]);
+
+  // Build tooltip cell data for a given symbol
+  const makeCellData = (symbol) => {
+    const n = nodeMap[symbol];
+    if (!n) return { symbol };
+    return {
+      symbol: n.symbol,
+      name: n.name,
+      longName: n.longName,
+      currentPriceUSD: n.currentPriceUSD,
+      valueUSD: n.valueUSD,
+      costUSD: n.costUSD,
+      gainLossUSD: n.gainLossUSD,
+      qty: n.qty,
+      perf: n.perf,
+      glPerf: n.glPerf,
+      weight: n.weight,
+      trailingPE: n.trailingPE,
+      forwardPE: n.forwardPE,
+    };
+  };
 
   const symColors = useMemo(() => {
     const syms    = [...new Set(events.map(e=>e.symbol))];
@@ -2010,7 +2043,9 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
             </div>
           ) : (
             <DivBarChart monthly={monthly} currency={currency} cSym={cSym}
-              rate={rate} symColors={symColors} year={viewYear}/>
+              rate={rate} symColors={symColors} year={viewYear}
+              onSymbolHover={onCellHover ? (e, sym) => onCellHover(e, makeCellData(sym)) : undefined}
+              onSymbolLeave={onCellLeave}/>
           )}
         </div>
       )}
@@ -2055,14 +2090,18 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                     {/* Event dots */}
                     <div style={{ display:"flex", flexWrap:"wrap", gap:3 }}>
                       {m.events.map(ev => (
-                        <div key={ev.symbol+ev.exDate} style={{
-                          padding:"1px 5px", borderRadius:4, fontSize:8, fontWeight:700,
-                          fontFamily:C.mono,
-                          background:`${symColors[ev.symbol]||C.accent}22`,
-                          color:symColors[ev.symbol]||C.accent,
-                          border:`1px solid ${symColors[ev.symbol]||C.accent}33`,
-                          opacity:ev.isEstimate?0.7:1,
-                        }}>
+                        <div key={ev.symbol+ev.exDate}
+                          onMouseEnter={onCellHover ? e => onCellHover(e, makeCellData(ev.symbol)) : undefined}
+                          onMouseLeave={onCellLeave}
+                          style={{
+                            padding:"1px 5px", borderRadius:4, fontSize:8, fontWeight:700,
+                            fontFamily:C.mono,
+                            background:`${symColors[ev.symbol]||C.accent}22`,
+                            color:symColors[ev.symbol]||C.accent,
+                            border:`1px solid ${symColors[ev.symbol]||C.accent}33`,
+                            opacity:ev.isEstimate?0.7:1,
+                            cursor: onCellHover ? "pointer" : "default",
+                          }}>
                           {ev.symbol}
                         </div>
                       ))}
@@ -2113,8 +2152,15 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                   <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
                     <div style={{ width:6, height:6, borderRadius:2, flexShrink:0,
                       background:symColors[ev.symbol]||C.accent }}/>
-                    <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
-                      color:symColors[ev.symbol]||C.accent }}>{ev.symbol}</span>
+                    <span
+                      onMouseEnter={onCellHover ? e => onCellHover(e, makeCellData(ev.symbol)) : undefined}
+                      onMouseLeave={onCellLeave}
+                      style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
+                        color:symColors[ev.symbol]||C.accent,
+                        cursor: onCellHover ? "pointer" : "default",
+                        textDecoration: onCellHover ? "underline dotted" : "none",
+                        textUnderlineOffset: 2,
+                      }}>{ev.symbol}</span>
                     {ev.isEstimate && (
                       <span style={{ fontSize:8, padding:"1px 5px", borderRadius:4,
                         background:"rgba(251,191,36,0.12)", color:C.yellow,
