@@ -59,12 +59,32 @@ function useGlobalStyles() {
     s.textContent = `
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body { height: 100%; overflow: hidden; }
-      body { background: #0d0e12; color: #f0f1f5; font-family: 'Syne', sans-serif;
-             font-size: 13px; -webkit-font-smoothing: antialiased; }
+      
+      /* ── Pro mode (default): compact information density ── */
+      :root { --fs-base: 13px; --fs-scale: 1; }
+      body {
+        background: #0d0e12; color: #f0f1f5; font-family: 'Syne', sans-serif;
+        font-size: var(--fs-base); -webkit-font-smoothing: antialiased;
+        transition: font-size 0.25s ease;
+      }
+      
+      /* ── Comfort mode: WCAG AA compliant scaling ── */
+      /* CSS zoom uniformly scales ALL child pixel dimensions including inline styles */
+      body[data-mode="comfort"] { --fs-base: 16px; }
+      body[data-mode="comfort"] #ptv3-root {
+        zoom: 1.18;
+        /* Compensate so zoomed content still fills the viewport exactly */
+        width: calc(100vw / 1.18);
+        height: calc(100vh / 1.18);
+        overflow: hidden;
+      }
+      
       button { font-family: inherit; }
       .mono { font-family: 'JetBrains Mono', monospace; }
       .spin { display: inline-block; animation: ptv3spin 0.9s linear infinite; }
       @keyframes ptv3spin { to { transform: rotate(360deg); } }
+      @keyframes ptv3pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+      .pulse { animation: ptv3pulse 1.4s ease-in-out infinite; }
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
@@ -81,6 +101,28 @@ function useGlobalStyles() {
     document.head.appendChild(s);
   }, []);
 }
+
+// ── Display mode hook: "pro" (compact) | "comfort" (A11Y-friendly) ──────────
+function useDisplayMode() {
+  const [mode, setModeState] = useState(() => {
+    // Apply synchronously on init to avoid flash of wrong mode
+    const saved = localStorage.getItem("ptv3-display-mode") || "pro";
+    document.body.setAttribute("data-mode", saved);
+    return saved;
+  });
+
+  // Keep body attribute in sync with state
+  useEffect(() => {
+    document.body.setAttribute("data-mode", mode);
+    localStorage.setItem("ptv3-display-mode", mode);
+  }, [mode]);
+
+  const setMode = (m) => setModeState(m);
+  const toggle  = () => setModeState(m => m === "pro" ? "comfort" : "pro");
+
+  return { mode, setMode, toggle };
+}
+
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 const BASE = "/api";
@@ -962,6 +1004,7 @@ function Rail({
   onRecalcFX,
   onImportExport,
   onEtfExplorer,
+  displayMode, onToggleDisplayMode,
 }) {
   const w = open ? RAIL_EXPANDED : RAIL_COLLAPSED;
 
@@ -1221,6 +1264,59 @@ function Rail({
         )}
         <RailBtn open={open} icon={<Settings size={16}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
           onClick={onSettings}/>
+
+        {/* ── Display mode toggle ──────────────────────── */}
+        {onToggleDisplayMode && (
+          <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
+            {open ? (
+              /* Expanded: pill toggle with label */
+              <div style={{ display:"flex", alignItems:"center", gap:8,
+                padding:"6px 10px", borderRadius:8,
+                background:"rgba(255,255,255,0.04)",
+                border:`1px solid ${THEME.border}` }}>
+                <span style={{ fontSize:10, color:THEME.text3, flex:1,
+                  whiteSpace:"nowrap" }}>View mode</span>
+                <div style={{ display:"flex", gap:2, padding:"2px",
+                  borderRadius:6, background:"rgba(0,0,0,0.25)",
+                  border:`1px solid ${THEME.border}` }}>
+                  {[["pro","Pro"],["comfort","A11Y"]].map(([m, lbl]) => (
+                    <button key={m}
+                      onClick={() => onToggleDisplayMode(m)}
+                      title={m==="pro"
+                        ? "Compact — maximum information density"
+                        : "Comfort — larger text (WCAG AA)"}
+                      style={{
+                        padding:"3px 8px", borderRadius:5, border:"none",
+                        background: displayMode===m
+                          ? (m==="comfort" ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.12)")
+                          : "transparent",
+                        color: displayMode===m ? THEME.text1 : THEME.text3,
+                        fontSize:9, fontWeight:700, cursor:"pointer",
+                        fontFamily:"inherit", transition:"all 0.15s",
+                        letterSpacing:"0.04em",
+                      }}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Collapsed: icon-only button */
+              <button
+                onClick={onToggleDisplayMode}
+                title={displayMode==="pro" ? "Switch to Comfort mode (A11Y)" : "Switch to Pro mode"}
+                style={{
+                  width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
+                  background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
+                  borderRadius:7, display:"flex", justifyContent:"center",
+                  alignItems:"center", transition:"all 0.15s",
+                }}>
+                <span style={{ fontSize:14, lineHeight:1 }}>
+                  {displayMode==="comfort" ? "👁" : "🔬"}
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+
         <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out" onClick={onLogout} color={THEME.text3}/>
       </div>
     </div>
@@ -3211,7 +3307,8 @@ function DeleteEtfModal({ etf, onConfirm, onCancel }) {
 function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrency,
                    fetching, onRefreshQuotes,
                    user, savedEtfs, onSaveEtf, onRemoveEtf, onSwitchToPortfolio,
-                   onBack, onSignOut }) {
+                   onBack, onSignOut,
+                   displayMode, onToggleDisplayMode }) {
   const [search,      setSearch]      = useState("");
   const [searching,   setSearching]   = useState(false);
   const [results,     setResults]     = useState([]);
@@ -3424,8 +3521,9 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         )}
       </div>
 
-      {/* Results list */}
-      <div style={{ flex:1, overflowY:"auto", padding: open?"2px 8px":"2px 4px" }}>
+      {/* Results list — two separate scrollable containers: expanded vs collapsed */}
+      {open ? (
+      <div style={{ flex:1, overflowY:"auto", padding:"2px 8px" }}>
 
         {/* ── Searching state ── */}
         {open && inSearch && searching && (
@@ -3452,14 +3550,16 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           </div>
         )}
 
-        {/* ── PRESETS ── */}
+        {/* ── PRESETS (expanded only — collapsed version below) ── */}
         {open && (
-          <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", padding:"4px 4px 6px" }}>Presets</div>
+          <>
+            <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+              letterSpacing:"0.08em", padding:"4px 4px 6px" }}>Presets</div>
+            {(inSearch ? presetResults : PREDEFINED_ETFS_CLIENT).map(etf => (
+              <EtfItem key={etf.ticker} etf={etf} isActive={selectedTicker===etf.ticker}/>
+            ))}
+          </>
         )}
-        {(inSearch ? presetResults : PREDEFINED_ETFS_CLIENT).map(etf => (
-          <EtfItem key={etf.ticker} etf={etf} isActive={selectedTicker===etf.ticker}/>
-        ))}
 
         {/* ── SAVED ETFs (server-persisted) — always visible, not searching ── */}
         {open && !inSearch && savedEtfs && savedEtfs.length > 0 && (
@@ -3586,10 +3686,10 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           </>
         )}
 
-        {/* Closed-rail: show presets + saved ETFs as compact badges */}
-        {!open && (
-          <>
-            {/* Preset ETFs — small badges */}
+      </div>
+      ) : (
+      <div style={{ flex:1, overflowY:"auto", padding:"2px 4px" }}>
+        {/* Closed-rail: compact badges */}
             {PREDEFINED_ETFS_CLIENT.map(etf => (
               <button key={etf.ticker} onClick={() => handleSelect(etf.ticker)}
                 title={etf.name}
@@ -3655,9 +3755,8 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 </div>
               </button>
             ))}
-          </>
-        )}
       </div>
+      )}{/* end open/closed ternary */}
 
       {/* Divider */}
       <div style={{ height:1, background:THEME.border2, margin:"6px 8px", flexShrink:0 }}/>
@@ -3741,6 +3840,48 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
             <RailBtn open={open} icon={<User size={16}/>} label="Sign In"
               onClick={onBack} color={THEME.accent}/>
           )
+        )}
+
+        {/* ── Display mode toggle (shared with portfolio rail) ── */}
+        {onToggleDisplayMode && (
+          <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
+            {open ? (
+              <div style={{ display:"flex", alignItems:"center", gap:8,
+                padding:"6px 10px", borderRadius:8,
+                background:"rgba(255,255,255,0.04)",
+                border:`1px solid ${THEME.border}` }}>
+                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
+                <div style={{ display:"flex", gap:2, padding:"2px",
+                  borderRadius:6, background:"rgba(0,0,0,0.25)",
+                  border:`1px solid ${THEME.border}` }}>
+                  {[["pro","Pro"],["comfort","A11Y"]].map(([m, lbl]) => (
+                    <button key={m} onClick={() => onToggleDisplayMode(m)}
+                      title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
+                      style={{
+                        padding:"3px 8px", borderRadius:5, border:"none",
+                        background: displayMode===m
+                          ? (m==="comfort" ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.12)")
+                          : "transparent",
+                        color: displayMode===m ? THEME.text1 : THEME.text3,
+                        fontSize:9, fontWeight:700, cursor:"pointer",
+                        fontFamily:"inherit", transition:"all 0.15s", letterSpacing:"0.04em",
+                      }}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <button onClick={onToggleDisplayMode}
+                title={displayMode==="pro" ? "Switch to Comfort mode (A11Y)" : "Switch to Pro mode"}
+                style={{
+                  width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
+                  background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
+                  borderRadius:7, display:"flex", justifyContent:"center",
+                  alignItems:"center", transition:"all 0.15s",
+                }}>
+                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? "👁" : "🔬"}</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -4117,7 +4258,8 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
 }
 
 // ── ETF Explorer main component ───────────────────────────────────────────────
-function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut }) {
+function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut,
+                       displayMode, onToggleDisplayMode }) {
   useGlobalStyles();
 
   const [divCache,          setDivCache]          = useState({}); // symbol → dividend data
@@ -4168,20 +4310,27 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   }, []);
 
   // Fetch dividend data for a symbol, cache the result
+  const divFetching = useRef(new Set()); // track in-flight/done fetches
   const fetchDiv = useCallback(async (symbol) => {
-    if (divCache[symbol] !== undefined) return; // already cached (even null = no div)
-    // Set sentinel so we don't double-fetch
-    setDivCache(prev => ({ ...prev, [symbol]: null }));
+    if (divFetching.current.has(symbol)) return; // already fetching or done
+    divFetching.current.add(symbol);
+    setDivCache(prev => ({ ...prev, [symbol]: null })); // sentinel
     try {
       const d = await fetch(`/api/quotes/dividend/${encodeURIComponent(symbol)}`).then(r=>r.json());
       setDivCache(prev => ({ ...prev, [symbol]: d }));
     } catch(e) {
       setDivCache(prev => ({ ...prev, [symbol]: null }));
     }
-  }, [divCache]);
+  }, []); // stable - uses ref for dedup
 
-  useEffect(() => { if (selectedTicker) loadHoldings(selectedTicker); },
-    [selectedTicker, loadHoldings]);
+  useEffect(() => {
+    if (selectedTicker) {
+      divFetching.current.clear(); // reset so new holdings will be fetched
+      setDivCache({});             // clear stale dividend data from previous ETF
+      setHoldings([]);             // clear old holdings immediately
+      loadHoldings(selectedTicker);
+    }
+  }, [selectedTicker, loadHoldings]);
 
   // Fetch quotes — use batch endpoint (returns parsed price/changePct/refs like portfolio mode)
   const fetchQuotes = useCallback(async () => {
@@ -4202,9 +4351,25 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
     setFetching(false);
   }, [holdings]);
 
+  // Fetch div data whenever tab changes to calendar AND we have holdings
+  useEffect(() => {
+    if (activeTab === "calendar" && holdings.length > 0) {
+      // Re-trigger any symbols not yet in divCache
+      holdings.forEach(h => {
+        if (divCache[h.symbol] === undefined) {
+          fetchDiv(h.symbol);
+        }
+      });
+    }
+  }, [activeTab, holdings]); // eslint-disable-line
+
   useEffect(() => {
     if (!holdings.length) return;
     fetchQuotes();
+    // Preload dividend data for all holdings (needed for Calendar tab)
+    holdings.forEach(h => {
+      fetchDiv(h.symbol);
+    });
     // Preload chart data for all holdings (needed for sparklines in table view)
     holdings.forEach(h => {
       if (!chartDataMap.current[h.symbol]) {
@@ -4280,6 +4445,8 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         onSwitchToPortfolio={onSwitchToPortfolio}
         onBack={onBack}
         onSignOut={onSignOut || (onSwitchToPortfolio ? () => { onBack(); } : null)}
+        displayMode={displayMode}
+        onToggleDisplayMode={onToggleDisplayMode}
       />
 
       <div style={{ flex:1, display:"flex", flexDirection:"column",
@@ -4389,9 +4556,48 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             </div>
           ) : activeTab==="holdings" ? (
             <div style={{ padding:16, height:"100%", overflow:"hidden" }}>
-              <TreeMapView nodes={nodes}
-                onCellHover={handleCellHover} onCellLeave={handleCellLeave}
-                currency={currency} rates={rates} colorMode="market"/>
+              {holdingsError ? (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+                  height:"100%", flexDirection:"column", gap:12 }}>
+                  <AlertCircle size={32} style={{ color:THEME.red, opacity:0.7 }}/>
+                  <div style={{ color:THEME.text2, fontSize:13, textAlign:"center",
+                    maxWidth:320, lineHeight:1.6 }}>
+                    {holdingsError}
+                  </div>
+                  <button onClick={()=>loadHoldings(selectedTicker,true)}
+                    style={{ padding:"7px 18px", borderRadius:8, border:`1px solid ${THEME.border}`,
+                      background:"transparent", color:THEME.text3, fontSize:11,
+                      cursor:"pointer", fontFamily:"inherit", display:"flex",
+                      alignItems:"center", gap:6 }}>
+                    <RefreshCw size={12}/> Retry
+                  </button>
+                </div>
+              ) : nodes.length === 0 ? (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+                  height:"100%", flexDirection:"column", gap:16 }}>
+                  <div style={{ fontSize:36, opacity:0.25 }}>📊</div>
+                  <div style={{ color:THEME.text2, fontSize:14, fontWeight:600 }}>
+                    No Holdings Data for {selectedTicker}
+                  </div>
+                  <div style={{ fontSize:11, color:THEME.text3, maxWidth:300,
+                    textAlign:"center", lineHeight:1.7 }}>
+                    Holdings data is not available for this ETF via Alpha Vantage.
+                    Try switching to the <strong style={{color:THEME.text2}}>Holdings</strong> tab
+                    for more detail, or select a different ETF.
+                  </div>
+                  <button onClick={()=>loadHoldings(selectedTicker,true)}
+                    style={{ marginTop:4, padding:"7px 18px", borderRadius:8,
+                      border:`1px solid ${THEME.border}`, background:"transparent",
+                      color:THEME.text3, fontSize:11, cursor:"pointer",
+                      fontFamily:"inherit", display:"flex", alignItems:"center", gap:6 }}>
+                    <RefreshCw size={12}/> Retry
+                  </button>
+                </div>
+              ) : (
+                <TreeMapView nodes={nodes}
+                  onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                  currency={currency} rates={rates} colorMode="market"/>
+              )}
             </div>
           ) : activeTab==="chart" ? (
             <div style={{ height:"100%", overflow:"hidden" }}>
@@ -4407,7 +4613,12 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 etfHoldings={holdings}
                 isEtfMode={true}
                 currency={currency}
-                rates={rates}/>
+                rates={rates}
+                onRefreshDivs={() => {
+                  divFetching.current.clear();
+                  setDivCache({});
+                  holdings.forEach(h => fetchDiv(h.symbol));
+                }}/>
             </div>
           ) : (
             <EtfHoldingsTable
@@ -4450,6 +4661,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
   useGlobalStyles();
+  const { mode: displayMode, setMode: setDisplayMode, toggle: toggleDisplayMode } = useDisplayMode();
   // ── Auth state ────────────────────────────────────────────────────────────
   const [user,       setUser]       = useState(null);
   const [portfolios, setPortfolios] = useState([]);  // all user's portfolios
@@ -4834,6 +5046,8 @@ export default function App() {
       }}
       onSwitchToPortfolio={() => setEtfMode(false)}
       onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
+      displayMode={displayMode}
+      onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
     />
   );
   if (!user) return <LoginScreen onLogin={handleLogin} onEtfMode={() => setEtfMode(true)}/>;
@@ -4849,7 +5063,7 @@ export default function App() {
 
   return (
     <>
-      <div style={{ height:"100vh", display:"flex", background:THEME.bg, fontFamily:THEME.font, overflow:"hidden" }}>
+      <div id="ptv3-root" style={{ height:"100vh", display:"flex", background:THEME.bg, fontFamily:THEME.font, overflow:"hidden" }}>
 
         {/* ── LEFT RAIL ──────────────────────────────────────────────── */}
         <Rail
@@ -4870,6 +5084,8 @@ export default function App() {
           onRecalcFX={handleRecalcFX}
           onImportExport={() => setShowImportExport(true)}
           onEtfExplorer={() => setEtfMode(true)}
+        displayMode={displayMode}
+        onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
         />
 
         {/* ── MAIN CONTENT ───────────────────────────────────────────── */}

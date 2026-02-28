@@ -4,6 +4,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import * as d3 from "d3";
 
+// Persistent UI settings store (survives ETF switches within session)
+const _divCalSettings = { chartView: "calendar", fictValue: 10000, viewYear: new Date().getFullYear() };
+
 const THEME = {
   bg: "#0d0e12", surface: "#13141a", surface2: "#1a1b23",
   border: "rgba(255,255,255,0.10)", border2: "rgba(255,255,255,0.06)",
@@ -811,36 +814,181 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 3. REBALANCING ASSISTANT
+// 3. REBALANCING ASSISTANT  (with auto-sector, donut charts, drift highlight)
 // ══════════════════════════════════════════════════════════════════════════════
+
+// Sector lookup via quote metadata + heuristic fallback
+function inferSector(symbol, quoteData) {
+  // quoteData may have a sector field from Yahoo (not always available in our batch endpoint)
+  // We use a broad symbol-pattern heuristic as fallback
+  if (quoteData?.sector) return quoteData.sector;
+  const s = symbol.toUpperCase();
+  if (/^(AAPL|MSFT|NVDA|AMD|INTC|QCOM|AVGO|TSM|ASML|TXN|AMAT|LRCX|KLAC|MU|STX|WDC|CSCO|ORCL|SAP|CRM|ADBE|NOW|SNOW|DDOG|ZS|CRWD|PANW|S|FTNT|OKTA|PLTR|ANET|NET|VCLT|VGT|SOXX|SMH|XLK|QQQ|ARKK|SOXL|TQQQ)$/.test(s)) return 'Technology';
+  if (/^(JNJ|PFE|MRK|ABBV|LLY|BMY|AMGN|GILD|BIIB|REGN|VRTX|ISRG|MDT|SYK|BSX|ABT|ZBH|BDX|EW|IQV|XBI|IBB|ARKG)$/.test(s)) return 'Healthcare';
+  if (/^(JPM|BAC|WFC|GS|MS|BLK|AXP|V|MA|PYPL|SQ|SCHW|C|USB|PNC|TFC|COF|DFS|ALLY|SOFI|XLF|KBE|KRE|IYF)$/.test(s)) return 'Finance';
+  if (/^(XOM|CVX|COP|EOG|PXD|DVN|MPC|VLO|PSX|OXY|SLB|HAL|BKR|FANG|HES|XLE|AMLP|MLPA|VDE|IYE)$/.test(s)) return 'Energy';
+  if (/^(AMZN|TSLA|HD|LOW|TGT|WMT|COST|MCD|SBUX|NKE|LULU|YUM|CMG|DRI|BKNG|MAR|HLT|CCL|RCL|NCLH|XLY|XLP|VCR|VDC)$/.test(s)) return 'Consumer';
+  if (/^(GE|HON|MMM|CAT|DE|EMR|ETN|ROK|PH|ITW|IR|XYL|FAST|GWW|VRSK|ROP|CARR|OTIS|LMT|RTX|GD|NOC|BA|XLI|VIS)$/.test(s)) return 'Industrials';
+  if (/^(BHP|RIO|FCX|NEM|AA|CLF|NUE|STLD|X|MT|APD|LIN|ECL|SHW|PPG|DD|LYB|XLB|VAW|GDX|GDXJ)$/.test(s)) return 'Materials';
+  if (/^(NEE|DUK|SO|D|AEP|EXC|XEL|WEC|ES|PPL|ETR|FE|EIX|PEG|CMS|NRG|AES|PCG|XLU|VPU|ICLN)$/.test(s)) return 'Utilities';
+  if (/^(AMT|PLD|CCI|EQIX|PSA|SPG|O|VICI|WY|AVB|EQR|DRE|IRM|VNQ|XLRE|REM|REIT)$/.test(s)) return 'Real Estate';
+  if (/^(SPY|IVV|VOO|SCHB|ITOT|VTI|SCHD|SCHY|DGRO|DVY|SDY|HDV|VIG|NOBL|DIA|IJR|IJH|MDY|RSP|EQL)$/.test(s)) return 'ETF';
+  if (/^(AGG|BND|TLT|IEF|SHY|LQD|HYG|JNK|MBB|TIP|SCHZ|VCIT|VCLT|EMB|BNDX|IAGG|AGGG)$/.test(s)) return 'Bonds';
+  if (/\.(DE|SW|L|PA|AS|MI|BR|LS|VI)$/.test(s)) return 'International';
+  return 'Other';
+}
+
+// Simple SVG Donut Chart component
+function DonutChart({ data, size=90, hole=0.58, title }) {
+  // data = [{label, value, color}]
+  const total = data.reduce((s,d)=>s+d.value,0);
+  if (total <= 0) return null;
+  const r = size/2; const cx=r; const cy=r;
+  const holeR = r * hole;
+  let angle = -Math.PI/2;
+  const slices = data.map(d => {
+    const frac = d.value / total;
+    const start = angle;
+    angle += frac * 2 * Math.PI;
+    return { ...d, start, end: angle, frac };
+  });
+
+  const arc = (cx,cy,r,startA,endA) => {
+    const x1=cx+r*Math.cos(startA), y1=cy+r*Math.sin(startA);
+    const x2=cx+r*Math.cos(endA),   y2=cy+r*Math.sin(endA);
+    const large = endA-startA > Math.PI ? 1:0;
+    return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+  };
+
+  const [hov, setHov] = useState(null);
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+      {title && <div style={{fontSize:9,color:C.text3,textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:700}}>{title}</div>}
+      <div style={{position:'relative',width:size,height:size}}>
+        <svg width={size} height={size} style={{overflow:'visible'}}>
+          {slices.map((s,i) => (
+            <path key={i}
+              d={arc(cx,cy,r-1,s.start,s.end)}
+              fill={s.color}
+              opacity={hov===null||hov===i ? 1 : 0.4}
+              style={{cursor:'pointer',transition:'opacity 0.15s'}}
+              onMouseEnter={()=>setHov(i)}
+              onMouseLeave={()=>setHov(null)}
+            />
+          ))}
+          {/* Hole */}
+          <circle cx={cx} cy={cy} r={holeR} fill={C.surface2}/>
+          {/* Center label */}
+          <text x={cx} y={cy-4} textAnchor="middle" fill={C.text1}
+            style={{fontSize:11,fontWeight:700,fontFamily:C.mono}}>
+            {hov!==null ? `${(slices[hov].frac*100).toFixed(0)}%` : `${data.length}`}
+          </text>
+          <text x={cx} y={cy+8} textAnchor="middle" fill={C.text3}
+            style={{fontSize:7,fontFamily:C.font}}>
+            {hov!==null ? slices[hov].label.slice(0,8) : 'items'}
+          </text>
+        </svg>
+      </div>
+      {/* Legend */}
+      <div style={{display:'flex',flexDirection:'column',gap:2,width:'100%',maxWidth:120}}>
+        {slices.slice(0,6).map((s,i) => (
+          <div key={i} style={{display:'flex',alignItems:'center',gap:4,
+            opacity:hov===null||hov===i?1:0.4,transition:'opacity 0.15s',cursor:'pointer'}}
+            onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}>
+            <div style={{width:6,height:6,borderRadius:2,background:s.color,flexShrink:0}}/>
+            <div style={{fontSize:8,color:C.text2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
+              {s.label}
+            </div>
+            <div style={{fontSize:8,color:C.text3,fontFamily:C.mono,flexShrink:0}}>
+              {(s.frac*100).toFixed(0)}%
+            </div>
+          </div>
+        ))}
+        {slices.length > 6 && (
+          <div style={{fontSize:8,color:C.text3}}>+{slices.length-6} more</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Progress bar showing only the drift zone (current vs target)
+function DriftBar({ curPct, tgtPct, threshold, aColor }) {
+  const max = Math.max(curPct, tgtPct, 5);
+  const barW = 100; // percentage width of container
+  const scale = barW / (max * 1.15);
+
+  const curX  = Math.min(curPct * scale, 100);
+  const tgtX  = Math.min(tgtPct * scale, 100);
+  const drift = curPct - tgtPct;
+  const driftFrac = tgtPct > 0 ? Math.abs(drift)/tgtPct : 0;
+  const overThreshold = driftFrac*100 > threshold;
+
+  // The "drift zone" is the gap between target and current
+  const zoneLeft  = Math.min(curX, tgtX);
+  const zoneRight = Math.max(curX, tgtX);
+  const zoneW     = zoneRight - zoneLeft;
+
+  return (
+    <div style={{position:'relative',height:14,width:'100%',display:'flex',alignItems:'center'}}>
+      {/* Background track */}
+      <div style={{position:'absolute',left:0,top:5,right:0,height:4,
+        background:'rgba(255,255,255,0.07)',borderRadius:3}}/>
+      {/* Current position bar */}
+      <div style={{position:'absolute',left:0,top:5,height:4,borderRadius:3,
+        width:`${curX}%`,background:tgtPct>0?C.accent:'rgba(255,255,255,0.25)',
+        transition:'width 0.4s'}}/>
+      {/* Drift zone highlight — only the gap, not the whole bar */}
+      {tgtPct > 0 && zoneW > 0.5 && (
+        <div style={{
+          position:'absolute',top:3,height:8,borderRadius:2,
+          left:`${zoneLeft}%`,width:`${zoneW}%`,
+          background:overThreshold ? `${aColor}35` : 'transparent',
+          border:overThreshold ? `1px solid ${aColor}60` : 'none',
+          transition:'all 0.3s',
+        }}/>
+      )}
+      {/* Target marker */}
+      {tgtPct > 0 && (
+        <div style={{position:'absolute',top:2,width:2,height:10,borderRadius:1,
+          left:`${tgtX}%`,transform:'translateX(-50%)',
+          background:overThreshold?aColor:'rgba(255,255,255,0.4)',
+          boxShadow:overThreshold?`0 0 4px ${aColor}`:undefined,
+          transition:'all 0.3s'}}/>
+      )}
+    </div>
+  );
+}
+
 export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }) {
   const rate = rates[currency] ?? 1;
   const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
 
-  // Build unique positions with current value
+  // Build unique positions with current value + auto-infer sector
   const positions = useMemo(() => {
     const map = {};
     for (const n of allNodes) {
       if (!n.symbol) continue;
       if (!map[n.symbol]) map[n.symbol] = {
-        symbol:n.symbol, name:n.name||n.symbol,
-        valueUSD:0, sector:"Other",
+        symbol:n.symbol, name:n.name||n.symbol, valueUSD:0,
+        autoSector: inferSector(n.symbol, quotes[n.symbol]),
       };
       map[n.symbol].valueUSD += n.valueUSD ?? 0;
     }
     return Object.values(map).sort((a,b)=>b.valueUSD-a.valueUSD);
-  }, [allNodes]);
+  }, [allNodes, quotes]);
 
   const totalValueUSD = positions.reduce((s,p)=>s+p.valueUSD,0);
 
-  // Target weights — loaded from server, stored locally as { ticker: %, sector: label }
-  const [targets,     setTargets]    = useState({}); // { "AAPL": { tickerPct:25, sector:"Tech" } }
-  const [cashAdd,     setCashAdd]    = useState(0);   // additional cash to invest
-  const [saving,      setSaving]     = useState(false);
-  const [saved,       setSaved]      = useState(false);
-  const [threshold,   setThreshold]  = useState(5);  // % drift threshold to flag
-  const [mode,        setMode]       = useState("both"); // buy|sell|both
-  const [editSector,  setEditSector] = useState(null);
+  const [targets,     setTargets]   = useState({});
+  const [cashAdd,     setCashAdd]   = useState(0);
+  const [saving,      setSaving]    = useState(false);
+  const [saved,       setSaved]     = useState(false);
+  const [threshold,   setThreshold] = useState(5);
+  const [mode,        setMode]      = useState("both");
+  const [showPlan,    setShowPlan]  = useState(false);  // Rebalancing Plan modal
+  const [cashExpanded,setCashExpanded] = useState(false); // Cash simulation detail
 
   // Load saved targets
   useEffect(() => {
@@ -864,16 +1012,12 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
     setSaving(false);
   };
 
-  const setTarget = (sym, pct) => {
+  const setTarget = (sym, pct) =>
     setTargets(prev => ({ ...prev, [sym]: { ...(prev[sym]||{}), tickerPct:pct } }));
-  };
-  const setSector = (sym, sector) => {
-    setTargets(prev => ({ ...prev, [sym]: { ...(prev[sym]||{}), sector } }));
-  };
 
   const totalTarget = Object.values(targets).reduce((s,t)=>s+(t.tickerPct||0),0);
 
-  // Compute rebalancing actions
+  // Compute rebalancing actions — sector comes from auto-inference or saved override
   const actions = useMemo(() => {
     const total = totalValueUSD + cashAdd;
     if (total <= 0) return [];
@@ -882,18 +1026,19 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
       const tgt = (t?.tickerPct || 0) / 100;
       const cur = totalValueUSD > 0 ? pos.valueUSD / totalValueUSD : 0;
       const targetValueUSD  = total * tgt;
-      const currentValueUSD = pos.valueUSD;
-      const diffUSD  = targetValueUSD - currentValueUSD;
+      const diffUSD  = targetValueUSD - pos.valueUSD;
       const driftPct = cur > 0 ? ((cur - tgt) / tgt) * 100 : tgt > 0 ? -100 : 0;
-      const q        = quotes[pos.symbol];
-      const qCcy     = q?.currency;
-      const qRate    = (qCcy && qCcy!=="USD") ? (rates[qCcy]??1) : 1;
-      const priceUSD = q ? (qRate>0 ? q.price/qRate : q.price) : null;
-      const shares   = priceUSD && priceUSD > 0 ? Math.round(Math.abs(diffUSD)/priceUSD * 10)/10 : null;
+      const q       = quotes[pos.symbol];
+      const qCcy    = q?.currency;
+      const qRate   = (qCcy && qCcy!=="USD") ? (rates[qCcy]??1) : 1;
+      const priceUSD= q ? (qRate>0 ? q.price/qRate : q.price) : null;
+      const shares  = priceUSD && priceUSD>0 ? Math.round(Math.abs(diffUSD)/priceUSD*10)/10 : null;
+      // sector: prefer auto-inferred, allow saved override
+      const sector  = t?.sectorOverride || pos.autoSector;
       return {
         ...pos, tgtPct:tgt*100, curPct:cur*100, diffUSD, driftPct,
-        priceUSD, shares, action: diffUSD > 0 ? "BUY" : diffUSD < 0 ? "SELL" : "OK",
-        sector: t?.sector || "Other",
+        priceUSD, shares, action: diffUSD>0?"BUY":diffUSD<0?"SELL":"OK",
+        sector,
       };
     });
   }, [positions, targets, totalValueUSD, cashAdd, quotes, rates]);
@@ -902,28 +1047,89 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
     const map = {};
     for (const a of actions) {
       if (!map[a.sector]) map[a.sector] = { sector:a.sector, tgtPct:0, curPct:0, valueUSD:0 };
-      map[a.sector].tgtPct  += a.tgtPct;
-      map[a.sector].curPct  += a.curPct;
-      map[a.sector].valueUSD+= a.valueUSD;
+      map[a.sector].tgtPct   += a.tgtPct;
+      map[a.sector].curPct   += a.curPct;
+      map[a.sector].valueUSD += a.valueUSD;
     }
     return Object.values(map).sort((a,b)=>b.valueUSD-a.valueUSD);
   }, [actions]);
 
+  // Region + currency distribution from quotes
+  const regionGroups = useMemo(() => {
+    const map = {};
+    for (const a of actions) {
+      const q = quotes[a.symbol];
+      const exch = q?.exchange || "";
+      let region = "US";
+      if (/\.(DE|PA|AS|MI|BR|LS|VI|HE|CO|ST|OL)$/.test(a.symbol)) region="Europe";
+      else if (/\.(SW|VX)$/.test(a.symbol)) region="Switzerland";
+      else if (/\.(L|IL)$/.test(a.symbol)) region="UK";
+      else if (/\.(T|TY)$/.test(a.symbol)) region="Japan";
+      else if (/\.(HK)$/.test(a.symbol)) region="HK/Asia";
+      else if (exch && /SWX|XVTX/.test(exch)) region="Switzerland";
+      else if (exch && /LSE|IOB/.test(exch)) region="UK";
+      if (!map[region]) map[region]={region,valueUSD:0};
+      map[region].valueUSD += a.valueUSD;
+    }
+    return Object.values(map).sort((a,b)=>b.valueUSD-a.valueUSD);
+  }, [actions, quotes]);
+
+  const cCyGroups = useMemo(() => {
+    const map = {};
+    for (const a of actions) {
+      const ccy = quotes[a.symbol]?.currency || "USD";
+      if (!map[ccy]) map[ccy]={ccy,valueUSD:0};
+      map[ccy].valueUSD += a.valueUSD;
+    }
+    return Object.values(map).sort((a,b)=>b.valueUSD-a.valueUSD);
+  }, [actions, quotes]);
+
   const flagged = actions.filter(a =>
     Math.abs(a.driftPct) > threshold &&
-    (mode==="both" || (mode==="buy"&&a.action==="BUY") || (mode==="sell"&&a.action==="SELL"))
+    (mode==="both"||(mode==="buy"&&a.action==="BUY")||(mode==="sell"&&a.action==="SELL"))
   );
 
-  const SECTORS = ["Tech","Healthcare","Finance","Energy","Consumer","Industrials","Materials","Utilities","Real Estate","ETF","Bonds","Other"];
+  // Color palettes for donuts
+  const SECTOR_COLORS = ["#3b82f6","#4ade80","#fbbf24","#f87171","#a78bfa","#34d399",
+    "#fb923c","#e879f9","#22d3ee","#6ee7b7","#facc15","#f9a8d4"];
+  const REGION_COLORS = ["#3b82f6","#fbbf24","#4ade80","#f87171","#a78bfa","#34d399","#fb923c"];
+  const CCY_COLORS    = ["#60a5fa","#f87171","#4ade80","#fbbf24","#a78bfa","#34d399"];
+
+  const sectorDonut = sectorGroups.map((sg,i)=>({
+    label:sg.sector, value:sg.valueUSD, color:SECTOR_COLORS[i%SECTOR_COLORS.length]
+  }));
+  const regionDonut = regionGroups.map((rg,i)=>({
+    label:rg.region, value:rg.valueUSD, color:REGION_COLORS[i%REGION_COLORS.length]
+  }));
+  const ccyDonut    = cCyGroups.map((cg,i)=>({
+    label:cg.ccy, value:cg.valueUSD, color:CCY_COLORS[i%CCY_COLORS.length]
+  }));
+
+  // Map sector to its donut color for row badges
+  const sectorColorMap = Object.fromEntries(sectorDonut.map(d=>[d.label,d.color]));
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       <SectionHeader
         title="Rebalancing Assistant"
-        subtitle="Set target weights per position and sector — get concrete buy/sell suggestions"
+        subtitle="Target weights, drift zones, and sector distribution"
         action={
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {!user && <Pill label="Sign in to save targets" color={C.yellow}/>}
+            {/* Rebalancing Plan button — always visible when targets exist */}
+            {actions.some(a=>a.action!=="OK" && a.tgtPct>0) && (
+              <button onClick={()=>setShowPlan(v=>!v)} style={{
+                padding:"5px 14px", borderRadius:8,
+                border:`1px solid ${showPlan?"rgba(251,191,36,0.6)":"rgba(251,191,36,0.3)"}`,
+                background:showPlan?"rgba(251,191,36,0.15)":"rgba(251,191,36,0.07)",
+                color:"#fbbf24", fontSize:11, fontWeight:700,
+                cursor:"pointer", fontFamily:"inherit", display:"flex",
+                alignItems:"center", gap:6, transition:"all 0.15s",
+              }}>
+                <span style={{ fontSize:13 }}>⚖</span>
+                {showPlan ? "Hide Plan" : "Rebalancing Plan"}
+              </button>
+            )}
             {user && (
               <button onClick={saveTargets} disabled={saving} style={{
                 padding:"5px 14px", borderRadius:8, border:`1px solid ${C.accent}`,
@@ -938,37 +1144,225 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         }
       />
 
+      {/* ── Rebalancing Plan Panel ── */}
+      {showPlan && (() => {
+        const buyList  = actions.filter(a=>a.action==="BUY"  && a.tgtPct>0).sort((a,b)=>b.diffUSD-a.diffUSD);
+        const sellList = actions.filter(a=>a.action==="SELL" && a.tgtPct>0).sort((a,b)=>a.diffUSD-b.diffUSD);
+        const totalBuy  = buyList.reduce((s,a)=>s+a.diffUSD,0);
+        const totalSell = Math.abs(sellList.reduce((s,a)=>s+a.diffUSD,0));
+        const cashRate  = rates[currency] ?? 1;
+        const PlanRow = ({a, type}) => {
+          const aColor = type==="BUY" ? C.green : C.red;
+          const amt = Math.abs(a.diffUSD) * cashRate;
+          const sharesEst = a.priceUSD && a.priceUSD>0
+            ? Math.ceil(Math.abs(a.diffUSD) / a.priceUSD * 10)/10 : null;
+          return (
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0",
+              borderBottom:`1px solid ${C.border2}` }}>
+              {/* Action badge */}
+              <div style={{ width:36, textAlign:"center", flexShrink:0 }}>
+                <span style={{ fontSize:9, fontWeight:800, color:aColor,
+                  padding:"2px 6px", borderRadius:4,
+                  background:`${aColor}15`, border:`1px solid ${aColor}25`,
+                  textTransform:"uppercase" }}>{type}</span>
+              </div>
+              {/* Symbol */}
+              <div style={{ width:70, flexShrink:0 }}>
+                <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent }}>
+                  {a.symbol}
+                </div>
+                <div style={{ fontSize:8, color:C.text3 }}>{a.sector}</div>
+              </div>
+              {/* Amount bar */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ height:5, borderRadius:3,
+                  background:"rgba(255,255,255,0.06)", overflow:"hidden" }}>
+                  <div style={{ height:"100%", borderRadius:3, background:aColor, opacity:0.7,
+                    width:`${type==="BUY"
+                      ? (totalBuy>0?Math.abs(a.diffUSD)/totalBuy*100:0)
+                      : (totalSell>0?Math.abs(a.diffUSD)/totalSell*100:0)}%`,
+                    transition:"width 0.4s" }}/>
+                </div>
+              </div>
+              {/* Amount */}
+              <div style={{ textAlign:"right", flexShrink:0, width:80 }}>
+                <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:aColor }}>
+                  {fmt$(amt,0)}
+                </div>
+                {sharesEst && a.priceUSD && (
+                  <div style={{ fontSize:8, color:C.text3 }}>
+                    {sharesEst} sh. @ {fmt$(a.priceUSD*cashRate,2)}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ flexShrink:0, borderBottom:`2px solid rgba(251,191,36,0.25)`,
+            background:"rgba(251,191,36,0.04)", padding:"12px 20px 8px",
+            maxHeight:320, overflowY:"auto" }}>
+            {/* Plan header */}
+            <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:10, flexWrap:"wrap" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:"#fbbf24",
+                textTransform:"uppercase", letterSpacing:"0.08em" }}>
+                Rebalancing Plan
+              </div>
+              {cashAdd > 0 && (
+                <div style={{ fontSize:10, color:C.text3 }}>
+                  incl. <span style={{color:C.green,fontWeight:700}}>{fmt$(cashAdd)} {currency}</span> new cash
+                </div>
+              )}
+              {/* Summary pills */}
+              <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
+                {totalBuy > 0 && (
+                  <div style={{ padding:"3px 10px", borderRadius:6,
+                    background:"rgba(74,222,128,0.12)", border:"1px solid rgba(74,222,128,0.25)",
+                    fontSize:10, fontWeight:700, color:C.green, fontFamily:C.mono }}>
+                    ↑ BUY {fmt$(totalBuy*cashRate,0)}
+                  </div>
+                )}
+                {totalSell > 0 && (
+                  <div style={{ padding:"3px 10px", borderRadius:6,
+                    background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)",
+                    fontSize:10, fontWeight:700, color:C.red, fontFamily:C.mono }}>
+                    ↓ SELL {fmt$(totalSell*cashRate,0)}
+                  </div>
+                )}
+                <div style={{ padding:"3px 10px", borderRadius:6,
+                  background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`,
+                  fontSize:10, color:C.text3, fontFamily:C.mono }}>
+                  Net {fmt$((totalBuy-totalSell)*cashRate,0)}
+                </div>
+              </div>
+            </div>
+
+            {/* Two-column: BUY | SELL */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:0 }}>
+              <div style={{ paddingRight:16, borderRight:`1px solid ${C.border2}` }}>
+                <div style={{ fontSize:9, color:C.green, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:4 }}>Buy orders</div>
+                {buyList.length === 0
+                  ? <div style={{ fontSize:10, color:C.text3, padding:"8px 0" }}>None</div>
+                  : buyList.map(a=><PlanRow key={a.symbol} a={a} type="BUY"/>)
+                }
+              </div>
+              <div style={{ paddingLeft:16 }}>
+                <div style={{ fontSize:9, color:C.red, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:4 }}>Sell orders</div>
+                {sellList.length === 0
+                  ? <div style={{ fontSize:10, color:C.text3, padding:"8px 0" }}>None</div>
+                  : sellList.map(a=><PlanRow key={a.symbol} a={a} type="SELL"/>)
+                }
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
-        {/* Left: target editor */}
-        <div style={{ width:340, flexShrink:0, overflowY:"auto",
+        {/* ── Left panel: target editor ── */}
+        <div style={{ width:320, flexShrink:0, overflowY:"auto",
           borderRight:`1px solid ${C.border2}`, padding:"0 0 16px" }}>
 
-          {/* Cash addition input */}
+          {/* Settings */}
           <div style={{ padding:"8px 16px 12px", borderBottom:`1px solid ${C.border2}` }}>
             <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
               letterSpacing:"0.08em", marginBottom:8 }}>Settings</div>
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:cashAdd>0?4:8 }}>
               <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Cash to invest:</label>
               <input type="number" value={cashAdd} min={0} step={100}
-                onChange={e=>setCashAdd(+e.target.value)}
+                onChange={e=>{ setCashAdd(+e.target.value); if(+e.target.value>0) setCashExpanded(true); }}
                 style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
                   borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, width:100, outline:"none" }}/>
+                  fontFamily:C.mono, width:90, outline:"none" }}/>
               <span style={{ fontSize:11, color:C.text3 }}>{currency}</span>
+              {cashAdd > 0 && (
+                <button onClick={()=>setCashExpanded(v=>!v)} style={{
+                  marginLeft:"auto", fontSize:9, padding:"2px 7px", borderRadius:5,
+                  border:`1px solid ${C.border}`, background:"transparent",
+                  color:C.text3, cursor:"pointer", fontFamily:"inherit",
+                }}>{cashExpanded ? "▲ hide" : "▼ detail"}</button>
+              )}
             </div>
+
+            {/* ── Cash simulation breakdown ── */}
+            {cashAdd > 0 && cashExpanded && (() => {
+              const buyActions = actions.filter(a => a.action==="BUY" && a.tgtPct>0 && a.diffUSD>0);
+              const totalBuy   = buyActions.reduce((s,a)=>s+a.diffUSD,0);
+              const cashRate   = rates[currency] ?? 1;
+              return (
+                <div style={{ marginBottom:8, padding:"8px 10px", borderRadius:8,
+                  background:"rgba(74,222,128,0.05)", border:"1px solid rgba(74,222,128,0.15)" }}>
+                  <div style={{ fontSize:9, color:C.green, fontWeight:700, textTransform:"uppercase",
+                    letterSpacing:"0.08em", marginBottom:6 }}>
+                    Cash Allocation — {fmt$(cashAdd)} {currency}
+                  </div>
+                  {buyActions.length === 0 ? (
+                    <div style={{ fontSize:10, color:C.text3 }}>
+                      No BUY orders — set target weights first.
+                    </div>
+                  ) : buyActions.map(a => {
+                    // Proportional cash allocation within all BUY positions
+                    const cashShare = totalBuy > 0 ? (a.diffUSD / totalBuy) * cashAdd / cashRate : 0;
+                    const barW = totalBuy > 0 ? (a.diffUSD / totalBuy) * 100 : 0;
+                    const qRate = rates[currency] ?? 1;
+                    const sharesEst = a.priceUSD && a.priceUSD > 0
+                      ? Math.floor((cashShare / (a.priceUSD * qRate)) * 10) / 10 : null;
+                    return (
+                      <div key={a.symbol} style={{ marginBottom:5 }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                          marginBottom:2 }}>
+                          <span style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
+                            color:C.accent }}>{a.symbol}</span>
+                          <div style={{ textAlign:"right" }}>
+                            <span style={{ fontFamily:C.mono, fontSize:10, color:C.green, fontWeight:700 }}>
+                              {fmt$(cashShare, 0)}
+                            </span>
+                            {sharesEst && (
+                              <span style={{ fontSize:9, color:C.text3, marginLeft:5 }}>
+                                ≈ {sharesEst} sh.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Mini allocation bar */}
+                        <div style={{ height:3, borderRadius:2,
+                          background:"rgba(255,255,255,0.07)", overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${barW}%`,
+                            background:C.green, borderRadius:2, opacity:0.7,
+                            transition:"width 0.3s" }}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {buyActions.length > 0 && (
+                    <div style={{ marginTop:4, paddingTop:5,
+                      borderTop:"1px solid rgba(74,222,128,0.15)",
+                      display:"flex", justifyContent:"space-between", fontSize:9 }}>
+                      <span style={{ color:C.text3 }}>Total deployed</span>
+                      <span style={{ fontFamily:C.mono, fontWeight:700, color:C.green }}>
+                        {fmt$(cashAdd)} {currency}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Drift threshold:</label>
               <input type="number" value={threshold} min={1} max={30} step={1}
                 onChange={e=>setThreshold(+e.target.value)}
                 style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
                   borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, width:60, outline:"none" }}/>
+                  fontFamily:C.mono, width:52, outline:"none" }}/>
               <span style={{ fontSize:11, color:C.text3 }}>%</span>
               <div style={{ marginLeft:"auto", display:"flex", gap:4 }}>
                 {["buy","both","sell"].map(m => (
                   <button key={m} onClick={()=>setMode(m)} style={{
-                    padding:"3px 8px", borderRadius:5, border:`1px solid ${mode===m?
-                      (m==="buy"?C.green:m==="sell"?C.red:C.accent):C.border}`,
+                    padding:"3px 8px", borderRadius:5,
+                    border:`1px solid ${mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.border}`,
                     background:mode===m?"rgba(255,255,255,0.08)":"transparent",
                     color:mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.text3,
                     fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
@@ -991,14 +1385,25 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             {positions.map(pos => {
               const t   = targets[pos.symbol] || {};
               const cur = totalValueUSD>0 ? (pos.valueUSD/totalValueUSD*100).toFixed(1) : "0";
+              const sector = t.sectorOverride || pos.autoSector;
+              const sc   = sectorColorMap[sector] || C.accent;
               return (
                 <div key={pos.symbol} style={{ padding:"6px 16px",
                   borderBottom:`1px solid ${C.border2}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
-                      color:C.accent, width:70, flexShrink:0 }}>{pos.symbol}</span>
+                    <div style={{ display:"flex", alignItems:"center", gap:5, width:90, flexShrink:0 }}>
+                      <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
+                        color:C.accent }}>{pos.symbol}</span>
+                      {/* Auto-sector badge */}
+                      <span style={{ fontSize:7, padding:"1px 4px", borderRadius:4,
+                        background:`${sc}18`, color:sc, border:`1px solid ${sc}30`,
+                        fontWeight:700, whiteSpace:"nowrap", overflow:"hidden",
+                        maxWidth:48, textOverflow:"ellipsis" }}>
+                        {sector.slice(0,5)}
+                      </span>
+                    </div>
                     <div style={{ flex:1 }}>
-                      <input type="range" min={0} max={100} step={1}
+                      <input type="range" min={0} max={100} step={0.5}
                         value={t.tickerPct||0}
                         onChange={e=>setTarget(pos.symbol, +e.target.value)}
                         style={{ width:"100%", accentColor:C.accent }}/>
@@ -1007,7 +1412,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                       value={t.tickerPct||""}
                       placeholder="0"
                       onChange={e=>setTarget(pos.symbol, +e.target.value)}
-                      style={{ width:42, background:"rgba(255,255,255,0.05)",
+                      style={{ width:38, background:"rgba(255,255,255,0.05)",
                         border:`1px solid ${C.border}`, borderRadius:5, color:C.text1,
                         padding:"2px 5px", fontSize:11, fontFamily:C.mono, outline:"none",
                         textAlign:"right" }}/>
@@ -1015,14 +1420,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:2 }}>
                     <span style={{ fontSize:9, color:C.text3 }}>Now {cur}%</span>
-                    <select value={t.sector||"Other"}
-                      onChange={e=>setSector(pos.symbol, e.target.value)}
-                      style={{ marginLeft:"auto", background:"rgba(255,255,255,0.05)",
-                        border:`1px solid ${C.border}`, borderRadius:5, color:C.text3,
-                        padding:"1px 4px", fontSize:9, fontFamily:"inherit", outline:"none",
-                        cursor:"pointer" }}>
-                      {SECTORS.map(s=><option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <span style={{ fontSize:9, color:C.text3, marginLeft:4 }}>
+                      {fmt$(pos.valueUSD*(rates[currency]??1))}
+                    </span>
                   </div>
                 </div>
               );
@@ -1030,33 +1430,60 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
           </div>
         </div>
 
-        {/* Right: actions + sector view */}
+        {/* ── Right panel ── */}
         <div style={{ flex:1, overflowY:"auto", padding:"0 0 16px" }}>
-          {/* Sector summary */}
-          <div style={{ padding:"8px 20px 12px", borderBottom:`1px solid ${C.border2}` }}>
+
+          {/* Distribution donuts: Sector | Region | Currency */}
+          <div style={{ padding:"12px 20px", borderBottom:`1px solid ${C.border2}` }}>
             <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
-              letterSpacing:"0.08em", marginBottom:8 }}>Sector Allocation</div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-              {sectorGroups.map(sg => {
-                const drift = sg.tgtPct>0 ? (sg.curPct-sg.tgtPct) : 0;
-                return (
-                  <div key={sg.sector} style={{ padding:"6px 10px", borderRadius:8,
-                    background:C.surface2, border:`1px solid ${Math.abs(drift)>threshold?"rgba(248,113,113,0.3)":C.border}` }}>
-                    <div style={{ fontSize:9, color:C.text3, marginBottom:2 }}>{sg.sector}</div>
-                    <div style={{ display:"flex", gap:6, alignItems:"baseline" }}>
-                      <span style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:C.text1 }}>
-                        {sg.curPct.toFixed(1)}%
-                      </span>
-                      {sg.tgtPct>0 && (
-                        <span style={{ fontSize:9, color:Math.abs(drift)>threshold?C.red:C.text3 }}>
-                          tgt {sg.tgtPct.toFixed(1)}%
-                          {drift!==0 && ` (${drift>0?"+":""}${drift.toFixed(1)}%)`}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              letterSpacing:"0.08em", marginBottom:12 }}>Portfolio Distribution</div>
+            <div style={{ display:"flex", gap:24, flexWrap:"wrap" }}>
+              {sectorDonut.length > 0 && (
+                <DonutChart data={sectorDonut} size={100} title="Sector"/>
+              )}
+              {regionDonut.length > 0 && (
+                <DonutChart data={regionDonut} size={100} title="Region"/>
+              )}
+              {ccyDonut.length > 0 && (
+                <DonutChart data={ccyDonut} size={100} title="Currency"/>
+              )}
+
+              {/* Sector allocation list — compact, next to donuts */}
+              <div style={{ flex:1, minWidth:160 }}>
+                <div style={{ fontSize:9, color:C.text3, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:8 }}>Sector Allocation</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                  {sectorGroups.map(sg => {
+                    const drift   = sg.tgtPct > 0 ? sg.curPct - sg.tgtPct : 0;
+                    const isOver  = sg.tgtPct > 0 && Math.abs(drift) > threshold;
+                    const sc      = sectorColorMap[sg.sector] || C.accent;
+                    const driftColor = drift > 0 ? C.red : C.green;
+                    return (
+                      <div key={sg.sector} style={{ padding:"5px 8px", borderRadius:7,
+                        background:C.surface2,
+                        border:`1px solid ${isOver?"rgba(248,113,113,0.3)":C.border}` }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <div style={{ width:6, height:6, borderRadius:2, background:sc, flexShrink:0 }}/>
+                          <div style={{ fontSize:9, color:C.text2, flex:1 }}>{sg.sector}</div>
+                          <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.text1 }}>
+                            {sg.curPct.toFixed(1)}%
+                          </span>
+                          {sg.tgtPct > 0 && (
+                            <span style={{ fontSize:9, color:isOver?driftColor:C.text3 }}>
+                              {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+                        {/* Drift bar for sector */}
+                        {sg.tgtPct > 0 && (
+                          <DriftBar curPct={sg.curPct} tgtPct={sg.tgtPct}
+                            threshold={threshold} aColor={isOver?driftColor:C.accent}/>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1064,93 +1491,90 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
           <div style={{ padding:"10px 20px 0" }}>
             <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
               letterSpacing:"0.08em", marginBottom:8 }}>
-              {flagged.length ? `${flagged.length} actions needed (>${threshold}% drift)` : "All positions within threshold ✓"}
+              {flagged.length
+                ? `${flagged.length} position${flagged.length>1?"s":""} outside threshold (>${threshold}% drift)`
+                : "All positions within drift threshold ✓"}
             </div>
 
             {actions
               .filter(a => mode==="both" || a.action===mode.toUpperCase() || a.action==="OK")
               .map(a => {
-                const isFlag = Math.abs(a.driftPct) > threshold && a.action!=="OK";
-                const aColor = a.action==="BUY"?C.green:a.action==="SELL"?C.red:C.text3;
+                const isFlag  = Math.abs(a.driftPct) > threshold && a.action !== "OK";
+                const aColor  = a.action==="BUY" ? C.green : a.action==="SELL" ? C.red : C.text3;
+                const sc      = sectorColorMap[a.sector] || C.accent;
                 return (
                   <div key={a.symbol} style={{
-                    display:"flex", alignItems:"center", gap:12, padding:"8px 12px",
-                    borderRadius:8, marginBottom:4,
-                    background:isFlag?`${aColor}08`:"transparent",
-                    border:`1px solid ${isFlag?`${aColor}20`:C.border2}`,
-                    transition:"background 0.1s",
+                    display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
+                    borderRadius:9, marginBottom:5,
+                    background: isFlag ? `${aColor}06` : "transparent",
+                    border:`1px solid ${isFlag ? `${aColor}22` : C.border2}`,
+                    transition:"background 0.15s",
                   }}>
-                    <div style={{ width:70, flexShrink:0 }}>
+                    {/* Symbol + sector */}
+                    <div style={{ width:90, flexShrink:0 }}>
                       <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent }}>
                         {a.symbol}
                       </div>
-                      <div style={{ fontSize:9, color:C.text3, marginTop:1 }}>{a.sector}</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:2 }}>
+                        <div style={{ width:5, height:5, borderRadius:1, background:sc, flexShrink:0 }}/>
+                        <span style={{ fontSize:9, color:C.text3 }}>{a.sector}</span>
+                      </div>
                     </div>
 
-                    {/* Progress bars */}
+                    {/* Drift bar — only highlights the drift zone, not the full bar */}
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:4, marginBottom:3 }}>
-                        <div style={{ flex:1, height:5, background:"rgba(255,255,255,0.08)", borderRadius:3, overflow:"hidden" }}>
-                          <div style={{ height:"100%", borderRadius:3, transition:"width 0.3s",
-                            background:C.accent, width:`${Math.min(100,a.curPct)}%` }}/>
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:1 }}>
+                        <span style={{ fontSize:9, color:C.text3, width:26, textAlign:"right",
+                          fontFamily:C.mono }}>{a.curPct.toFixed(1)}%</span>
+                        <div style={{ flex:1 }}>
+                          <DriftBar curPct={a.curPct} tgtPct={a.tgtPct}
+                            threshold={threshold} aColor={isFlag?aColor:C.accent}/>
                         </div>
-                        <span style={{ fontFamily:C.mono, fontSize:9, color:C.text2, width:38, textAlign:"right" }}>
-                          {a.curPct.toFixed(1)}%
-                        </span>
+                        {a.tgtPct > 0 && (
+                          <span style={{ fontSize:9, color:C.text3, width:26,
+                            fontFamily:C.mono }}>{a.tgtPct.toFixed(1)}%</span>
+                        )}
                       </div>
-                      {a.tgtPct > 0 && (
-                        <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-                          <div style={{ flex:1, height:5, background:"rgba(255,255,255,0.04)", borderRadius:3, overflow:"hidden",
-                            border:`1px dashed ${C.border}` }}>
-                            <div style={{ height:"100%", borderRadius:3,
-                              background:"rgba(255,255,255,0.2)", width:`${Math.min(100,a.tgtPct)}%` }}/>
-                          </div>
-                          <span style={{ fontFamily:C.mono, fontSize:9, color:C.text3, width:38, textAlign:"right" }}>
-                            {a.tgtPct.toFixed(1)}%
-                          </span>
+                      {isFlag && (
+                        <div style={{ fontSize:9, color:aColor, marginLeft:32, opacity:0.85 }}>
+                          {a.driftPct > 0 ? "+" : ""}{a.driftPct.toFixed(1)}% drift from target
                         </div>
                       )}
                     </div>
 
                     {/* Value */}
-                    <div style={{ textAlign:"right", width:80, flexShrink:0 }}>
+                    <div style={{ textAlign:"right", width:76, flexShrink:0 }}>
                       <div style={{ fontFamily:C.mono, fontSize:11, color:C.text2 }}>
                         {fmt$(a.valueUSD * (rates[currency]??1))}
                       </div>
                     </div>
 
-                    {/* Action */}
+                    {/* Action chip */}
                     {a.tgtPct > 0 && a.action !== "OK" && (
-                      <div style={{ textAlign:"right", flexShrink:0, minWidth:110 }}>
+                      <div style={{ textAlign:"right", flexShrink:0, minWidth:105 }}>
                         <div style={{ padding:"3px 8px", borderRadius:6, display:"inline-flex",
                           alignItems:"center", gap:5,
                           background:`${aColor}15`, border:`1px solid ${aColor}30` }}>
-                          <span style={{ fontSize:9, fontWeight:700, color:aColor, textTransform:"uppercase" }}>
-                            {a.action}
-                          </span>
+                          <span style={{ fontSize:9, fontWeight:700, color:aColor,
+                            textTransform:"uppercase" }}>{a.action}</span>
                           <span style={{ fontFamily:C.mono, fontSize:10, color:aColor, fontWeight:700 }}>
                             {fmt$(Math.abs(a.diffUSD) * (rates[currency]??1))}
                           </span>
                         </div>
                         {a.shares && a.priceUSD && (
                           <div style={{ fontSize:9, color:C.text3, marginTop:2 }}>
-                            ≈ {a.shares} shares @ {fmt$(a.priceUSD*(rates[currency]??1), 2)}
-                          </div>
-                        )}
-                        {isFlag && (
-                          <div style={{ fontSize:9, color:aColor, opacity:0.8 }}>
-                            {a.driftPct>0?"+":""}{a.driftPct.toFixed(1)}% drift
+                            ≈ {a.shares} shares @ {fmt$(a.priceUSD*(rates[currency]??1),2)}
                           </div>
                         )}
                       </div>
                     )}
                     {a.tgtPct > 0 && a.action === "OK" && (
-                      <div style={{ width:110, textAlign:"right", flexShrink:0 }}>
+                      <div style={{ width:105, textAlign:"right", flexShrink:0 }}>
                         <span style={{ fontSize:10, color:C.green }}>✓ On target</span>
                       </div>
                     )}
                     {a.tgtPct === 0 && (
-                      <div style={{ width:110, textAlign:"right", flexShrink:0 }}>
+                      <div style={{ width:105, textAlign:"right", flexShrink:0 }}>
                         <span style={{ fontSize:9, color:C.text3 }}>No target set</span>
                       </div>
                     )}
@@ -1165,64 +1589,202 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 4. DIVIDEND CALENDAR
+// 4. DIVIDEND CALENDAR  (Calendar view + Bar chart view)
 // ══════════════════════════════════════════════════════════════════════════════
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function estimateDates(divData, symbol) {
-  // Returns array of { date, amount, symbol, isEstimate }
   if (!divData) return [];
   const result = [];
-
   if (divData.exDate) {
     result.push({ date:divData.exDate, amount:divData.lastAmt, symbol, isEstimate:false });
   }
   if (divData.nextExDate) {
     result.push({ date:divData.nextExDate, amount:divData.lastAmt, symbol, isEstimate:true });
-    // Project 3 more quarters forward if quarterly
-    const freq = divData.payments >= 4 ? 3 : divData.payments >= 2 ? 6 : 12; // months between payments
+    const freq = divData.payments >= 4 ? 3 : divData.payments >= 2 ? 6 : 12;
     if (freq <= 6) {
       const d = new Date(divData.nextExDate);
       for (let i = 1; i <= 3; i++) {
         d.setMonth(d.getMonth() + freq);
-        const dateStr = d.toISOString().slice(0,10);
-        const now = new Date();
-        if (d > now) {
-          result.push({ date:dateStr, amount:divData.lastAmt, symbol, isEstimate:true });
-        }
+        if (d > new Date())
+          result.push({ date:d.toISOString().slice(0,10), amount:divData.lastAmt, symbol, isEstimate:true });
       }
     }
   }
   return result;
 }
 
-export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, currency, rates }) {
+// Bar chart sub-component for monthly income
+function DivBarChart({ monthly, currency, cSym, rate, symColors, year }) {
+  const maxVal   = Math.max(...monthly.map(m=>m.totalUSD), 0.01);
+  const nowMonth = new Date().getMonth();
+  const nowYear  = new Date().getFullYear();
+  const [hov, setHov]         = useState(null);
+  const [tipPos, setTipPos]   = useState({ x:0, y:0 });
+  const chartRef              = useRef(null);
+  const annualTotal           = monthly.reduce((s,m)=>s+m.totalUSD,0);
+
+  const handleMouseMove = (e, i) => {
+    if (i !== hov) setHov(i);
+    const rect = chartRef.current?.getBoundingClientRect();
+    if (rect) setTipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  return (
+    <div ref={chartRef} style={{ display:"flex", flexDirection:"column", height:"100%",
+      padding:"0 22px 16px", position:"relative" }}>
+      <div style={{ display:"flex", alignItems:"baseline", gap:12, marginBottom:16 }}>
+        <span style={{ fontSize:11, color:C.text3 }}>
+          Monthly dividend income — <strong style={{color:C.text2}}>{year}</strong>
+        </span>
+        {annualTotal > 0 && (
+          <span style={{ fontSize:12, color:C.green, fontFamily:C.mono, fontWeight:700 }}>
+            {cSym}{(annualTotal*rate).toFixed(0)} / year
+          </span>
+        )}
+      </div>
+
+      {/* Floating tooltip at chart level */}
+      {hov !== null && monthly[hov]?.totalUSD > 0 && (() => {
+        const m = monthly[hov];
+        const tipW = 160;
+        // clamp to chart bounds
+        const tipX = Math.min(tipPos.x + 12, (chartRef.current?.offsetWidth||400) - tipW - 8);
+        return (
+          <div style={{ position:"absolute", zIndex:20, pointerEvents:"none",
+            left:tipX, top:Math.max(8, tipPos.y - 100),
+            background:C.surface, border:`1px solid ${C.border}`,
+            borderRadius:8, padding:"8px 12px",
+            boxShadow:"0 8px 32px rgba(0,0,0,0.6)", width:tipW }}>
+            <div style={{ fontSize:11, fontWeight:700, color:C.text1, marginBottom:6 }}>
+              {MONTH_NAMES[hov]} {year}
+            </div>
+            {m.events.map(ev => (
+              <div key={ev.symbol+ev.exDate} style={{ display:"flex",
+                justifyContent:"space-between", gap:8, fontSize:10, marginBottom:2 }}>
+                <span style={{ color:symColors[ev.symbol]||C.accent,
+                  fontFamily:C.mono, fontWeight:700 }}>{ev.symbol}</span>
+                <span style={{ color:C.text2 }}>
+                  {ev.totalUSD ? `${cSym}${(ev.totalUSD*rate).toFixed(2)}` : "—"}
+                </span>
+              </div>
+            ))}
+            <div style={{ marginTop:6, paddingTop:5, borderTop:`1px solid ${C.border2}`,
+              display:"flex", justifyContent:"space-between" }}>
+              <span style={{ fontSize:10, color:C.text3 }}>Total</span>
+              <span style={{ fontSize:11, color:C.accent, fontFamily:C.mono, fontWeight:700 }}>
+                {cSym}{(m.totalUSD*rate).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Bar chart */}
+      <div style={{ flex:1, display:"flex", alignItems:"flex-end", gap:6, minHeight:0 }}>
+        {monthly.map((m, i) => {
+          const barH  = maxVal > 0 ? (m.totalUSD / maxVal) * 100 : 0;
+          const isCur = i === nowMonth && year === nowYear;
+          const isHov = hov === i;
+          const hasDivs = m.totalUSD > 0;
+          return (
+            <div key={i} style={{ flex:1, display:"flex", flexDirection:"column",
+              alignItems:"center", gap:4, cursor:hasDivs?"pointer":"default",
+              height:"100%", justifyContent:"flex-end" }}
+              onMouseMove={e=>handleMouseMove(e, i)}
+              onMouseLeave={()=>setHov(null)}>
+
+              {/* Amount label on top */}
+              {hasDivs && (
+                <div style={{ fontSize:9, color:isHov?C.accent:C.text3, fontFamily:C.mono,
+                  fontWeight:700, transition:"color 0.15s" }}>
+                  {cSym}{(m.totalUSD*rate).toFixed(0)}
+                </div>
+              )}
+
+              {/* Stacked bar by symbol */}
+              <div style={{ width:"100%", height:`${barH}%`, minHeight:hasDivs?2:0,
+                borderRadius:"4px 4px 0 0", overflow:"hidden", position:"relative",
+                display:"flex", flexDirection:"column-reverse",
+                transition:"transform 0.2s, filter 0.2s",
+                transform:isHov?"scaleY(1.04)":"scaleY(1)",
+                transformOrigin:"bottom",
+                filter:isHov?"brightness(1.15)":"brightness(1)",
+                background:hasDivs?"transparent":"rgba(255,255,255,0.04)" }}>
+                {m.events.map(ev => {
+                  const evFrac = ev.totalUSD && m.totalUSD > 0 ? ev.totalUSD / m.totalUSD : 0;
+                  return (
+                    <div key={ev.symbol+ev.exDate} style={{
+                      width:"100%",
+                      height:`${evFrac*100}%`,
+                      background:symColors[ev.symbol] || C.accent,
+                      opacity:ev.isEstimate ? 0.65 : 1,
+                    }}/>
+                  );
+                })}
+              </div>
+
+              {/* Month label */}
+              <div style={{ fontSize:9, color: isCur?C.accent:C.text3, fontWeight:isCur?700:400,
+                fontFamily:C.mono }}>
+                {MONTH_NAMES[i].slice(0,3)}
+              </div>
+
+              {/* Current month indicator */}
+              {isCur && (
+                <div style={{ width:4, height:4, borderRadius:"50%",
+                  background:C.accent, flexShrink:0 }}/>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      {Object.keys(symColors).length > 0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:12 }}>
+          {Object.entries(symColors).map(([sym,col]) => (
+            <div key={sym} style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <div style={{ width:8, height:8, borderRadius:2, background:col }}/>
+              <span style={{ fontSize:9, color:C.text2, fontFamily:C.mono }}>{sym}</span>
+            </div>
+          ))}
+          <div style={{ display:"flex", alignItems:"center", gap:4, marginLeft:"auto" }}>
+            <div style={{ width:14, height:8, borderRadius:2, background:"rgba(255,255,255,0.2)",
+              border:"1px dashed rgba(255,255,255,0.2)" }}/>
+            <span style={{ fontSize:9, color:C.text3 }}>Estimated</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, currency, rates, onRefreshDivs }) {
   const rate = rates[currency] ?? 1;
   const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
   const now  = new Date();
-  const [viewYear,     setViewYear]     = useState(now.getFullYear());
-  const [selected,     setSelected]     = useState(null); // selected month index
-  const [fictValue,    setFictValue]    = useState(10000); // ETF mode: fictitious portfolio value
+  // Use persistent settings store so values survive ETF switches
+  const [viewYear,  _setViewYear]  = useState(_divCalSettings.viewYear);
+  const [selected,  setSelected]   = useState(null);
+  const [fictValue, _setFictValue] = useState(_divCalSettings.fictValue);
+  const [chartView, _setChartView] = useState(_divCalSettings.chartView);
 
-  // Build positions with quantities
+  const setViewYear  = v => { _divCalSettings.viewYear  = typeof v==="function"?v(_divCalSettings.viewYear):v; _setViewYear(v); };
+  const setFictValue = v => { _divCalSettings.fictValue = v; _setFictValue(v); };
+  const setChartView = v => { _divCalSettings.chartView = v; _setChartView(v); };
+
   const positions = useMemo(() => {
     if (isEtfMode) {
-      // ETF mode: simulate quantities based on fictitious portfolio value + weight
       return (etfHoldings || []).map(h => {
-        const q = divCache?.[h.symbol];
-        const price = q?.yieldPct != null ? null : null; // price from divCache not available here
-        // Estimate shares: fictValue * weight% / price (price not available here → use weight for payout)
         const allocatedUSD = fictValue * (h.weight / 100);
         return {
           symbol:h.symbol, name:h.name,
-          qty:null, // qty unknown without price — use allocatedUSD for payout
-          valueUSD: allocatedUSD,
-          isEtfFict: true,
-          fictAllocated: allocatedUSD,
+          qty:null, valueUSD:allocatedUSD,
+          isEtfFict:true, fictAllocated:allocatedUSD,
         };
       });
     }
-    // Portfolio mode: aggregate from nodes
     const map = {};
     for (const n of allNodes) {
       if (!n.symbol) continue;
@@ -1233,47 +1795,47 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
     return Object.values(map);
   }, [allNodes, etfHoldings, isEtfMode, fictValue]);
 
-  // Build calendar events
   const events = useMemo(() => {
     const result = [];
     for (const pos of positions) {
       const div = divCache?.[pos.symbol];
-      if (!div || (!div.exDate && !div.nextExDate)) continue;
-      const dates = estimateDates(div, pos.symbol);
+      if (!div) continue; // null = sentinel (loading) or error — skip
+      // If no ex-dates but has annualRate, synthesize quarterly dates from today
+      const effectiveDiv = { ...div };
+      if (!effectiveDiv.exDate && !effectiveDiv.nextExDate && effectiveDiv.annualRate > 0) {
+        // Estimate based on annual rate: place quarterly dates starting next month
+        const now = new Date();
+        const next = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+        effectiveDiv.nextExDate = next.toISOString().slice(0,10);
+        if (!effectiveDiv.payments) effectiveDiv.payments = 4;
+      }
+      if (!effectiveDiv.exDate && !effectiveDiv.nextExDate) continue;
+      const dates = estimateDates(effectiveDiv, pos.symbol);
       for (const ev of dates) {
         const d = new Date(ev.date);
         if (d.getFullYear() !== viewYear) continue;
         const m = d.getMonth();
-        // Expected payout (2 weeks after ex-date typically)
         const payDate = new Date(d);
         payDate.setDate(payDate.getDate() + 14);
-        // Amount per position
-        const perShare  = ev.amount ?? div.annualRate / (div.payments || 4);
-        // For ETF mode: estimate income from allocated value × div yield / payments
+        const perShare = ev.amount ?? (div.annualRate / (div.payments || 4));
         let totalUSD = null;
         if (pos.qty) {
           totalUSD = perShare * pos.qty;
         } else if (pos.fictAllocated && div.yieldPct) {
-          // annual yield / payments per year
-          const paymentsPerYear = div.payments || 4;
-          totalUSD = pos.fictAllocated * (div.yieldPct / 100) / paymentsPerYear;
+          totalUSD = pos.fictAllocated * (div.yieldPct / 100) / (div.payments || 4);
         }
         result.push({
-          month: m,
-          exDate: ev.date,
-          payDate: payDate.toISOString().slice(0,10),
-          symbol: pos.symbol,
-          name: pos.name,
-          isEstimate: ev.isEstimate,
-          perShare, totalUSD,
-          qty: pos.qty,
+          month:m, exDate:ev.date,
+          payDate:payDate.toISOString().slice(0,10),
+          symbol:pos.symbol, name:pos.name,
+          isEstimate:ev.isEstimate,
+          perShare, totalUSD, qty:pos.qty,
         });
       }
     }
-    return result.sort((a,b) => a.exDate.localeCompare(b.exDate));
+    return result.sort((a,b)=>a.exDate.localeCompare(b.exDate));
   }, [positions, divCache, viewYear]);
 
-  // Monthly summary
   const monthly = useMemo(() => {
     const arr = Array.from({length:12}, (_,i) => ({ month:i, events:[], totalUSD:0 }));
     for (const ev of events) {
@@ -1283,237 +1845,268 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
     return arr;
   }, [events]);
 
-  const annualTotal = monthly.reduce((s,m)=>s+m.totalUSD,0);
-  const symColors   = useMemo(() => {
-    const syms  = [...new Set(events.map(e=>e.symbol))];
-    const palette = ["#60a5fa","#4ade80","#fbbf24","#f87171","#a78bfa","#34d399","#fb923c","#e879f9"];
-    return Object.fromEntries(syms.map((s,i)=>[s, palette[i % palette.length]]));
+  const annualTotal = monthly.reduce((s,m)=>s+m.totalUSD, 0);
+
+  const symColors = useMemo(() => {
+    const syms    = [...new Set(events.map(e=>e.symbol))];
+    const palette = ["#60a5fa","#4ade80","#fbbf24","#f87171","#a78bfa",
+                     "#34d399","#fb923c","#e879f9","#22d3ee","#facc15"];
+    return Object.fromEntries(syms.map((s,i)=>[s, palette[i%palette.length]]));
   }, [events]);
 
   const selEvents = selected != null ? monthly[selected].events : events;
+
+  // Loading state: positions present but divCache still loading
+  const pendingSymbols = positions.filter(p => divCache?.[p.symbol] === null).length;
+  const loadedSymbols  = positions.filter(p => divCache?.[p.symbol] != null &&
+    divCache[p.symbol] !== null).length;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       <SectionHeader
         title="Dividend Calendar"
-        subtitle={isEtfMode ? "Estimated ex-dividend dates for ETF holdings" : "Expected dividend payments for your positions"}
+        subtitle={isEtfMode
+          ? "Estimated ex-dividend dates for ETF holdings"
+          : "Expected dividend payments for your positions"}
         action={
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <button onClick={()=>setViewYear(y=>y-1)} style={{
-              padding:"3px 10px", borderRadius:6, border:`1px solid ${C.border}`,
-              background:"transparent", color:C.text2, cursor:"pointer",fontFamily:"inherit",fontSize:12,
-            }}>‹ {viewYear-1}</button>
-            <span style={{ fontFamily:C.mono, fontSize:14, fontWeight:700, color:C.text1 }}>{viewYear}</span>
-            <button onClick={()=>setViewYear(y=>y+1)} style={{
-              padding:"3px 10px", borderRadius:6, border:`1px solid ${C.border}`,
-              background:"transparent", color:C.text2, cursor:"pointer",fontFamily:"inherit",fontSize:12,
-            }}>{viewYear+1} ›</button>
+            {/* View toggle */}
+            <div style={{ display:"flex", gap:2, padding:"2px", borderRadius:8,
+              background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}` }}>
+              {[["calendar","📅 Calendar"],["barchart","📊 Bar Chart"]].map(([v,label]) => (
+                <button key={v} onClick={()=>setChartView(v)} style={{
+                  padding:"4px 10px", borderRadius:6, border:"none",
+                  background:chartView===v?"rgba(59,130,246,0.25)":"transparent",
+                  color:chartView===v?C.accent:C.text3,
+                  fontSize:10, fontWeight:chartView===v?700:400,
+                  cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s",
+                }}>{label}</button>
+              ))}
+            </div>
+            {/* Year nav */}
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <button onClick={()=>setViewYear(v=>v-1)} style={{ background:"none", border:"none",
+                cursor:"pointer", color:C.text3, fontSize:14, padding:"0 4px", display:"flex" }}>‹</button>
+              <span style={{ fontSize:13, fontWeight:700, color:C.text1, fontFamily:C.mono,
+                minWidth:36, textAlign:"center" }}>{viewYear}</span>
+              <button onClick={()=>setViewYear(v=>v+1)} style={{ background:"none", border:"none",
+                cursor:"pointer", color:C.text3, fontSize:14, padding:"0 4px", display:"flex" }}>›</button>
+            </div>
           </div>
         }
       />
 
-      {/* ETF mode: fictitious portfolio size selector */}
+      {/* Fictitious portfolio selector (ETF mode) */}
       {isEtfMode && (
-        <div style={{ padding:"0 22px 10px", display:"flex", alignItems:"center", gap:12,
-          borderBottom:`1px solid ${C.border2}`, flexShrink:0 }}>
+        <div style={{ padding:"0 22px 10px", display:"flex", alignItems:"center",
+          gap:12, flexShrink:0, flexWrap:"wrap" }}>
           <span style={{ fontSize:11, color:C.text3 }}>Simulated portfolio:</span>
-          {[10000, 20000, 50000, 100000].map(v => (
+          {[10000,20000,50000,100000].map(v => (
             <button key={v} onClick={()=>setFictValue(v)} style={{
-              padding:"4px 12px", borderRadius:7,
+              padding:"4px 10px", borderRadius:7,
               border:`1px solid ${fictValue===v?C.accent:C.border}`,
               background:fictValue===v?"rgba(59,130,246,0.15)":"transparent",
               color:fictValue===v?C.accent:C.text3,
-              fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-            }}>
-              {v >= 1000 ? `${v/1000}K` : v} {currency}
-            </button>
+              fontSize:10, fontWeight:fictValue===v?700:400,
+              cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s",
+            }}>{v>=1000?`${v/1000}K`:v} {currency}</button>
           ))}
           {annualTotal > 0 && (
-            <div style={{ marginLeft:"auto", fontFamily:C.mono }}>
-              <span style={{ fontSize:10, color:C.text3 }}>Est. annual income: </span>
-              <span style={{ fontSize:13, fontWeight:700, color:"#fbbf24" }}>
-                {cSym}{(annualTotal * rate).toFixed(2)}
-              </span>
+            <div style={{ marginLeft:"auto", fontSize:11, color:C.green, fontFamily:C.mono,
+              fontWeight:700 }}>
+              Est. annual income: {cSym}{(annualTotal*rate).toFixed(0)}
             </div>
           )}
         </div>
       )}
 
-      {/* Annual summary */}
+      {/* Loading indicator */}
+      {pendingSymbols > 0 && (
+        <div style={{ padding:"4px 22px", fontSize:10, color:C.text3, display:"flex",
+          alignItems:"center", gap:6, flexShrink:0 }}>
+          <span style={{ width:6, height:6, borderRadius:"50%", background:C.accent,
+            display:"inline-block", animation:"pulse 1.2s infinite" }}/>
+          Loading dividend data… ({loadedSymbols}/{loadedSymbols+pendingSymbols} positions)
+        </div>
+      )}
+
+      {/* Annual total strip (portfolio mode) */}
       {!isEtfMode && annualTotal > 0 && (
-        <div style={{ padding:"0 22px 10px", display:"flex", alignItems:"center", gap:16,
-          borderBottom:`1px solid ${C.border2}`, flexShrink:0 }}>
-          <div>
-            <div style={{ fontSize:9, color:C.text3, textTransform:"uppercase", letterSpacing:"0.07em" }}>
-              Est. Annual Income {viewYear}
+        <div style={{ padding:"4px 22px 8px", flexShrink:0 }}>
+          <span style={{ fontSize:11, color:C.text3 }}>Est. annual income: </span>
+          <span style={{ fontFamily:C.mono, fontSize:13, fontWeight:700, color:C.green }}>
+            {cSym}{(annualTotal*rate).toFixed(0)}
+          </span>
+          <span style={{ fontSize:10, color:C.text3, marginLeft:6 }}>
+            ({events.filter(e=>e.isEstimate).length > 0 ? "incl. estimated dates" : "confirmed dates"})
+          </span>
+        </div>
+      )}
+
+      {/* ── BAR CHART VIEW ── */}
+      {chartView === "barchart" && (
+        <div style={{ flex:1, overflow:"auto", position:"relative", minHeight:0 }}>
+          {events.length === 0 ? (
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+              justifyContent:"center", height:"100%", gap:8, color:C.text3 }}>
+              <span style={{ fontSize:32, opacity:0.5 }}>📊</span>
+              <div style={{ fontSize:13, color:C.text2, fontWeight:600 }}>No dividend events in {viewYear}</div>
+              <div style={{ fontSize:11 }}>Dividend data loads automatically for each position.</div>
+              {onRefreshDivs && (
+                <button onClick={onRefreshDivs} style={{
+                  marginTop:8, padding:"6px 14px", borderRadius:8, border:`1px solid ${C.border}`,
+                  background:"transparent", color:C.text3, fontSize:11,
+                  cursor:"pointer", fontFamily:"inherit",
+                }}>↻ Reload dividend data</button>
+              )}
             </div>
-            <div style={{ fontFamily:C.mono, fontSize:18, fontWeight:700, color:"#fbbf24", marginTop:1 }}>
-              {cSym}{(annualTotal * rate).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
-            </div>
-          </div>
-          <div style={{ fontSize:10, color:C.text3 }}>
-            Includes estimates (dashed). Actual amounts may vary.
-          </div>
-          {selected != null && (
-            <button onClick={()=>setSelected(null)} style={{
-              marginLeft:"auto", padding:"3px 10px", borderRadius:6,
-              border:`1px solid ${C.border}`, background:"transparent",
-              color:C.text2, cursor:"pointer", fontSize:11,
-            }}>Show all months</button>
+          ) : (
+            <DivBarChart monthly={monthly} currency={currency} cSym={cSym}
+              rate={rate} symColors={symColors} year={viewYear}/>
           )}
         </div>
       )}
 
-      <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
-        {/* Month grid */}
-        <div style={{ width:420, flexShrink:0, padding:"12px 16px",
-          overflowY:"auto", borderRight:`1px solid ${C.border2}` }}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
-            {monthly.map((m, mi) => {
-              const isNow   = mi === now.getMonth() && viewYear === now.getFullYear();
-              const isSel   = selected === mi;
-              const hasEvts = m.events.length > 0;
-              return (
-                <div key={mi}
-                  onClick={()=>setSelected(isSel?null:mi)}
-                  style={{
-                    borderRadius:10, padding:"10px 12px", cursor:hasEvts?"pointer":"default",
-                    border:`1px solid ${isSel?C.accent:isNow?"rgba(59,130,246,0.3)":C.border2}`,
-                    background:isSel?"rgba(59,130,246,0.12)":isNow?"rgba(59,130,246,0.04)":"transparent",
-                    transition:"all 0.12s",
-                  }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:isSel?C.accent:isNow?C.accent:C.text2,
-                    marginBottom:4 }}>
-                    {MONTH_NAMES[mi]}
-                    {isNow && <span style={{ marginLeft:5, fontSize:8, color:C.accent }}>●</span>}
-                  </div>
-
-                  {/* Symbols in this month */}
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:3, marginBottom:4 }}>
-                    {m.events.map(ev => (
-                      <span key={ev.symbol+ev.exDate} style={{
-                        fontFamily:C.mono, fontSize:7, fontWeight:700,
-                        padding:"1px 4px", borderRadius:3,
-                        background:`${symColors[ev.symbol]}20`,
-                        color:symColors[ev.symbol],
-                        border:`1px solid ${symColors[ev.symbol]}30`,
-                        opacity:ev.isEstimate?0.7:1,
-                        textDecoration:ev.isEstimate?"none":undefined,
-                      }}>{ev.symbol}</span>
-                    ))}
-                  </div>
-
-                  {/* Monthly total */}
-                  {!isEtfMode && m.totalUSD > 0 && (
-                    <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:"#fbbf24" }}>
-                      {cSym}{(m.totalUSD * rate).toFixed(2)}
+      {/* ── CALENDAR VIEW ── */}
+      {chartView === "calendar" && (
+        <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
+          {/* Month grid */}
+          <div style={{ flex:1, overflowY:"auto", padding:"0 0 8px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)" }}>
+              {monthly.map((m, i) => {
+                const isNow  = i === now.getMonth() && viewYear === now.getFullYear();
+                const isSel  = selected === i;
+                const hasEvt = m.events.length > 0;
+                return (
+                  <div key={i}
+                    onClick={() => setSelected(isSel ? null : i)}
+                    style={{
+                      padding:"10px 12px", cursor:"pointer",
+                      borderBottom:`1px solid ${C.border2}`,
+                      borderRight:`1px solid ${C.border2}`,
+                      background: isSel ? "rgba(59,130,246,0.08)"
+                        : isNow  ? "rgba(59,130,246,0.04)" : "transparent",
+                      transition:"background 0.15s",
+                    }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                      marginBottom:6 }}>
+                      <span style={{ fontSize:12, fontWeight:700,
+                        color:isSel?C.accent:isNow?C.accent:C.text2 }}>
+                        {MONTH_NAMES[i]}
+                        {isNow && <span style={{ marginLeft:4, width:5, height:5,
+                          borderRadius:"50%", background:C.accent,
+                          display:"inline-block", verticalAlign:"middle" }}/>}
+                      </span>
+                      {hasEvt && (
+                        <span style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
+                          color:C.green }}>
+                          {cSym}{(m.totalUSD*rate).toFixed(0)}
+                        </span>
+                      )}
                     </div>
-                  )}
-                  {isEtfMode && m.events.length > 0 && (
-                    <div style={{ fontSize:9, color:C.text3 }}>
-                      {m.events.length} ex-date{m.events.length>1?"s":""}
+                    {/* Event dots */}
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:3 }}>
+                      {m.events.map(ev => (
+                        <div key={ev.symbol+ev.exDate} style={{
+                          padding:"1px 5px", borderRadius:4, fontSize:8, fontWeight:700,
+                          fontFamily:C.mono,
+                          background:`${symColors[ev.symbol]||C.accent}22`,
+                          color:symColors[ev.symbol]||C.accent,
+                          border:`1px solid ${symColors[ev.symbol]||C.accent}33`,
+                          opacity:ev.isEstimate?0.7:1,
+                        }}>
+                          {ev.symbol}
+                        </div>
+                      ))}
                     </div>
-                  )}
-                  {m.events.length === 0 && (
-                    <div style={{ fontSize:9, color:"rgba(255,255,255,0.1)" }}>—</div>
-                  )}
-                </div>
-              );
-            })}
+                    {/* Mini income bar */}
+                    {hasEvt && (
+                      <div style={{ marginTop:6, height:2, borderRadius:1,
+                        background:"rgba(255,255,255,0.08)", overflow:"hidden" }}>
+                        <div style={{ height:"100%", borderRadius:1,
+                          width:`${Math.min(100,(m.totalUSD/Math.max(...monthly.map(x=>x.totalUSD),0.01))*100)}%`,
+                          background:C.accent, opacity:0.6 }}/>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Bar chart of monthly income */}
-          {!isEtfMode && annualTotal > 0 && (
-            <div style={{ marginTop:16 }}>
-              <div style={{ fontSize:9, color:C.text3, marginBottom:8, textTransform:"uppercase",
-                letterSpacing:"0.07em" }}>Monthly Income Distribution</div>
-              <div style={{ display:"flex", alignItems:"flex-end", gap:3, height:48 }}>
-                {monthly.map((m,mi) => {
-                  const maxMo = Math.max(...monthly.map(x=>x.totalUSD));
-                  const h = maxMo > 0 ? (m.totalUSD/maxMo)*44 : 0;
-                  return (
-                    <div key={mi} style={{ flex:1, display:"flex", flexDirection:"column",
-                      alignItems:"center", gap:2 }}>
-                      <div style={{ width:"100%", height:h, background:selected===mi?"#fbbf24":"rgba(251,191,36,0.5)",
-                        borderRadius:"3px 3px 0 0", transition:"height 0.3s", cursor:"pointer",
-                        minHeight: m.totalUSD>0?2:0 }}
-                        onClick={()=>setSelected(selected===mi?null:mi)}/>
-                      <span style={{ fontSize:7, color:C.text3 }}>{MONTH_NAMES[mi][0]}</span>
-                    </div>
-                  );
-                })}
-              </div>
+          {/* Right panel: selected month events */}
+          <div style={{ width:280, flexShrink:0, borderLeft:`1px solid ${C.border2}`,
+            overflowY:"auto", padding:"12px 0" }}>
+            <div style={{ padding:"0 14px 8px", fontSize:10, color:C.text3, fontWeight:700,
+              textTransform:"uppercase", letterSpacing:"0.08em" }}>
+              {selected !== null ? MONTH_NAMES[selected] : "All"} — {selEvents.length} event{selEvents.length!==1?"s":""}
             </div>
-          )}
-        </div>
 
-        {/* Event detail list */}
-        <div style={{ flex:1, overflowY:"auto", padding:"8px 20px" }}>
-          <div style={{ fontSize:10, color:C.text3, textTransform:"uppercase", letterSpacing:"0.07em",
-            fontWeight:700, marginBottom:10 }}>
-            {selected != null ? MONTH_NAMES[selected] : "All"} — {selEvents.length} event{selEvents.length!==1?"s":""}
+            {selEvents.length === 0 ? (
+              <div style={{ padding:"20px 14px", textAlign:"center", color:C.text3, fontSize:11,
+                lineHeight:1.6 }}>
+                No dividend events for {selected !== null ? MONTH_NAMES[selected] : "this year"}.
+                <br/>Dividend data loads per position automatically.
+                {onRefreshDivs && (
+                  <div style={{ marginTop:10 }}>
+                    <button onClick={onRefreshDivs} style={{
+                      padding:"5px 12px", borderRadius:7, border:`1px solid ${C.border}`,
+                      background:"transparent", color:C.text3, fontSize:10,
+                      cursor:"pointer", fontFamily:"inherit",
+                    }}>↻ Reload dividend data</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              selEvents.map(ev => (
+                <div key={ev.symbol+ev.exDate+ev.month} style={{
+                  padding:"8px 14px", borderBottom:`1px solid ${C.border2}`,
+                }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
+                    <div style={{ width:6, height:6, borderRadius:2, flexShrink:0,
+                      background:symColors[ev.symbol]||C.accent }}/>
+                    <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
+                      color:symColors[ev.symbol]||C.accent }}>{ev.symbol}</span>
+                    {ev.isEstimate && (
+                      <span style={{ fontSize:8, padding:"1px 5px", borderRadius:4,
+                        background:"rgba(251,191,36,0.12)", color:C.yellow,
+                        border:"1px solid rgba(251,191,36,0.25)" }}>est.</span>
+                    )}
+                    {ev.totalUSD && (
+                      <span style={{ marginLeft:"auto", fontFamily:C.mono, fontSize:11,
+                        fontWeight:700, color:C.green }}>
+                        {cSym}{(ev.totalUSD*rate).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display:"flex", gap:16, paddingLeft:14 }}>
+                    <div>
+                      <div style={{ fontSize:8, color:C.text3, marginBottom:1 }}>Ex-Date</div>
+                      <div style={{ fontSize:10, color:C.text2, fontFamily:C.mono }}>{ev.exDate}</div>
+                    </div>
+                    {ev.perShare && (
+                      <div>
+                        <div style={{ fontSize:8, color:C.text3, marginBottom:1 }}>Per Share</div>
+                        <div style={{ fontSize:10, color:C.text2, fontFamily:C.mono }}>
+                          {cSym}{(ev.perShare*(rates[currency]??1)).toFixed(3)}
+                        </div>
+                      </div>
+                    )}
+                    {ev.qty && (
+                      <div>
+                        <div style={{ fontSize:8, color:C.text3, marginBottom:1 }}>Shares</div>
+                        <div style={{ fontSize:10, color:C.text2, fontFamily:C.mono }}>
+                          {ev.qty.toFixed(2)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-
-          {selEvents.length === 0 && (
-            <div style={{ color:C.text3, fontSize:13, padding:"20px 0", textAlign:"center" }}>
-              No dividend events{selected!=null?" in "+MONTH_NAMES[selected]:""}.<br/>
-              <span style={{ fontSize:11 }}>Dividend data loads automatically for each position.</span>
-            </div>
-          )}
-
-          {selEvents.map((ev, i) => {
-            const color = symColors[ev.symbol] ?? C.accent;
-            return (
-              <div key={ev.symbol+ev.exDate+i} style={{
-                padding:"10px 14px", borderRadius:10, marginBottom:6,
-                background:ev.isEstimate?"rgba(255,255,255,0.02)":C.surface2,
-                border:`1px solid ${ev.isEstimate?C.border2:color+"30"}`,
-              }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:6, height:6, borderRadius:"50%", background:color, flexShrink:0 }}/>
-                  <span style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color }}>
-                    {ev.symbol}
-                  </span>
-                  <span style={{ fontSize:11, color:C.text2, flex:1, overflow:"hidden",
-                    textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ev.name}</span>
-                  {ev.isEstimate && (
-                    <span style={{ fontSize:8, padding:"1px 5px", borderRadius:3,
-                      background:"rgba(255,255,255,0.05)", color:C.text3,
-                      border:`1px solid ${C.border2}` }}>estimated</span>
-                  )}
-                </div>
-                <div style={{ display:"flex", gap:16, marginTop:6, paddingLeft:16 }}>
-                  <div>
-                    <div style={{ fontSize:9, color:C.text3 }}>Ex-Div Date</div>
-                    <div style={{ fontFamily:C.mono, fontSize:11, color:C.text2, marginTop:1 }}>{ev.exDate}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:9, color:C.text3 }}>Est. Pay Date</div>
-                    <div style={{ fontFamily:C.mono, fontSize:11, color:C.text2, marginTop:1 }}>{ev.payDate}</div>
-                  </div>
-                  {ev.perShare != null && (
-                    <div>
-                      <div style={{ fontSize:9, color:C.text3 }}>Per Share</div>
-                      <div style={{ fontFamily:C.mono, fontSize:11, color:"#fbbf24", marginTop:1 }}>
-                        {cSym}{(ev.perShare * rate).toFixed(4)}
-                      </div>
-                    </div>
-                  )}
-                  {ev.qty != null && ev.totalUSD != null && (
-                    <div>
-                      <div style={{ fontSize:9, color:C.text3 }}>Your Income ({ev.qty} shares)</div>
-                      <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700,
-                        color:"#fbbf24", marginTop:1 }}>
-                        {cSym}{(ev.totalUSD * rate).toFixed(2)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }
