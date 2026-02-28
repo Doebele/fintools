@@ -58,8 +58,8 @@ function useGlobalStyles() {
     s.id = "ptv3-global";
     s.textContent = `
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      html { height: 100%; overflow: hidden; }
-      body { height: 100%; }
+      html { height: 100%; }
+      body { height: 100%; overflow: hidden; }
       
       /* ── Pro mode (default): compact information density ── */
       :root { --fs-base: 13px; --fs-scale: 1; }
@@ -360,7 +360,7 @@ function LoginScreen({ onLogin, onEtfMode }) {
 
   return (
     <div style={{
-      height:"100vh", display:"flex", alignItems:"center", justifyContent:"center",
+      height:"100%", display:"flex", alignItems:"center", justifyContent:"center",
       background:THEME.bg, fontFamily:THEME.font,
     }}>
       <div style={{
@@ -1019,7 +1019,7 @@ function Rail({
   return (
     <div style={{
       width:w, flexShrink:0,
-      height:"100vh",
+      height:"100%",
       background:THEME.surface,
       borderRight:`1px solid ${THEME.border}`,
       display:"flex", flexDirection:"column",
@@ -3435,7 +3435,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
   return (
     <>
     <div style={{
-      width:w, minWidth:w, height:"100vh",
+      width:w, minWidth:w, height:"100%",
       background:THEME.surface, borderRight:`1px solid ${THEME.border}`,
       display:"flex", flexDirection:"column",
       transition:"width 0.22s cubic-bezier(.4,0,.2,1)",
@@ -4412,7 +4412,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   }, []);
 
   return (
-    <div style={{ height:"100vh", display:"flex", background:THEME.bg,
+    <div style={{ height:"100%", display:"flex", background:THEME.bg,
       fontFamily:THEME.font, overflow:"hidden" }}>
 
       <EtfRail
@@ -5051,7 +5051,7 @@ export default function App() {
   if (!user) return <LoginScreen onLogin={handleLogin} onEtfMode={() => setEtfMode(true)}/>;
 
   if (!initialized) return (
-    <div style={{ height:"100vh", background:THEME.bg, display:"flex",
+    <div style={{ height:"100%", background:THEME.bg, display:"flex",
       alignItems:"center", justifyContent:"center" }}>
       <div style={{ color:THEME.text3, fontSize:14 }}>
         <span className="spin">⟳</span> Loading {user.username}…
@@ -5061,7 +5061,7 @@ export default function App() {
 
   return (
     <>
-      <div id="ptv3-root" style={{ height:"100vh", display:"flex", background:THEME.bg, fontFamily:THEME.font, overflow:"hidden" }}>
+      <div id="ptv3-root" style={{ height:"100%", display:"flex", background:THEME.bg, fontFamily:THEME.font, overflow:"hidden" }}>
 
         {/* ── LEFT RAIL ──────────────────────────────────────────────── */}
         <Rail
