@@ -966,6 +966,8 @@ function DriftBar({ curPct, tgtPct, threshold, aColor }) {
 export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }) {
   const rate = rates[currency] ?? 1;
   const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
+  // fmtSym: format value with correct currency symbol (rate already applied at call site)
+  const fmtSym = (v, dec=0) => v==null?"—":`${cSym}${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:dec,maximumFractionDigits:dec})}`;
 
   // Build unique positions with current value + auto-infer sector
   const positions = useMemo(() => {
@@ -1189,11 +1191,11 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               {/* Amount */}
               <div style={{ textAlign:"right", flexShrink:0, width:80 }}>
                 <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:aColor }}>
-                  {fmt$(amt,0)}
+                  {fmtSym(amt,0)}
                 </div>
                 {sharesEst && a.priceUSD && (
                   <div style={{ fontSize:8, color:C.text3 }}>
-                    {sharesEst} sh. @ {fmt$(a.priceUSD*cashRate,2)}
+                    {sharesEst} sh. @ {fmtSym(a.priceUSD*cashRate,2)}
                   </div>
                 )}
               </div>
@@ -1213,7 +1215,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               </div>
               {cashAdd > 0 && (
                 <div style={{ fontSize:10, color:C.text3 }}>
-                  incl. <span style={{color:C.green,fontWeight:700}}>{fmt$(cashAdd)} {currency}</span> new cash
+                  incl. <span style={{color:C.green,fontWeight:700}}>{fmtSym(cashAdd)} {currency}</span> new cash
                 </div>
               )}
               {/* Summary pills */}
@@ -1222,20 +1224,20 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   <div style={{ padding:"3px 10px", borderRadius:6,
                     background:"rgba(74,222,128,0.12)", border:"1px solid rgba(74,222,128,0.25)",
                     fontSize:10, fontWeight:700, color:C.green, fontFamily:C.mono }}>
-                    ↑ BUY {fmt$(totalBuy*cashRate,0)}
+                    ↑ BUY {fmtSym(totalBuy*cashRate,0)}
                   </div>
                 )}
                 {totalSell > 0 && (
                   <div style={{ padding:"3px 10px", borderRadius:6,
                     background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)",
                     fontSize:10, fontWeight:700, color:C.red, fontFamily:C.mono }}>
-                    ↓ SELL {fmt$(totalSell*cashRate,0)}
+                    ↓ SELL {fmtSym(totalSell*cashRate,0)}
                   </div>
                 )}
                 <div style={{ padding:"3px 10px", borderRadius:6,
                   background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`,
                   fontSize:10, color:C.text3, fontFamily:C.mono }}>
-                  Net {fmt$((totalBuy-totalSell)*cashRate,0)}
+                  Net {fmtSym((totalBuy-totalSell)*cashRate,0)}
                 </div>
               </div>
             </div>
@@ -1298,7 +1300,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                 <div>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                     <span style={{ fontSize:10, color:C.green, fontWeight:700 }}>
-                      Cash Allocation — {fmt$(cashAdd)} {currency}
+                      Cash Allocation — {fmtSym(cashAdd)} {currency}
                     </span>
                     <button onClick={()=>setCashExpanded(v=>!v)}
                       style={{ fontSize:9, color:C.text3, background:"none", border:"none",
@@ -1322,7 +1324,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                                 color:C.accent }}>{a.symbol}</span>
                               <div style={{ textAlign:"right" }}>
                                 <span style={{ fontFamily:C.mono, fontSize:10, color:C.green, fontWeight:700 }}>
-                                  {fmt$(cashShare, 0)}
+                                  {fmtSym(cashShare, 0)}
                                 </span>
                                 {sharesEst && (
                                   <span style={{ fontSize:9, color:C.text3, marginLeft:5 }}>
@@ -1346,7 +1348,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                           display:"flex", justifyContent:"space-between", fontSize:9 }}>
                           <span style={{ color:C.text3 }}>Total deployed</span>
                           <span style={{ fontFamily:C.mono, fontWeight:700, color:C.green }}>
-                            {fmt$(cashAdd)} {currency}
+                            {fmtSym(cashAdd)} {currency}
                           </span>
                         </div>
                       )}
@@ -1518,7 +1520,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:2 }}>
                     <span style={{ fontSize:9, color:C.text3 }}>Now {cur}%</span>
                     <span style={{ fontSize:9, color:C.text3, marginLeft:4 }}>
-                      {fmt$(pos.valueUSD*(rates[currency]??1))}
+                      {fmtSym(pos.valueUSD*(rates[currency]??1))}
                     </span>
                   </div>
                 </div>
@@ -1568,7 +1570,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   {/* Value */}
                   <div style={{ textAlign:"right", width:76, flexShrink:0 }}>
                     <div style={{ fontFamily:C.mono, fontSize:11, color:C.text2 }}>
-                      {a ? fmt$(a.valueUSD * (rates[currency]??1)) : "—"}
+                      {a ? fmtSym(a.valueUSD * (rates[currency]??1)) : "—"}
                     </div>
                   </div>
 
@@ -1582,17 +1584,17 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                           <span style={{ fontSize:9, fontWeight:700, color:aColor,
                             textTransform:"uppercase" }}>{a.action}</span>
                           <span style={{ fontFamily:C.mono, fontSize:10, color:aColor, fontWeight:700 }}>
-                            {fmt$(Math.abs(a.diffUSD) * (rates[currency]??1))}
+                            {fmtSym(Math.abs(a.diffUSD) * (rates[currency]??1))}
                           </span>
                         </div>
                         {sharesEst && a.priceUSD && (
                           <div style={{ fontSize:9, color:C.text3, marginTop:2 }}>
-                            ≈ {sharesEst} sh. @ {fmt$(a.priceUSD*(rates[currency]??1),2)}
+                            ≈ {sharesEst} sh. @ {fmtSym(a.priceUSD*(rates[currency]??1),2)}
                           </div>
                         )}
                         {cashShare != null && cashShare > 0 && (
                           <div style={{ fontSize:9, color:C.green, marginTop:2, fontWeight:600 }}>
-                            + {fmt$(cashShare,0)} cash
+                            + {fmtSym(cashShare,0)} cash
                             {priceUSD>0 && cashShare>0 && (
                               <span style={{ color:C.text3, fontWeight:400 }}>
                                 {" "}≈ {Math.floor((cashShare/priceUSD)*10)/10} sh.
