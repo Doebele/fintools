@@ -1070,6 +1070,9 @@ function Rail({
         <RailBtn open={open} icon={<List size={16}/>} label="Holdings"
           active={activeTab==="transactions"}
           onClick={() => onTab("transactions")}/>
+        <RailBtn open={open} icon={<span style={{fontSize:14}}>📅</span>} label="Dividends"
+          active={activeTab==="calendar"}
+          onClick={() => onTab("calendar")}/>
 
         <Divider/>
 
@@ -1173,77 +1176,67 @@ function Rail({
           onClick={onImportExport}/>
 
 
-        <Divider/>
-
-        {/* Currency */}
-        <RailSection open={open} label="Currency"/>
-        <div style={{
-          padding: open ? "2px 8px" : "2px 0",
-          display:"flex", flexDirection:"column",
-          gap:2, alignItems: open ? "stretch" : "center",
-        }}>
-          {Object.keys(CCY_SYM).map(c => {
-            const isActive = currency === c;
-            const code = CCY_FLAG[c];
-            // collapsed: 16px icon circle; expanded: 24px icon circle + label
-            const SIZE = open ? 24 : 16;
-            // pill radius = half the icon height so text never distorts the shape
-            const BR = SIZE / 2;
-            return (
-              <button key={c} onClick={() => onCurrency(c)} title={c}
-                className={isActive ? undefined : "ccy-btn"}
-                style={{
-                  display:"flex", alignItems:"center",
-                  gap: open ? 10 : 0,
-                  padding: open ? "7px 12px" : "7px 0",
-                  border:"none",
-                  borderRadius:9,
-                  background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
-                  cursor:"pointer", fontFamily:THEME.font,
-                  transition:"background 0.12s, color 0.12s",
-                  width:"100%",
-                  justifyContent: open ? "flex-start" : "center",
-                  color: isActive ? THEME.accent : THEME.text3,
-                  fontWeight: isActive ? 700 : 500,
-                  fontSize:12,
-                }}>
-                {/* Circle flag */}
-                <div className="ccy-flag" style={{
-                  width:SIZE, height:SIZE, borderRadius:"50%",
-                  overflow:"hidden", flexShrink:0,
-                  opacity: isActive ? 1 : 0.4,
-                  transition:"opacity 0.12s",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  lineHeight:0, fontSize:0,
-                }}>
-                  {code
-                    ? <CircleFlag countryCode={code} width={SIZE} height={SIZE}/>
-                    : <span style={{ fontSize:SIZE*0.6, lineHeight:1 }}>🌐</span>
-                  }
-                </div>
-                {open && (
-                  <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-                    <span className="ccy-label" style={{
-                      fontSize:12, fontWeight: isActive ? 700 : 500,
-                      color: isActive ? THEME.accent : THEME.text3,
-                      letterSpacing:"0.03em", lineHeight:1,
-                    }}>{c}</span>
-                    <span className="ccy-name" style={{
-                      fontSize:10, fontWeight:400,
-                      color: isActive ? THEME.accent : THEME.text3,
-                      letterSpacing:"0.02em",
-                    }}>{CCY_NAME[c]}</span>
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
 
       </div>  {/* end scrollable body */}
 
-      {/* ─── Bottom: Account (pinned) ─────────────────────────────── */}
-      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"6px 6px 8px", flexShrink:0 }}>
+      {/* ─── Bottom: Currency + Account (pinned) ──────────────── */}
+      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 6px 8px", flexShrink:0 }}>
+          {/* Currency */}
+          {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
+            textTransform:"uppercase", letterSpacing:"0.10em",
+            padding:"6px 6px 4px", opacity:0.7 }}>Currency</div>}
+          <div style={{
+            padding: open ? "2px 4px" : "2px 0",
+            display:"flex", flexDirection:"column",
+            gap:2, alignItems: open ? "stretch" : "center",
+          }}>
+            {Object.keys(CCY_SYM).map(c => {
+              const isActive = currency === c;
+              const code = CCY_FLAG[c];
+              const SIZE = open ? 22 : 16;
+              return (
+                <button key={c} onClick={() => onCurrency(c)} title={c}
+                  className={isActive ? undefined : "ccy-btn"}
+                  style={{
+                    display:"flex", alignItems:"center",
+                    gap: open ? 8 : 0,
+                    padding: open ? "5px 8px" : "5px 0",
+                    border:"none", borderRadius:8,
+                    background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
+                    cursor:"pointer", fontFamily:THEME.font,
+                    transition:"background 0.12s",
+                    width:"100%",
+                    justifyContent: open ? "flex-start" : "center",
+                  }}>
+                  <div className="ccy-flag" style={{
+                    width:SIZE, height:SIZE, borderRadius:"50%",
+                    overflow:"hidden", flexShrink:0,
+                    opacity: isActive ? 1 : 0.4, transition:"opacity 0.12s",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                  }}>
+                    {code
+                      ? <CircleFlag countryCode={code} width={SIZE} height={SIZE}/>
+                      : <span style={{ fontSize:SIZE*0.6, lineHeight:1 }}>🌐</span>}
+                  </div>
+                  {open && (
+                    <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
+                      <span className="ccy-label" style={{
+                        fontSize:11, fontWeight: isActive ? 700 : 500,
+                        color: isActive ? THEME.accent : THEME.text3,
+                      }}>{c}</span>
+                      <span className="ccy-name" style={{
+                        fontSize:9, color: isActive ? THEME.accent : THEME.text3,
+                      }}>{CCY_NAME[c]}</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+        {/* Separator */}
+        <div style={{ height:1, background:THEME.border2, margin:"4px 0" }}/>
+
         {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
           textTransform:"uppercase", letterSpacing:"0.10em",
           padding:"6px 6px 4px", opacity:0.7 }}>Account</div>}
@@ -1786,10 +1779,19 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const perfColor = isPos ? THEME.green : THEME.red;
   const bg    = getPerfColor(perf);
 
-  // Position tooltip so it stays on screen
-  const TW = 282, TH = 420;
-  const left = x + 16 + TW > window.innerWidth  ? x - TW - 16 : x + 16;
-  const top  = y + TH     > window.innerHeight  ? window.innerHeight - TH - 8 : Math.max(8, y - 20);
+  // Smart tooltip positioning: prefer right-of-cursor, flip left if too close to edge
+  const TW = 290;
+  const MARGIN = 12;
+  const left = (x + 16 + TW + MARGIN > window.innerWidth)
+    ? Math.max(MARGIN, x - TW - 16)
+    : x + 16;
+  // For top: anchor near cursor, but clamp so bottom doesn't overflow
+  // Use a generous estimated height; the div auto-sizes
+  const estimatedH = 380 + (divData?.yieldPct != null ? 80 : 0);
+  const top = Math.min(
+    Math.max(MARGIN, y - 20),
+    window.innerHeight - estimatedH - MARGIN
+  );
 
   // Pick chart data
   const chartSrc = (period === "Intraday" && chartDataIntraday) ? chartDataIntraday : chartData;
@@ -1876,6 +1878,11 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
             [null],
             ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
             ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
+          ...(data.trailingPE != null || data.forwardPE != null ? [
+            [null],
+            ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1), THEME.accent]] : []),
+            ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1),  THEME.accent]] : []),
+          ] : []),
           ] : [
             // ETF holding — show weight only
             ...(data.weight ? [["ETF Weight", `${data.weight.toFixed(2)}%`]] : []),
@@ -2003,9 +2010,10 @@ const TX_COLS_DEFAULT = [
   { key:"curPrice",     label:"Cur. Price",    width:90,  sortable:true  },
   { key:"curValue",     label:"Cur. Value",    width:100, sortable:true  },
   { key:"glPct",        label:"G/L %",         width:82,  sortable:true  },
-  { key:"glAbs",        label:"G/L $",         width:96,  sortable:true  },
+  { key:"glAbs",        label:"G/L",           width:96,  sortable:true  },
   { key:"prdPct",       label:"Period %",      width:82,  sortable:true  },
-  { key:"prdAbs",       label:"Period $",      width:96,  sortable:true  },
+  { key:"prdAbs",       label:"Period",        width:96,  sortable:true  },
+  { key:"pe",           label:"P/E",           width:64,  sortable:true  },
   { key:"divYield",     label:"Div. Yield",    width:80,  sortable:true  },
   { key:"exDate",       label:"Ex-Date",       width:90,  sortable:false },
   { key:"links",        label:"Links",         width:68,  sortable:false },
@@ -2015,7 +2023,7 @@ const TX_COLS_DEFAULT = [
 // ════════════════════════════════════════════════════════════════════════════
 // SPLIT TRANSACTION VIEW  — one table per portfolio, stacked
 // ════════════════════════════════════════════════════════════════════════════
-function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, period="Intraday", divCache={} }) {
+function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, period="Intraday", divCache={}, currency="USD" }) {
   const active = portfolios.filter(p => (allTransactions[p.id]?.length ?? 0) > 0);
   if (!active.length) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
@@ -2060,6 +2068,7 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
             rates={rates} quotes={quotes}
             onDelete={onDelete} onEdit={onEdit} onRefreshSymbol={onRefreshSymbol}
             period={period} divCache={divCache}
+            currency={currency}
             compact/>
         </div>
       ))}
@@ -2067,7 +2076,7 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
   );
 }
 
-function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, compact=false, period="Intraday", divCache={} }) {
+function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, compact=false, period="Intraday", divCache={}, currency="USD" }) {
   const [sortKey,    setSortKey]    = useState("date");
   const [sortDir,    setSortDir]    = useState("desc");
   const [colWidths,  setColWidths]  = useState(() => Object.fromEntries(TX_COLS_DEFAULT.map(c=>[c.key,c.width])));
@@ -2203,7 +2212,13 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     ...extra,
   });
 
-  const fmtUSD = (v) => v==null ? <span style={{color:THEME.text3}}>—</span> : `$${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const rate   = rates[currency] ?? 1;
+  const cSym   = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
+  const fmtUSD = (v, dec=2) => v==null
+    ? <span style={{color:THEME.text3}}>—</span>
+    : `${cSym}${Math.abs(v*rate).toLocaleString("en-US",{minimumFractionDigits:dec,maximumFractionDigits:dec})}`;
+  // G/L label adapts to currency
+  const glLabel = currency !== "USD" ? `G/L ${cSym}` : "G/L $";
 
   return (
     <>
@@ -2390,8 +2405,19 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       : <span style={{color:THEME.text3}}>—</span>
                     }
                   </td>
-                  {/* Div. Yield */}
+                  {/* P/E Ratio */}
                   <td style={tdStyle(TX_COLS_DEFAULT[13])}>
+                    {(() => {
+                      const q = quotes[tx.symbol];
+                      const pe = q?.trailingPE ?? q?.forwardPE ?? null;
+                      return pe != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11,
+                            color:THEME.accent }}>{pe.toFixed(1)}</span>
+                        : <span style={{color:THEME.text3}}>—</span>;
+                    })()}
+                  </td>
+                  {/* Div. Yield */}
+                  <td style={tdStyle(TX_COLS_DEFAULT[14])}>
                     {tx._div === undefined
                       ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
                       : tx._div?.yieldPct != null
@@ -2400,7 +2426,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                         : <span style={{color:THEME.text3}}>—</span>}
                   </td>
                   {/* Ex-Date */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[14])}>
+                  <td style={tdStyle(TX_COLS_DEFAULT[15])}>
                     {tx._div === undefined ? (
                       <span style={{color:THEME.text3,fontSize:10}}>…</span>
                     ) : tx._div?.exDate ? (
@@ -2417,7 +2443,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     ) : <span style={{color:THEME.text3}}>—</span>}
                   </td>
                   {/* Links */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[15])}>
+                  <td style={tdStyle(TX_COLS_DEFAULT[16])}>
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                       <a href={`https://finance.yahoo.com/quote/${tx.symbol}`}
                         target="_blank" rel="noopener noreferrer"
@@ -4860,6 +4886,8 @@ export default function App() {
       perf:   getPosPerf({ ...n, symbol:n.symbol }),
       glPerf: n.costUSD > 0 ? (n.gainLossUSD/n.costUSD)*100 : null,
       weight: totalUSD > 0 ? (n.valueUSD/totalUSD)*100 : 0,
+      trailingPE: quotes[n.symbol]?.trailingPE ?? null,
+      forwardPE:  quotes[n.symbol]?.forwardPE  ?? null,
     }));
   }, [treeNodesByPortfolio, activePortfolioIds, getPosPerf]);
 
@@ -5084,8 +5112,8 @@ export default function App() {
           onRecalcFX={handleRecalcFX}
           onImportExport={() => setShowImportExport(true)}
           onEtfExplorer={() => setEtfMode(true)}
-        displayMode={displayMode}
-        onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
+          displayMode={displayMode}
+          onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
         />
 
         {/* ── MAIN CONTENT ───────────────────────────────────────────── */}
@@ -5185,7 +5213,8 @@ export default function App() {
                   onDelete={handleDeleteTx}
                   onRefreshSymbol={sym => fetchQuotes([sym], true)}
                   onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}
-                  period={period} divCache={portfolioDivCache}/>
+                  period={period} divCache={portfolioDivCache}
+                  currency={currency}/>
               </div>
             )}
             {activeTab === "transactions" && viewMode === "split" && (
@@ -5197,7 +5226,8 @@ export default function App() {
                   onDelete={handleDeleteTx}
                   onRefreshSymbol={sym => fetchQuotes([sym], true)}
                   onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}
-                  period={period} divCache={portfolioDivCache}/>
+                  period={period} divCache={portfolioDivCache}
+                  currency={currency}/>
               </div>
             )}
             {activeTab === "correlation" && (
@@ -5215,6 +5245,7 @@ export default function App() {
                   allNodes={allNodes}
                   quotes={quotes}
                   rates={rates}
+                  currency={currency}
                   divCache={portfolioDivCache}/>
               </div>
             )}

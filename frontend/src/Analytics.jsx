@@ -411,8 +411,10 @@ const CH_EFFECTIVE_DIV_TAX  = 0.00; // Fully refundable if declared in tax retur
 const CH_CG_TAX             = 0.00; // No capital gains tax for private investors
 const CH_WEALTH_TAX_RATE    = 0.002; // ~0.2% p.a. on assets (Vermögenssteuer, canton average)
 
-export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
-  const rate = rates["USD"] ?? 1;
+export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD" }) {
+  const rate = rates[currency] ?? 1;
+  const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
+  const fmtC = (v, dec=0) => v==null?"—":`${cSym}${Math.abs(v*rate).toLocaleString("en-US",{minimumFractionDigits:dec,maximumFractionDigits:dec})}`;
 
   // Derive current portfolio value
   const totalValueUSD = useMemo(() =>
@@ -652,7 +654,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
               border:`1px solid ${C.border}` }}>
               <div style={{ fontSize:10, color:C.text3 }}>Starting Value</div>
               <div style={{ fontFamily:C.mono, fontSize:14, fontWeight:700, color:C.text1, marginTop:2 }}>
-                {fmt$(totalValueUSD)}
+                {fmtC(totalValueUSD)}
               </div>
               <div style={{ fontSize:10, color:C.text3, marginTop:8 }}>Est. Annual Return (μ)</div>
               <div style={{ fontFamily:C.mono, fontSize:12, color:C.accent, marginTop:1 }}>
@@ -791,7 +793,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
                         <div style={{ fontSize:9, color, fontWeight:700, textTransform:"uppercase",
                           letterSpacing:"0.06em" }}>{label} P{p}</div>
                         <div style={{ fontFamily:C.mono, fontSize:13, fontWeight:700,
-                          color:C.text1, marginTop:3 }}>{fmt$(v)}</div>
+                          color:C.text1, marginTop:3 }}>{fmtC(v)}</div>
                         <div style={{ fontSize:9, color, marginTop:2 }}>×{mult.toFixed(1)}</div>
                       </div>
                     );

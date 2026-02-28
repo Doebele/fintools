@@ -682,6 +682,10 @@ app.post('/api/quotes/batch', async (req, res) => {
       name: meta.shortName ?? meta.longName ?? sym,
       longName: meta.longName ?? null,
       currency: meta.currency ?? 'USD',
+      trailingPE:  meta.trailingPE   ?? null,
+      forwardPE:   meta.forwardPE    ?? null,
+      marketCap:   meta.marketCap    ?? null,
+      exchange:    meta.exchangeName ?? meta.fullExchangeName ?? null,
       fetchedAt: Date.now(), source: 'yahoo',
     };
   };
