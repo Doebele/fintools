@@ -1263,13 +1263,14 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         );
       })()}
 
-      <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
-        {/* ── Left panel: target editor ── */}
-        <div style={{ width:320, flexShrink:0, overflowY:"auto",
-          borderRight:`1px solid ${C.border2}`, padding:"0 0 16px" }}>
+      <div style={{ display:"flex", flex:1, overflow:"hidden", flexDirection:"column" }}>
 
-          {/* Settings */}
-          <div style={{ padding:"8px 16px 12px", borderBottom:`1px solid ${C.border2}` }}>
+        {/* ── Fixed header: Settings (left) + Distribution (right) ── */}
+        <div style={{ display:"flex", borderBottom:`1px solid ${C.border2}`, flexShrink:0 }}>
+
+          {/* Left: Settings */}
+          <div style={{ width:340, flexShrink:0, padding:"8px 16px 12px",
+            borderRight:`1px solid ${C.border2}` }}>
             <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
               letterSpacing:"0.08em", marginBottom:8 }}>Settings</div>
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:cashAdd>0?4:8 }}>
@@ -1278,75 +1279,77 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                 onChange={e=>{ setCashAdd(+e.target.value); if(+e.target.value>0) setCashExpanded(true); }}
                 style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
                   borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, width:90, outline:"none" }}/>
-              <span style={{ fontSize:11, color:C.text3 }}>{currency}</span>
-              {cashAdd > 0 && (
-                <button onClick={()=>setCashExpanded(v=>!v)} style={{
-                  marginLeft:"auto", fontSize:9, padding:"2px 7px", borderRadius:5,
-                  border:`1px solid ${C.border}`, background:"transparent",
-                  color:C.text3, cursor:"pointer", fontFamily:"inherit",
-                }}>{cashExpanded ? "▲ hide" : "▼ detail"}</button>
-              )}
+                  fontFamily:C.mono, width:80, outline:"none" }}/>
+              <select value={currency} onChange={e => {}}
+                style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
+                  borderRadius:6, color:C.text1, padding:"4px 6px", fontSize:11,
+                  fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
+                {["USD","EUR","CHF","GBP"].map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-
-            {/* ── Cash simulation breakdown ── */}
-            {cashAdd > 0 && cashExpanded && (() => {
-              const buyActions = actions.filter(a => a.action==="BUY" && a.tgtPct>0 && a.diffUSD>0);
+            {(() => {
+              // Cash simulation breakdown
+              if (cashAdd <= 0) return null;
+              const buyActions = actions.filter(a => a.action==="BUY" && a.tgtPct>0);
               const totalBuy   = buyActions.reduce((s,a)=>s+a.diffUSD,0);
+              if (!cashAdd || !totalBuy) return null;
               const cashRate   = rates[currency] ?? 1;
               return (
-                <div style={{ marginBottom:8, padding:"8px 10px", borderRadius:8,
-                  background:"rgba(74,222,128,0.05)", border:"1px solid rgba(74,222,128,0.15)" }}>
-                  <div style={{ fontSize:9, color:C.green, fontWeight:700, textTransform:"uppercase",
-                    letterSpacing:"0.08em", marginBottom:6 }}>
-                    Cash Allocation — {fmt$(cashAdd)} {currency}
+                <div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                    <span style={{ fontSize:10, color:C.green, fontWeight:700 }}>
+                      Cash Allocation — {fmt$(cashAdd)} {currency}
+                    </span>
+                    <button onClick={()=>setCashExpanded(v=>!v)}
+                      style={{ fontSize:9, color:C.text3, background:"none", border:"none",
+                        cursor:"pointer", padding:"2px 4px" }}>
+                      {cashExpanded?"▲ hide":"▼ detail"}
+                    </button>
                   </div>
-                  {buyActions.length === 0 ? (
-                    <div style={{ fontSize:10, color:C.text3 }}>
-                      No BUY orders — set target weights first.
-                    </div>
-                  ) : buyActions.map(a => {
-                    // Proportional cash allocation within all BUY positions
-                    const cashShare = totalBuy > 0 ? (a.diffUSD / totalBuy) * cashAdd / cashRate : 0;
-                    const barW = totalBuy > 0 ? (a.diffUSD / totalBuy) * 100 : 0;
-                    const qRate = rates[currency] ?? 1;
-                    const sharesEst = a.priceUSD && a.priceUSD > 0
-                      ? Math.floor((cashShare / (a.priceUSD * qRate)) * 10) / 10 : null;
-                    return (
-                      <div key={a.symbol} style={{ marginBottom:5 }}>
-                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                          marginBottom:2 }}>
-                          <span style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
-                            color:C.accent }}>{a.symbol}</span>
-                          <div style={{ textAlign:"right" }}>
-                            <span style={{ fontFamily:C.mono, fontSize:10, color:C.green, fontWeight:700 }}>
-                              {fmt$(cashShare, 0)}
-                            </span>
-                            {sharesEst && (
-                              <span style={{ fontSize:9, color:C.text3, marginLeft:5 }}>
-                                ≈ {sharesEst} sh.
-                              </span>
-                            )}
+                  {cashExpanded && (
+                    <div style={{ borderRadius:8, padding:"6px 10px",
+                      background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.15)" }}>
+                      {buyActions.map(a => {
+                        const cashShare  = (a.diffUSD / totalBuy) * cashAdd / cashRate;
+                        const priceUSD   = quotes[a.symbol]?.price ?? 0;
+                        const sharesEst  = priceUSD>0 ? Math.floor((cashShare/(priceUSD*cashRate))*10)/10 : null;
+                        const barW       = (a.diffUSD / totalBuy) * 100;
+                        return (
+                          <div key={a.symbol} style={{ marginBottom:6 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between",
+                              alignItems:"center", marginBottom:2 }}>
+                              <span style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
+                                color:C.accent }}>{a.symbol}</span>
+                              <div style={{ textAlign:"right" }}>
+                                <span style={{ fontFamily:C.mono, fontSize:10, color:C.green, fontWeight:700 }}>
+                                  {fmt$(cashShare, 0)}
+                                </span>
+                                {sharesEst && (
+                                  <span style={{ fontSize:9, color:C.text3, marginLeft:5 }}>
+                                    ≈ {sharesEst} sh.
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ height:3, borderRadius:2,
+                              background:"rgba(255,255,255,0.07)", overflow:"hidden" }}>
+                              <div style={{ height:"100%", width:`${barW}%`,
+                                background:C.green, borderRadius:2, opacity:0.7,
+                                transition:"width 0.3s" }}/>
+                            </div>
                           </div>
+                        );
+                      })}
+                      {buyActions.length > 0 && (
+                        <div style={{ marginTop:4, paddingTop:5,
+                          borderTop:"1px solid rgba(74,222,128,0.15)",
+                          display:"flex", justifyContent:"space-between", fontSize:9 }}>
+                          <span style={{ color:C.text3 }}>Total deployed</span>
+                          <span style={{ fontFamily:C.mono, fontWeight:700, color:C.green }}>
+                            {fmt$(cashAdd)} {currency}
+                          </span>
                         </div>
-                        {/* Mini allocation bar */}
-                        <div style={{ height:3, borderRadius:2,
-                          background:"rgba(255,255,255,0.07)", overflow:"hidden" }}>
-                          <div style={{ height:"100%", width:`${barW}%`,
-                            background:C.green, borderRadius:2, opacity:0.7,
-                            transition:"width 0.3s" }}/>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {buyActions.length > 0 && (
-                    <div style={{ marginTop:4, paddingTop:5,
-                      borderTop:"1px solid rgba(74,222,128,0.15)",
-                      display:"flex", justifyContent:"space-between", fontSize:9 }}>
-                      <span style={{ color:C.text3 }}>Total deployed</span>
-                      <span style={{ fontFamily:C.mono, fontWeight:700, color:C.green }}>
-                        {fmt$(cashAdd)} {currency}
-                      </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1380,23 +1383,115 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             </div>
           </div>
 
-          {/* Position targets */}
-          <div style={{ padding:"8px 0" }}>
-            <div style={{ padding:"4px 16px 6px", fontSize:10, color:C.text3, fontWeight:700,
-              textTransform:"uppercase", letterSpacing:"0.08em" }}>Position Targets</div>
-            {positions.map(pos => {
-              const t   = targets[pos.symbol] || {};
-              const cur = totalValueUSD>0 ? (pos.valueUSD/totalValueUSD*100).toFixed(1) : "0";
-              const sector = t.sectorOverride || pos.autoSector;
-              const sc   = sectorColorMap[sector] || C.accent;
-              return (
-                <div key={pos.symbol} style={{ padding:"6px 16px",
-                  borderBottom:`1px solid ${C.border2}` }}>
+          {/* Right: Distribution donuts */}
+          <div style={{ flex:1, padding:"12px 20px", overflowX:"auto" }}>
+            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
+              letterSpacing:"0.08em", marginBottom:12 }}>Portfolio Distribution</div>
+            <div style={{ display:"flex", gap:24, flexWrap:"wrap" }}>
+              {sectorDonut.length > 0 && (
+                <DonutChart data={sectorDonut} size={100} title="Sector"/>
+              )}
+              {regionDonut.length > 0 && (
+                <DonutChart data={regionDonut} size={100} title="Region"/>
+              )}
+              {ccyDonut.length > 0 && (
+                <DonutChart data={ccyDonut} size={100} title="Currency"/>
+              )}
+              {/* Sector allocation list — compact, next to donuts */}
+              <div style={{ flex:1, minWidth:160 }}>
+                <div style={{ fontSize:9, color:C.text3, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:8 }}>Sector Allocation</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                  {sectorGroups.map(sg => {
+                    const drift   = sg.tgtPct > 0 ? sg.curPct - sg.tgtPct : 0;
+                    const isOver  = sg.tgtPct > 0 && Math.abs(drift) > threshold;
+                    const sc      = sectorColorMap[sg.sector] || C.accent;
+                    const driftColor = drift > 0 ? C.red : C.green;
+                    return (
+                      <div key={sg.sector} style={{ padding:"5px 8px", borderRadius:7,
+                        background:C.surface2,
+                        border:`1px solid ${isOver?"rgba(248,113,113,0.3)":C.border}` }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <div style={{ width:6, height:6, borderRadius:2, background:sc, flexShrink:0 }}/>
+                          <div style={{ fontSize:9, color:C.text2, flex:1 }}>{sg.sector}</div>
+                          <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.text1 }}>
+                            {sg.curPct.toFixed(1)}%
+                          </span>
+                          {sg.tgtPct > 0 && (
+                            <span style={{ fontSize:9, color:isOver?driftColor:C.text3 }}>
+                              {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+                        {sg.tgtPct > 0 && (
+                          <DriftBar curPct={sg.curPct} tgtPct={sg.tgtPct}
+                            threshold={threshold} aColor={isOver?driftColor:C.accent}/>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Unified scrollable rows: one row per position (slider LEFT + bar+action RIGHT) ── */}
+        <div style={{ flex:1, overflowY:"auto" }}>
+          {/* Column headers */}
+          <div style={{ display:"flex", alignItems:"center",
+            padding:"6px 16px", borderBottom:`1px solid ${C.border2}`,
+            background:C.surface, position:"sticky", top:0, zIndex:5 }}>
+            <div style={{ width:340, flexShrink:0, fontSize:9, color:C.text3, fontWeight:700,
+              textTransform:"uppercase", letterSpacing:"0.08em" }}>
+              Position Targets
+            </div>
+            <div style={{ flex:1, fontSize:9, color:C.text3, fontWeight:700,
+              textTransform:"uppercase", letterSpacing:"0.08em" }}>
+              {flagged.length
+                ? `${flagged.length} position${flagged.length>1?"s":""} outside threshold (>${threshold}% drift)`
+                : "All positions within drift threshold ✓"}
+            </div>
+          </div>
+
+          {/* Unified rows */}
+          {positions.map(pos => {
+            const t   = targets[pos.symbol] || {};
+            const cur = totalValueUSD>0 ? (pos.valueUSD/totalValueUSD*100).toFixed(1) : "0";
+            const sector = t.sectorOverride || pos.autoSector;
+            const sc  = sectorColorMap[sector] || C.accent;
+
+            // Find matching action
+            const a = actions.find(x => x.symbol === pos.symbol);
+            const isFlag = a && Math.abs(a.driftPct) > threshold && a.action !== "OK";
+            const aColor = a?.action==="BUY" ? C.green : a?.action==="SELL" ? C.red : C.text3;
+
+            // Cash share for BUY positions
+            const buyActions = actions.filter(x => x.action==="BUY" && x.tgtPct>0);
+            const totalBuy   = buyActions.reduce((s,x)=>s+x.diffUSD,0);
+            const cashRate   = rates[currency] ?? 1;
+            const cashShare  = (a?.action==="BUY" && cashAdd>0 && totalBuy>0)
+              ? (a.diffUSD / totalBuy) * cashAdd / cashRate
+              : null;
+            const priceUSD   = quotes[pos.symbol]?.price ?? 0;
+            const sharesEst  = a && a.priceUSD>0 && a.diffUSD>0
+              ? Math.floor((Math.abs(a.diffUSD)/(a.priceUSD))*10)/10
+              : null;
+
+            return (
+              <div key={pos.symbol} style={{
+                display:"flex", alignItems:"stretch",
+                borderBottom:`1px solid ${C.border2}`,
+                background: isFlag ? `${aColor}04` : "transparent",
+                transition:"background 0.15s",
+              }}>
+                {/* LEFT: slider + target input */}
+                <div style={{ width:340, flexShrink:0, padding:"8px 16px",
+                  borderRight:`1px solid ${C.border2}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:5, width:90, flexShrink:0 }}>
                       <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
                         color:C.accent }}>{pos.symbol}</span>
-                      {/* Auto-sector badge */}
                       <span style={{ fontSize:7, padding:"1px 4px", borderRadius:4,
                         background:`${sc}18`, color:sc, border:`1px solid ${sc}30`,
                         fontWeight:700, whiteSpace:"nowrap", overflow:"hidden",
@@ -1427,133 +1522,60 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                     </span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* ── Right panel ── */}
-        <div style={{ flex:1, overflowY:"auto", padding:"0 0 16px" }}>
+                {/* RIGHT: drift bar + value + action */}
+                <div style={{ flex:1, padding:"8px 16px",
+                  display:"flex", alignItems:"center", gap:10 }}>
 
-          {/* Distribution donuts: Sector | Region | Currency */}
-          <div style={{ padding:"12px 20px", borderBottom:`1px solid ${C.border2}` }}>
-            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
-              letterSpacing:"0.08em", marginBottom:12 }}>Portfolio Distribution</div>
-            <div style={{ display:"flex", gap:24, flexWrap:"wrap" }}>
-              {sectorDonut.length > 0 && (
-                <DonutChart data={sectorDonut} size={100} title="Sector"/>
-              )}
-              {regionDonut.length > 0 && (
-                <DonutChart data={regionDonut} size={100} title="Region"/>
-              )}
-              {ccyDonut.length > 0 && (
-                <DonutChart data={ccyDonut} size={100} title="Currency"/>
-              )}
+                  {/* Symbol + sector (mirrored for right side orientation) */}
+                  <div style={{ width:90, flexShrink:0 }}>
+                    <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent }}>
+                      {a?.symbol || pos.symbol}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:2 }}>
+                      <div style={{ width:5, height:5, borderRadius:1, background:sc, flexShrink:0 }}/>
+                      <span style={{ fontSize:9, color:C.text3 }}>{sector}</span>
+                    </div>
+                  </div>
 
-              {/* Sector allocation list — compact, next to donuts */}
-              <div style={{ flex:1, minWidth:160 }}>
-                <div style={{ fontSize:9, color:C.text3, fontWeight:700, textTransform:"uppercase",
-                  letterSpacing:"0.08em", marginBottom:8 }}>Sector Allocation</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                  {sectorGroups.map(sg => {
-                    const drift   = sg.tgtPct > 0 ? sg.curPct - sg.tgtPct : 0;
-                    const isOver  = sg.tgtPct > 0 && Math.abs(drift) > threshold;
-                    const sc      = sectorColorMap[sg.sector] || C.accent;
-                    const driftColor = drift > 0 ? C.red : C.green;
-                    return (
-                      <div key={sg.sector} style={{ padding:"5px 8px", borderRadius:7,
-                        background:C.surface2,
-                        border:`1px solid ${isOver?"rgba(248,113,113,0.3)":C.border}` }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                          <div style={{ width:6, height:6, borderRadius:2, background:sc, flexShrink:0 }}/>
-                          <div style={{ fontSize:9, color:C.text2, flex:1 }}>{sg.sector}</div>
-                          <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.text1 }}>
-                            {sg.curPct.toFixed(1)}%
-                          </span>
-                          {sg.tgtPct > 0 && (
-                            <span style={{ fontSize:9, color:isOver?driftColor:C.text3 }}>
-                              {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
-                            </span>
+                  {/* Drift bar */}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    {a ? (
+                      <>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:1 }}>
+                          <span style={{ fontSize:9, color:C.text3, width:26, textAlign:"right",
+                            fontFamily:C.mono }}>{a.curPct.toFixed(1)}%</span>
+                          <div style={{ flex:1 }}>
+                            <DriftBar curPct={a.curPct} tgtPct={a.tgtPct}
+                              threshold={threshold} aColor={isFlag?aColor:C.accent}/>
+                          </div>
+                          {a.tgtPct > 0 && (
+                            <span style={{ fontSize:9, color:C.text3, width:26,
+                              fontFamily:C.mono }}>{a.tgtPct.toFixed(1)}%</span>
                           )}
                         </div>
-                        {/* Drift bar for sector */}
-                        {sg.tgtPct > 0 && (
-                          <DriftBar curPct={sg.curPct} tgtPct={sg.tgtPct}
-                            threshold={threshold} aColor={isOver?driftColor:C.accent}/>
+                        {isFlag && (
+                          <div style={{ fontSize:9, color:aColor, marginLeft:32, opacity:0.85 }}>
+                            {a.driftPct > 0 ? "+" : ""}{a.driftPct.toFixed(1)}% drift from target
+                          </div>
                         )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
+                      </>
+                    ) : (
+                      <span style={{ fontSize:9, color:C.text3 }}>—</span>
+                    )}
+                  </div>
 
-          {/* Action table */}
-          <div style={{ padding:"10px 20px 0" }}>
-            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
-              letterSpacing:"0.08em", marginBottom:8 }}>
-              {flagged.length
-                ? `${flagged.length} position${flagged.length>1?"s":""} outside threshold (>${threshold}% drift)`
-                : "All positions within drift threshold ✓"}
-            </div>
-
-            {actions
-              .filter(a => mode==="both" || a.action===mode.toUpperCase() || a.action==="OK")
-              .map(a => {
-                const isFlag  = Math.abs(a.driftPct) > threshold && a.action !== "OK";
-                const aColor  = a.action==="BUY" ? C.green : a.action==="SELL" ? C.red : C.text3;
-                const sc      = sectorColorMap[a.sector] || C.accent;
-                return (
-                  <div key={a.symbol} style={{
-                    display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
-                    borderRadius:9, marginBottom:5,
-                    background: isFlag ? `${aColor}06` : "transparent",
-                    border:`1px solid ${isFlag ? `${aColor}22` : C.border2}`,
-                    transition:"background 0.15s",
-                  }}>
-                    {/* Symbol + sector */}
-                    <div style={{ width:90, flexShrink:0 }}>
-                      <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent }}>
-                        {a.symbol}
-                      </div>
-                      <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:2 }}>
-                        <div style={{ width:5, height:5, borderRadius:1, background:sc, flexShrink:0 }}/>
-                        <span style={{ fontSize:9, color:C.text3 }}>{a.sector}</span>
-                      </div>
+                  {/* Value */}
+                  <div style={{ textAlign:"right", width:76, flexShrink:0 }}>
+                    <div style={{ fontFamily:C.mono, fontSize:11, color:C.text2 }}>
+                      {a ? fmt$(a.valueUSD * (rates[currency]??1)) : "—"}
                     </div>
+                  </div>
 
-                    {/* Drift bar — only highlights the drift zone, not the full bar */}
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:1 }}>
-                        <span style={{ fontSize:9, color:C.text3, width:26, textAlign:"right",
-                          fontFamily:C.mono }}>{a.curPct.toFixed(1)}%</span>
-                        <div style={{ flex:1 }}>
-                          <DriftBar curPct={a.curPct} tgtPct={a.tgtPct}
-                            threshold={threshold} aColor={isFlag?aColor:C.accent}/>
-                        </div>
-                        {a.tgtPct > 0 && (
-                          <span style={{ fontSize:9, color:C.text3, width:26,
-                            fontFamily:C.mono }}>{a.tgtPct.toFixed(1)}%</span>
-                        )}
-                      </div>
-                      {isFlag && (
-                        <div style={{ fontSize:9, color:aColor, marginLeft:32, opacity:0.85 }}>
-                          {a.driftPct > 0 ? "+" : ""}{a.driftPct.toFixed(1)}% drift from target
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Value */}
-                    <div style={{ textAlign:"right", width:76, flexShrink:0 }}>
-                      <div style={{ fontFamily:C.mono, fontSize:11, color:C.text2 }}>
-                        {fmt$(a.valueUSD * (rates[currency]??1))}
-                      </div>
-                    </div>
-
-                    {/* Action chip */}
-                    {a.tgtPct > 0 && a.action !== "OK" && (
-                      <div style={{ textAlign:"right", flexShrink:0, minWidth:105 }}>
+                  {/* Action chip + shares + cash share */}
+                  <div style={{ textAlign:"right", flexShrink:0, minWidth:140 }}>
+                    {a && a.tgtPct > 0 && a.action !== "OK" ? (
+                      <>
                         <div style={{ padding:"3px 8px", borderRadius:6, display:"inline-flex",
                           alignItems:"center", gap:5,
                           background:`${aColor}15`, border:`1px solid ${aColor}30` }}>
@@ -1563,27 +1585,32 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                             {fmt$(Math.abs(a.diffUSD) * (rates[currency]??1))}
                           </span>
                         </div>
-                        {a.shares && a.priceUSD && (
+                        {sharesEst && a.priceUSD && (
                           <div style={{ fontSize:9, color:C.text3, marginTop:2 }}>
-                            ≈ {a.shares} shares @ {fmt$(a.priceUSD*(rates[currency]??1),2)}
+                            ≈ {sharesEst} sh. @ {fmt$(a.priceUSD*(rates[currency]??1),2)}
                           </div>
                         )}
-                      </div>
-                    )}
-                    {a.tgtPct > 0 && a.action === "OK" && (
-                      <div style={{ width:105, textAlign:"right", flexShrink:0 }}>
-                        <span style={{ fontSize:10, color:C.green }}>✓ On target</span>
-                      </div>
-                    )}
-                    {a.tgtPct === 0 && (
-                      <div style={{ width:105, textAlign:"right", flexShrink:0 }}>
-                        <span style={{ fontSize:9, color:C.text3 }}>No target set</span>
-                      </div>
+                        {cashShare != null && cashShare > 0 && (
+                          <div style={{ fontSize:9, color:C.green, marginTop:2, fontWeight:600 }}>
+                            + {fmt$(cashShare,0)} cash
+                            {priceUSD>0 && cashShare>0 && (
+                              <span style={{ color:C.text3, fontWeight:400 }}>
+                                {" "}≈ {Math.floor((cashShare/priceUSD)*10)/10} sh.
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : a && a.tgtPct > 0 ? (
+                      <span style={{ fontSize:10, color:C.green }}>✓ On target</span>
+                    ) : (
+                      <span style={{ fontSize:9, color:C.text3 }}>No target set</span>
                     )}
                   </div>
-                );
-              })}
-          </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

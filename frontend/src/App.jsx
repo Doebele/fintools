@@ -1013,6 +1013,7 @@ function Rail({
   return (
     <div style={{
       width:w, flexShrink:0,
+      height:"100vh",
       background:THEME.surface,
       borderRight:`1px solid ${THEME.border}`,
       display:"flex", flexDirection:"column",
@@ -1058,40 +1059,6 @@ function Rail({
 
       {/* Scrollable body */}
       <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", padding:"8px 6px" }}>
-
-        {/* Views */}
-        <RailSection open={open} label="Views"/>
-        <RailBtn open={open} icon={<LayoutDashboard size={16}/>} label="TreeMap"
-          active={activeTab==="holdings"}
-          onClick={() => onTab("holdings")}/>
-        <RailBtn open={open} icon={<BarChart2 size={16}/>} label="Bar Chart"
-          active={activeTab==="chart"}
-          onClick={() => onTab("chart")}/>
-        <RailBtn open={open} icon={<List size={16}/>} label="Holdings"
-          active={activeTab==="transactions"}
-          onClick={() => onTab("transactions")}/>
-        <RailBtn open={open} icon={<span style={{fontSize:14}}>📅</span>} label="Dividends"
-          active={activeTab==="calendar"}
-          onClick={() => onTab("calendar")}/>
-
-        <Divider/>
-
-        {/* Analytics */}
-        <RailSection open={open} label="Analytics"/>
-        <RailBtn open={open} icon={<GitFork size={16}/>} label="Correlation"
-          active={activeTab==="correlation"}
-          onClick={() => onTab("correlation")}/>
-        <RailBtn open={open} icon={<Sigma size={16}/>} label="Monte Carlo"
-          active={activeTab==="montecarlo"}
-          onClick={() => onTab("montecarlo")}/>
-        <RailBtn open={open} icon={<Target size={16}/>} label="Rebalance"
-          active={activeTab==="rebalance"}
-          onClick={() => onTab("rebalance")}/>
-        <RailBtn open={open} icon={<CalendarDays size={16}/>} label="Dividends"
-          active={activeTab==="calendar"}
-          onClick={() => onTab("calendar")}/>
-
-        <Divider/>
 
         {/* Portfolios */}
         <RailSection open={open} label="Portfolios"/>
@@ -5119,6 +5086,75 @@ export default function App() {
         {/* ── MAIN CONTENT ───────────────────────────────────────────── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
 
+          {/* ── Top tab bar — Views + Analytics (same style as ETF view) ── */}
+          <div style={{ height:52, background:THEME.surface,
+            borderBottom:`1px solid ${THEME.border}`,
+            display:"flex", alignItems:"center", padding:"0 16px",
+            gap:2, flexShrink:0, zIndex:5 }}>
+
+            {/* View tabs */}
+            {[
+              { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"   },
+              { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart" },
+              { key:"transactions", icon:<List size={14}/>,            label:"Holdings"  },
+              { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends" },
+            ].map(t => (
+              <button key={t.key} onClick={() => handleTab(t.key)}
+                style={{
+                  display:"flex", alignItems:"center", gap:7,
+                  padding:"7px 14px", border:"none", cursor:"pointer",
+                  background: activeTab===t.key ? "rgba(59,130,246,0.15)" : "transparent",
+                  color: activeTab===t.key ? THEME.accent : THEME.text3,
+                  borderRadius:9, fontSize:12,
+                  fontWeight: activeTab===t.key ? 700 : 500,
+                  fontFamily:"inherit", transition:"all 0.12s" }}>
+                {t.icon}{t.label}
+              </button>
+            ))}
+
+            {/* Separator */}
+            <div style={{ width:1, height:20, background:THEME.border, margin:"0 6px", flexShrink:0 }}/>
+
+            {/* Analytics tabs */}
+            {[
+              { key:"correlation", icon:<GitFork size={14}/>, label:"Correlation" },
+              { key:"montecarlo",  icon:<Sigma size={14}/>,   label:"Monte Carlo" },
+              { key:"rebalance",   icon:<Target size={14}/>,  label:"Rebalance"   },
+            ].map(t => (
+              <button key={t.key} onClick={() => handleTab(t.key)}
+                style={{
+                  display:"flex", alignItems:"center", gap:7,
+                  padding:"7px 14px", border:"none", cursor:"pointer",
+                  background: activeTab===t.key ? "rgba(59,130,246,0.15)" : "transparent",
+                  color: activeTab===t.key ? THEME.accent : THEME.text3,
+                  borderRadius:9, fontSize:12,
+                  fontWeight: activeTab===t.key ? 700 : 500,
+                  fontFamily:"inherit", transition:"all 0.12s" }}>
+                {t.icon}{t.label}
+              </button>
+            ))}
+
+            {/* Spacer + API status */}
+            <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>
+              {apiStatus && (
+                <div style={{ display:"flex", alignItems:"center", gap:5,
+                  padding:"2px 8px", borderRadius:12, fontSize:9, fontWeight:700,
+                  border:"1px solid",
+                  ...(apiStatus==="ok"
+                    ? { background:"rgba(74,222,128,0.1)", borderColor:"rgba(74,222,128,0.25)", color:THEME.green }
+                    : apiStatus==="testing"
+                      ? { background:"rgba(59,130,246,0.12)", borderColor:"rgba(59,130,246,0.3)", color:THEME.accent }
+                      : { background:"rgba(248,113,113,0.1)", borderColor:"rgba(248,113,113,0.25)", color:THEME.red })
+                }}>
+                  <span style={{ fontSize:6 }}>●</span>
+                  {apiStatus==="testing" ? "Fetching…"
+                    : apiStatus==="ok" ? (dataSource==="alphavantage" ? "AV ✓" : "Yahoo ✓")
+                    : "Error"}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Period toolbar — hide for analytics tabs */}
           {!["correlation","montecarlo","rebalance","calendar"].includes(activeTab) && (
             <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView}/>
@@ -5145,24 +5181,6 @@ export default function App() {
           )}
 
           {/* API status bar — inline in flow, right-aligned in the period toolbar row */}
-          {apiStatus && (
-            <div style={{ position:"absolute", top:9, right:18, zIndex:200,
-              display:"flex", alignItems:"center", gap:6,
-              padding:"3px 10px", borderRadius:20, fontSize:10, fontWeight:700,
-              border:"1px solid", pointerEvents:"none",
-              ...(apiStatus==="ok"
-                ? { background:"rgba(74,222,128,0.1)", borderColor:"rgba(74,222,128,0.25)", color:THEME.green }
-                : apiStatus==="testing"
-                  ? { background:"rgba(59,130,246,0.12)", borderColor:"rgba(59,130,246,0.3)", color:THEME.accent }
-                  : { background:"rgba(248,113,113,0.1)", borderColor:"rgba(248,113,113,0.25)", color:THEME.red })
-            }}>
-              <span style={{ fontSize:7 }}>●</span>
-              {apiStatus==="testing" ? "Fetching…"
-                : apiStatus==="ok"   ? (dataSource==="alphavantage" ? "Alpha Vantage ✓" : "Yahoo Finance ✓")
-                : "Fetch Error"}
-            </div>
-          )}
-
           {/* CONTENT AREA */}
           <div style={{ flex:1, overflow:"hidden", minHeight:0 }}>
 
