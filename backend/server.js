@@ -27,8 +27,22 @@ const ExcelJS     = require('exceljs');
 const app           = express();
 const PORT          = process.env.PORT          || 3001;
 const DB_PATH       = process.env.DATABASE_PATH || path.join(__dirname, 'data', 'portfolio.db');
-const QUOTE_TTL_MIN = parseInt(process.env.QUOTE_TTL_MIN || '5',  10);
-const FX_TTL_MIN    = parseInt(process.env.FX_TTL_MIN    || '60', 10);
+// QUOTE_TTL_MIN kept only as override; smart TTL is used by default
+const QUOTE_TTL_MIN_OVERRIDE = process.env.QUOTE_TTL_MIN ? parseInt(process.env.QUOTE_TTL_MIN, 10) : null;
+const FX_TTL_MIN             = parseInt(process.env.FX_TTL_MIN || '60', 10);
+
+// ── Smart TTL: 60 min during market hours (Mon–Fri 08:00–22:00 local server time)
+//              24h outside market hours (nights, weekends)
+//              Force-refresh always bypasses this
+function getQuoteTtlMin() {
+  if (QUOTE_TTL_MIN_OVERRIDE !== null) return QUOTE_TTL_MIN_OVERRIDE;
+  const now  = new Date();
+  const day  = now.getDay();          // 0=Sun, 6=Sat
+  const hour = now.getHours() + now.getMinutes() / 60;
+  const isWeekday     = day >= 1 && day <= 5;
+  const isMarketHours = hour >= 8 && hour < 22;
+  return (isWeekday && isMarketHours) ? 60 : 1440; // 1h vs 24h
+}
 const LOG_LEVEL     = process.env.LOG_LEVEL || 'info';
 const BCRYPT_ROUNDS = 10;
 
@@ -101,6 +115,17 @@ db.exec(`
     source     TEXT    DEFAULT 'yahoo',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Parsed quote store: lightweight row per symbol, no raw JSON blob needed for display
+  CREATE TABLE IF NOT EXISTS parsed_quotes (
+    symbol      TEXT    PRIMARY KEY,
+    data        TEXT    NOT NULL,     -- JSON: price, changePct, refs, name, pe, etc.
+    source      TEXT    DEFAULT 'yahoo',
+    market_date TEXT,                 -- YYYY-MM-DD of the trading day this price belongs to
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pq_updated ON parsed_quotes(updated_at);
 
   CREATE TABLE IF NOT EXISTS fx_cache (
     pair       TEXT    PRIMARY KEY,
@@ -499,7 +524,7 @@ app.get('/api/quotes/yahoo/:symbol', async (req, res) => {
   const interval     = req.query.interval || '1d';
   const isIntraday   = interval !== '1d';
   const cacheKey     = isIntraday ? `${symbol}_intraday` : symbol;
-  const ttl          = isIntraday ? 5 : QUOTE_TTL_MIN;
+  const ttl          = isIntraday ? 15 : getQuoteTtlMin();  // intraday: 15 min; daily: smart TTL
 
   try {
     if (!forceRefresh) {
@@ -642,12 +667,15 @@ app.get('/api/quotes/alphavantage/:symbol', async (req, res) => {
 
 // POST /api/quotes/batch
 app.post('/api/quotes/batch', async (req, res) => {
-  const { symbols, source, apiKey } = req.body;
+  const { symbols, source, apiKey, force } = req.body;
   if (!Array.isArray(symbols) || !symbols.length) return err(res, 400, 'symbols array required');
+
   const results = {};
   const errors  = {};
+  const ttl     = getQuoteTtlMin();  // smart TTL: 60 min market hours, 24h otherwise
   const PERIODS = ['1W','1M','YTD','1Y','2Y'];
 
+  // ── Parse raw Yahoo chart data into a compact quote object ──────────────────
   const parseYahooQuote = (sym, data) => {
     const r        = data.chart?.result?.[0];
     if (!r) return null;
@@ -675,6 +703,11 @@ app.post('/api/quotes/batch', async (req, res) => {
       }
       if (bestIdx>=0) refs[period] = closes[bestIdx];
     }
+    // Derive the market date from the last valid timestamp or today
+    const lastTs = timestamps[timestamps.length - 1];
+    const marketDate = lastTs
+      ? new Date(lastTs * 1000).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
     return {
       price, prevClose, open: opens[opens.length-1]??price,
       change, changePct, refs,
@@ -686,32 +719,98 @@ app.post('/api/quotes/batch', async (req, res) => {
       forwardPE:   meta.forwardPE    ?? null,
       marketCap:   meta.marketCap    ?? null,
       exchange:    meta.exchangeName ?? meta.fullExchangeName ?? null,
-      fetchedAt: Date.now(), source: 'yahoo',
+      fetchedAt: Date.now(), source: 'yahoo', marketDate,
     };
+  };
+
+  // ── Persist parsed quote to parsed_quotes table ─────────────────────────────
+  const saveParsedQuote = (sym, parsed, src) => {
+    try {
+      db.prepare(`INSERT OR REPLACE INTO parsed_quotes
+        (symbol, data, source, market_date, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`)
+        .run(sym, JSON.stringify(parsed), src, parsed.marketDate ?? null);
+    } catch(e) { log.warn('saveParsedQuote error:', e.message); }
+  };
+
+  // ── Check if a parsed_quotes row is still fresh ─────────────────────────────
+  // Fresh = updated within TTL minutes. During closed market hours (nights/weekends),
+  // a quote from before market close is also considered fresh (TTL is 24h then).
+  const isParsedFresh = (row) => {
+    if (!row) return false;
+    const updatedMs = new Date(row.updated_at + 'Z').getTime();
+    return (Date.now() - updatedMs) < ttl * 60 * 1000;
   };
 
   for (const sym of symbols) {
     try {
       if (source === 'alphavantage') {
-        const cached = db.prepare(`SELECT data, updated_at FROM quotes_cache WHERE symbol=? AND source='alphavantage' AND datetime(updated_at) > datetime('now', '-${QUOTE_TTL_MIN} minutes')`).get(sym);
-        if (cached) { cacheHits++; results[sym] = JSON.parse(cached.data); continue; }
+        // AlphaVantage: use quotes_cache with smart TTL
+        if (!force) {
+          const cached = db.prepare(
+            `SELECT data, updated_at FROM quotes_cache
+             WHERE symbol=? AND source='alphavantage'
+             AND datetime(updated_at) > datetime('now', '-${ttl} minutes')`
+          ).get(sym);
+          if (cached) { cacheHits++; results[sym] = JSON.parse(cached.data); continue; }
+        }
         cacheMisses++;
         const result = await fetchAlphaVantage(sym, apiKey || process.env.AV_API_KEY || '');
-        db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'alphavantage', CURRENT_TIMESTAMP)").run(sym, JSON.stringify(result));
+        db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'alphavantage', CURRENT_TIMESTAMP)")
+          .run(sym, JSON.stringify(result));
         results[sym] = result;
+
       } else {
-        const cached = db.prepare(`SELECT data, updated_at FROM quotes_cache WHERE symbol=? AND datetime(updated_at) > datetime('now', '-${QUOTE_TTL_MIN} minutes')`).get(sym);
-        if (cached) { cacheHits++; const parsed=JSON.parse(cached.data); results[sym]=parseYahooQuote(sym,parsed)??parsed; continue; }
+        // Yahoo: check parsed_quotes first (fastest — no JSON blob parsing)
+        if (!force) {
+          const pq = db.prepare('SELECT data, updated_at FROM parsed_quotes WHERE symbol=?').get(sym);
+          if (pq && isParsedFresh(pq)) {
+            cacheHits++;
+            results[sym] = JSON.parse(pq.data);
+            continue;
+          }
+          // Fallback: check raw quotes_cache (may exist from previous version)
+          const rawCached = db.prepare(
+            `SELECT data, updated_at FROM quotes_cache
+             WHERE symbol=? AND datetime(updated_at) > datetime('now', '-${ttl} minutes')`
+          ).get(sym);
+          if (rawCached) {
+            cacheHits++;
+            const parsed = parseYahooQuote(sym, JSON.parse(rawCached.data));
+            if (parsed) {
+              saveParsedQuote(sym, parsed, 'yahoo');   // migrate to parsed_quotes
+              results[sym] = parsed;
+            } else {
+              results[sym] = JSON.parse(rawCached.data);
+            }
+            continue;
+          }
+        }
+
+        // Cache miss (or force) — fetch from Yahoo
         cacheMisses++;
         const chartData = await fetchYahoo(sym);
-        db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo', CURRENT_TIMESTAMP)").run(sym, JSON.stringify(chartData));
+        // Store raw chart in quotes_cache (needed by /api/quotes/yahoo/:symbol for sparklines)
+        db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo', CURRENT_TIMESTAMP)")
+          .run(sym, JSON.stringify(chartData));
         const parsed = parseYahooQuote(sym, chartData);
-        if (parsed) results[sym] = parsed;
-        else errors[sym] = 'Parse error';
+        if (parsed) {
+          saveParsedQuote(sym, parsed, 'yahoo');
+          results[sym] = parsed;
+        } else {
+          errors[sym] = 'Parse error';
+        }
       }
     } catch(e) {
       log.warn('batch quote error:', sym, e.message);
-      errors[sym] = e.message;
+      // On Yahoo error: try to serve stale parsed_quotes (better than nothing)
+      const stale = db.prepare('SELECT data FROM parsed_quotes WHERE symbol=?').get(sym);
+      if (stale) {
+        results[sym] = { ...JSON.parse(stale.data), _stale: true };
+        log.info('Serving stale parsed quote for', sym);
+      } else {
+        errors[sym] = e.message;
+      }
     }
   }
   res.json({ results, errors });
@@ -793,11 +892,24 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/stats', (_req, res) => {
-  const users = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-  const portfolios = db.prepare('SELECT COUNT(*) as c FROM portfolios WHERE deleted_at IS NULL').get().c;
+  const users        = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  const portfolios   = db.prepare('SELECT COUNT(*) as c FROM portfolios WHERE deleted_at IS NULL').get().c;
   const transactions = db.prepare('SELECT COUNT(*) as c FROM transactions').get().c;
-  const cacheSize = db.prepare('SELECT COUNT(*) as c FROM quotes_cache').get().c;
-  res.json({ users, portfolios, transactions, cacheSize, cacheHits, cacheMisses });
+  const cacheSize    = db.prepare('SELECT COUNT(*) as c FROM quotes_cache').get().c;
+  const parsedCount  = db.prepare('SELECT COUNT(*) as c FROM parsed_quotes').get().c;
+  const ttl          = getQuoteTtlMin();
+  const now          = new Date();
+  const day          = now.getDay();
+  const hour         = now.getHours() + now.getMinutes() / 60;
+  const marketOpen   = day >= 1 && day <= 5 && hour >= 8 && hour < 22;
+  res.json({
+    users, portfolios, transactions,
+    rawCacheCount: cacheSize, parsedQuoteCount: parsedCount,
+    cacheHits, cacheMisses,
+    hitRate: cacheHits + cacheMisses > 0
+      ? (cacheHits/(cacheHits+cacheMisses)*100).toFixed(1)+'%' : 'n/a',
+    quoteTtlMin: ttl, marketOpen,
+  });
 });
 
 app.get('/', (_req, res) => res.json({ name:'Portfolio Tracker API', version:'3.0', status:'ok' }));
@@ -1061,7 +1173,7 @@ app.get('/api/etf/:ticker/holdings', async (req, res) => {
 app.get('/api/quotes/dividend/:symbol', async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
   const CACHE_KEY = `div_${symbol}`;
-  const TTL_HOURS = 12;
+  const TTL_HOURS = 7 * 24;  // 7 days — dividends change rarely
 
   // Check cache
   const cached = db.prepare(

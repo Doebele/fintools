@@ -196,9 +196,9 @@ const txApi = {
     apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }) }),
 };
 const quotesApi = {
-  batch: (symbols, source, apiKey) => apiFetch("/quotes/batch", {
+  batch: (symbols, source, apiKey, force=false) => apiFetch("/quotes/batch", {
     method: "POST",
-    body: JSON.stringify({ symbols, source, apiKey }),
+    body: JSON.stringify({ symbols, source, apiKey, force }),
   }),
   raw: (symbol, refresh=false, range="2y", interval="1d") =>
     apiFetch(`/quotes/yahoo/${symbol}${refresh?"?refresh=1":""}${range!=="2y"?`${refresh?"&":"?"}range=${range}`:""}${interval!=="1d"?`&interval=${interval}`:""}`),
@@ -4337,7 +4337,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
       const res = await fetch(`${ETF_BASE}/quotes/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbols, source: "yahoo" }),
+        body: JSON.stringify({ symbols, source: "yahoo", force: !!force }),
       }).then(r => r.json());
       setQuotes(prev => ({ ...prev, ...(res.results || {}) }));
       setFetchErrors(res.errors || {});
@@ -4904,10 +4904,12 @@ export default function App() {
     setFetchStatus(`Fetching ${syms.length} symbols…`);
     setApiStatus("testing");
     try {
-      const result = await quotesApi.batch(syms, dataSource, avApiKey);
+      const result = await quotesApi.batch(syms, dataSource, avApiKey, force);
       setQuotes(prev => ({ ...prev, ...result.results }));
       setFetchErrors(result.errors ?? {});
-      setApiStatus(Object.keys(result.errors??{}).length ? "error" : "ok");
+      const hasErrors = Object.keys(result.errors??{}).length > 0;
+      const hasStale  = Object.values(result.results).some(q => q._stale);
+      setApiStatus(hasErrors ? "error" : hasStale ? "stale" : "ok");
       if (dataSource==="alphavantage") avApi.usage().then(setAvUsage).catch(()=>{});
     } catch(e) { setApiStatus("error"); }
     setFetchStatus("");
@@ -5147,12 +5149,15 @@ export default function App() {
                   border:"1px solid",
                   ...(apiStatus==="ok"
                     ? { background:"rgba(74,222,128,0.1)", borderColor:"rgba(74,222,128,0.25)", color:THEME.green }
+                    : apiStatus==="stale"
+                      ? { background:"rgba(251,191,36,0.1)", borderColor:"rgba(251,191,36,0.3)", color:"#fbbf24" }
                     : apiStatus==="testing"
                       ? { background:"rgba(59,130,246,0.12)", borderColor:"rgba(59,130,246,0.3)", color:THEME.accent }
                       : { background:"rgba(248,113,113,0.1)", borderColor:"rgba(248,113,113,0.25)", color:THEME.red })
                 }}>
                   <span style={{ fontSize:6 }}>●</span>
                   {apiStatus==="testing" ? "Fetching…"
+                    : apiStatus==="stale" ? "⚠ Stale"
                     : apiStatus==="ok" ? (dataSource==="alphavantage" ? "AV ✓" : "Yahoo ✓")
                     : "Error"}
                 </div>
