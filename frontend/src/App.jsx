@@ -9,8 +9,10 @@ import {
   RefreshCw, Settings, LogOut, Plus, CheckSquare, Square,
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
+  GitFork, Sigma, CalendarDays, Target,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
+import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
 
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -96,10 +98,13 @@ async function apiFetch(path, opts = {}) {
 }
 
 const etfApi = {
-  list:   (userId)           => apiFetch(`/user/etfs`, { headers:{ 'x-user-id': String(userId) } }),
-  save:   (userId, etf)      => apiFetch(`/user/etfs`, { method:"POST", body: JSON.stringify(etf),
-                                  headers:{ 'x-user-id': String(userId) } }),
-  remove: (userId, ticker)   => apiFetch(`/user/etfs/${encodeURIComponent(ticker)}`,
+  list:   (userId)           => apiFetch(`/user/etfs?uid=${userId}`, { headers:{ 'x-user-id': String(userId) } }),
+  save:   (userId, etf)      => apiFetch(`/user/etfs?uid=${userId}`, {
+                                  method:"POST",
+                                  body: JSON.stringify({ ticker: etf.ticker, name: etf.name||null, provider: etf.provider||null }),
+                                  headers:{ 'x-user-id': String(userId), 'Content-Type': 'application/json' },
+                                }),
+  remove: (userId, ticker)   => apiFetch(`/user/etfs/${encodeURIComponent(ticker)}?uid=${userId}`,
                                   { method:"DELETE", headers:{ 'x-user-id': String(userId) } }),
 };
 
@@ -118,9 +123,13 @@ const txApi = {
   delete:    (id)      => apiFetch(`/transactions/${id}`,            { method:"DELETE" }),
   recalcFX:  ()        => apiFetch(`/transactions/recalculate-fx`,   { method:"POST" }),
   exportCsv:   async (pid, userId) => {
-    const res = await fetch(`/api/portfolios/${pid}/export`,
+    const res = await fetch(`/api/portfolios/${pid}/export?uid=${userId}`,
       { headers: { 'x-user-id': String(userId) } });
-    if (!res.ok) { const b = await res.json().catch(()=>({})); throw new Error(b.error||`HTTP ${res.status}`); }
+    if (!res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      const b  = ct.includes('json') ? await res.json().catch(()=>({})) : {};
+      throw new Error(b.error || `HTTP ${res.status}`);
+    }
     const blob = await res.blob();
     const cd   = res.headers.get('content-disposition') || '';
     const name = cd.match(/filename="([^"]+)"/)?.[1] || 'export.csv';
@@ -804,9 +813,26 @@ function Rail({
         <RailBtn open={open} icon={<BarChart2 size={16}/>} label="Bar Chart"
           active={activeTab==="chart"}
           onClick={() => onTab("chart")}/>
-        <RailBtn open={open} icon={<List size={16}/>} label="Transactions"
+        <RailBtn open={open} icon={<List size={16}/>} label="Holdings"
           active={activeTab==="transactions"}
           onClick={() => onTab("transactions")}/>
+
+        <Divider/>
+
+        {/* Analytics */}
+        <RailSection open={open} label="Analytics"/>
+        <RailBtn open={open} icon={<GitFork size={16}/>} label="Correlation"
+          active={activeTab==="correlation"}
+          onClick={() => onTab("correlation")}/>
+        <RailBtn open={open} icon={<Sigma size={16}/>} label="Monte Carlo"
+          active={activeTab==="montecarlo"}
+          onClick={() => onTab("montecarlo")}/>
+        <RailBtn open={open} icon={<Target size={16}/>} label="Rebalance"
+          active={activeTab==="rebalance"}
+          onClick={() => onTab("rebalance")}/>
+        <RailBtn open={open} icon={<CalendarDays size={16}/>} label="Dividends"
+          active={activeTab==="calendar"}
+          onClick={() => onTab("calendar")}/>
 
         <Divider/>
 
@@ -1381,6 +1407,23 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
       height:"100%", color:THEME.text3, fontSize:13 }}>No positions</div>
   );
 
+  // ── Portfolio Dividend Cache — lazy fetch per symbol ──────────────────────
+  useEffect(() => {
+    const symbols = Object.keys(quotes);
+    if (!symbols.length) return;
+    const missing = symbols.filter(s => portfolioDivCache[s] === undefined);
+    if (!missing.length) return;
+    const batch = missing.slice(0, 6);
+    batch.forEach(sym => {
+      setPortfolioDivCache(prev => ({ ...prev, [sym]: null }));
+      fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
+        .then(r => r.json())
+        .then(d => setPortfolioDivCache(prev => ({ ...prev, [sym]: d })))
+        .catch(() => setPortfolioDivCache(prev => ({ ...prev, [sym]: null })));
+    });
+  }, [quotes]); // eslint-disable-line
+
+
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       {entries.map(({ portfolio, nodes }, idx) => (
@@ -1418,6 +1461,18 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
 function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntraday }) {
   const rate  = rates[currency] ?? 1;
   const cSym  = CCY_SYM[currency] ?? "$";
+  const [divData, setDivData] = useState(null);
+
+  // Fetch dividend data lazily
+  useEffect(() => {
+    if (!data?.symbol) return;
+    let cancelled = false;
+    fetch(`/api/quotes/dividend/${encodeURIComponent(data.symbol)}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setDivData(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [data?.symbol]);
   const perf  = data.perf;
   const glPerf = data.glPerf;
   const isPos = (perf ?? 0) >= 0;
@@ -1425,7 +1480,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const bg    = getPerfColor(perf);
 
   // Position tooltip so it stays on screen
-  const TW = 282, TH = 360;
+  const TW = 282, TH = 420;
   const left = x + 16 + TW > window.innerWidth  ? x - TW - 16 : x + 16;
   const top  = y + TH     > window.innerHeight  ? window.innerHeight - TH - 8 : Math.max(8, y - 20);
 
@@ -1507,12 +1562,28 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
       <div style={{ padding:"10px 14px" }}>
         {[
           ["Price",       `${cSym}${price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`],
-          ["Market Value",`${cSym}${value.toLocaleString("en-US",{maximumFractionDigits:0})}`],
-          ["Cost Basis",  `${cSym}${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`],
-          ["Avg Cost/Share", data.qty > 0 ? `${cSym}${(cost/data.qty).toFixed(2)}` : "—"],
-          [null],
-          ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
-          ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
+          ...(data.valueUSD != null ? [
+            ["Market Value",`${cSym}${value.toLocaleString("en-US",{maximumFractionDigits:0})}`],
+            ["Cost Basis",  `${cSym}${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`],
+            ["Avg Cost/Share", data.qty > 0 ? `${cSym}${(cost/data.qty).toFixed(2)}` : "—"],
+            [null],
+            ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
+            ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
+          ] : [
+            // ETF holding — show weight only
+            ...(data.weight ? [["ETF Weight", `${data.weight.toFixed(2)}%`]] : []),
+          ]),
+          // Dividend data rows (only if available)
+          ...(divData && divData.yieldPct != null ? [
+            [null],
+            ["Div. Yield",   `${divData.yieldPct.toFixed(2)}%`, "#fbbf24"],
+            ["Annual Rate",  divData.annualRate != null ? `${cSym}${(divData.annualRate * rate).toFixed(3)}` : "—"],
+            ["Last Ex-Date", divData.exDate ?? "—"],
+            ...(divData.nextExDate ? [["Est. Next Ex-Date", divData.nextExDate, "#60a5fa"]] : []),
+          ] : divData && divData.annualRate == null ? [] : [
+            [null],
+            ["Dividends", divData ? "Loading…" : "…"],
+          ]),
         ].map((row, i) => {
           if (!row[0]) return <div key={i} style={{ height:1, background:THEME.border2, margin:"5px 0" }}/>;
           return (
@@ -1626,6 +1697,10 @@ const TX_COLS_DEFAULT = [
   { key:"curValue",     label:"Cur. Value",    width:100, sortable:true  },
   { key:"glPct",        label:"G/L %",         width:82,  sortable:true  },
   { key:"glAbs",        label:"G/L $",         width:96,  sortable:true  },
+  { key:"prdPct",       label:"Period %",      width:82,  sortable:true  },
+  { key:"prdAbs",       label:"Period $",      width:96,  sortable:true  },
+  { key:"divYield",     label:"Div. Yield",    width:80,  sortable:true  },
+  { key:"exDate",       label:"Ex-Date",       width:90,  sortable:false },
   { key:"links",        label:"Links",         width:68,  sortable:false },
   { key:"actions",      label:"",              width:56,  sortable:false },
 ];
@@ -1633,12 +1708,29 @@ const TX_COLS_DEFAULT = [
 // ════════════════════════════════════════════════════════════════════════════
 // SPLIT TRANSACTION VIEW  — one table per portfolio, stacked
 // ════════════════════════════════════════════════════════════════════════════
-function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol }) {
+function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, period="Intraday", divCache={} }) {
   const active = portfolios.filter(p => (allTransactions[p.id]?.length ?? 0) > 0);
   if (!active.length) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
       height:"100%", color:THEME.text3, fontSize:13 }}>No transactions</div>
   );
+  // ── Portfolio Dividend Cache — lazy fetch per symbol ──────────────────────
+  useEffect(() => {
+    const symbols = Object.keys(quotes);
+    if (!symbols.length) return;
+    const missing = symbols.filter(s => portfolioDivCache[s] === undefined);
+    if (!missing.length) return;
+    const batch = missing.slice(0, 6);
+    batch.forEach(sym => {
+      setPortfolioDivCache(prev => ({ ...prev, [sym]: null }));
+      fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
+        .then(r => r.json())
+        .then(d => setPortfolioDivCache(prev => ({ ...prev, [sym]: d })))
+        .catch(() => setPortfolioDivCache(prev => ({ ...prev, [sym]: null })));
+    });
+  }, [quotes]); // eslint-disable-line
+
+
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:0, flex:1, overflowY:"auto", minHeight:0 }}>
       {active.map(p => (
@@ -1660,6 +1752,7 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
             allTransactions={{ [p.id]: allTransactions[p.id] ?? [] }}
             rates={rates} quotes={quotes}
             onDelete={onDelete} onEdit={onEdit} onRefreshSymbol={onRefreshSymbol}
+            period={period} divCache={divCache}
             compact/>
         </div>
       ))}
@@ -1667,7 +1760,7 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
   );
 }
 
-function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, compact=false }) {
+function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, compact=false, period="Intraday", divCache={} }) {
   const [sortKey,    setSortKey]    = useState("date");
   const [sortDir,    setSortDir]    = useState("desc");
   const [colWidths,  setColWidths]  = useState(() => Object.fromEntries(TX_COLS_DEFAULT.map(c=>[c.key,c.width])));
@@ -1689,13 +1782,34 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
         const curValue = curPriceUSD != null ? tx.quantity * curPriceUSD : null;
         const glAbs    = curValue != null ? curValue - cost : null;
         const glPct    = cost > 0 && curValue != null ? (curValue - cost) / cost * 100 : null;
+        // Period-based G/L — reference price from selected period
+        let prdAbs = null, prdPct = null;
+        if (curPriceUSD != null && q) {
+          let refPriceUSD = null;
+          if (period === "Intraday") {
+            const prevUSD = q.prevClose != null ? (qRate > 0 ? q.prevClose / qRate : q.prevClose) : null;
+            refPriceUSD = prevUSD;
+          } else {
+            const refKey = period === "Max" ? (q.refs?.["5Y"] ? "5Y" : "2Y") : period;
+            const ref = q.refs?.[refKey];
+            refPriceUSD = ref != null ? (qRate > 0 ? ref / qRate : ref) : null;
+          }
+          if (refPriceUSD != null) {
+            const refValue = tx.quantity * refPriceUSD;
+            prdAbs = (tx.quantity * curPriceUSD) - refValue;
+            prdPct = refValue > 0 ? (prdAbs / refValue) * 100 : null;
+          }
+        }
+        // Dividend data from cache
+        const div = divCache[tx.symbol];
         rows.push({ ...tx, portfolioId:p.id, portfolioName:p.name, portfolioColor:p.color,
           _cost:cost, _curPriceUSD:curPriceUSD, _curValue:curValue, _glAbs:glAbs, _glPct:glPct,
+          _prdAbs:prdAbs, _prdPct:prdPct, _div:div,
           _quoteCcy:qCcy ?? "USD" });
       }
     }
     return rows;
-  }, [portfolios, allTransactions, quotes, rates]);
+  }, [portfolios, allTransactions, quotes, rates, period, divCache]);
 
   const sorted = useMemo(() => {
     return [...allTxFlat].sort((a,b) => {
@@ -1712,6 +1826,9 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
         case "curValue": va=a._curValue??-Infinity; vb=b._curValue??-Infinity; break;
         case "glPct":    va=a._glPct??-Infinity;   vb=b._glPct??-Infinity;    break;
         case "glAbs":    va=a._glAbs??-Infinity;   vb=b._glAbs??-Infinity;    break;
+        case "prdPct":   va=a._prdPct??-Infinity;  vb=b._prdPct??-Infinity;   break;
+        case "prdAbs":   va=a._prdAbs??-Infinity;  vb=b._prdAbs??-Infinity;   break;
+        case "divYield": va=a._div?.yieldPct??-Infinity; vb=b._div?.yieldPct??-Infinity; break;
         default: va=a.date; vb=b.date;
       }
       if (va < vb) return sortDir==="asc"?-1:1;
@@ -1738,9 +1855,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     window.addEventListener("mouseup", onUp);
   };
 
-  const totalCost  = allTxFlat.reduce((s,r)=>s+r._cost,0);
-  const totalValue = allTxFlat.reduce((s,r)=>s+(r._curValue??0),0);
-  const totalGL    = allTxFlat.reduce((s,r)=>s+(r._glAbs??0),0);
+  const totalCost    = allTxFlat.reduce((s,r)=>s+r._cost,0);
+  const totalValue   = allTxFlat.reduce((s,r)=>s+(r._curValue??0),0);
+  const totalGL      = allTxFlat.reduce((s,r)=>s+(r._glAbs??0),0);
+  const totalPrdGL   = allTxFlat.reduce((s,r)=>s+(r._prdAbs??0),0);
+  const hasPrdGL     = allTxFlat.some(r=>r._prdAbs!=null);
 
   const SortIcon = ({ col }) => {
     if (!col.sortable) return null;
@@ -1788,10 +1907,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
         borderBottom:`1px solid ${THEME.border2}`, flexShrink:0,
       }}>
         {[
-          ["Transactions", allTxFlat.length, null],
-          ["Total Cost",   `$${(totalCost/1000).toFixed(1)}K`, null],
-          ["Current Value",`$${(totalValue/1000).toFixed(1)}K`, null],
-          ["Total G/L",    `${totalGL>=0?"+":"−"}$${(Math.abs(totalGL)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red],
+          ["Transactions",  allTxFlat.length, null],
+          ["Total Cost",    `$${(totalCost/1000).toFixed(1)}K`, null],
+          ["Current Value", `$${(totalValue/1000).toFixed(1)}K`, null],
+          ["Total G/L",     `${totalGL>=0?"+":"−"}$${(Math.abs(totalGL)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red],
+          ...(hasPrdGL?[[`${period==="Intraday"?"1D":period} G/L`, `${totalPrdGL>=0?"+":"−"}$${(Math.abs(totalPrdGL)/1000).toFixed(1)}K`, totalPrdGL>=0?THEME.green:THEME.red]]:[]),
         ].map(([l,v,c])=>(
           <div key={l}>
             <div style={{fontSize:9,color:THEME.text3,textTransform:"uppercase",letterSpacing:".07em",marginBottom:2}}>{l}</div>
@@ -1815,7 +1935,9 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
             <tr style={{ height:34, background:THEME.surface, position:"sticky", top:0, zIndex:10 }}>
               {TX_COLS_DEFAULT.map(col=>(
                 <th key={col.key} style={thStyle(col)} onClick={()=>col.sortable&&handleSort(col.key)}>
-                  {col.label}<SortIcon col={col}/>
+                  {col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
+                   : col.key==="prdAbs" ? `${period==="Intraday"?"1D":period} $`
+                   : col.label}<SortIcon col={col}/>
                   {/* Resize handle */}
                   <div onMouseDown={e=>startResize(e,col.key)}
                     style={{ position:"absolute", right:0, top:0, bottom:0, width:5,
@@ -1941,8 +2063,54 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       : <span style={{color:THEME.text3}}>—</span>
                     }
                   </td>
-                  {/* Links */}
+                  {/* Period G/L % */}
                   <td style={tdStyle(TX_COLS_DEFAULT[11])}>
+                    {tx._prdPct != null
+                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
+                          color:tx._prdPct>=0?THEME.green:THEME.red }}>
+                          {tx._prdPct>=0?"+":""}{tx._prdPct.toFixed(1)}%
+                        </span>
+                      : <span style={{color:THEME.text3}}>—</span>
+                    }
+                  </td>
+                  {/* Period G/L $ */}
+                  <td style={tdStyle(TX_COLS_DEFAULT[12])}>
+                    {tx._prdAbs != null
+                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
+                          color:tx._prdAbs>=0?THEME.green:THEME.red }}>
+                          {tx._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._prdAbs))}
+                        </span>
+                      : <span style={{color:THEME.text3}}>—</span>
+                    }
+                  </td>
+                  {/* Div. Yield */}
+                  <td style={tdStyle(TX_COLS_DEFAULT[13])}>
+                    {tx._div === undefined
+                      ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                      : tx._div?.yieldPct != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
+                            color:"#fbbf24" }}>{tx._div.yieldPct.toFixed(2)}%</span>
+                        : <span style={{color:THEME.text3}}>—</span>}
+                  </td>
+                  {/* Ex-Date */}
+                  <td style={tdStyle(TX_COLS_DEFAULT[14])}>
+                    {tx._div === undefined ? (
+                      <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                    ) : tx._div?.exDate ? (
+                      <div>
+                        <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>
+                          {tx._div.exDate}
+                        </span>
+                        {tx._div.nextExDate && (
+                          <div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>
+                            → {tx._div.nextExDate}
+                          </div>
+                        )}
+                      </div>
+                    ) : <span style={{color:THEME.text3}}>—</span>}
+                  </td>
+                  {/* Links */}
+                  <td style={tdStyle(TX_COLS_DEFAULT[15])}>
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                       <a href={`https://finance.yahoo.com/quote/${tx.symbol}`}
                         target="_blank" rel="noopener noreferrer"
@@ -1977,7 +2145,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     </div>
                   </td>
                   {/* Actions */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[12])}>
+                  <td style={tdStyle(TX_COLS_DEFAULT[16])}>
                     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                       <button onClick={()=>onEdit(tx.portfolioId, tx)}
                         style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
@@ -2008,6 +2176,16 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   {ci===0&&<span style={{color:THEME.text3,fontFamily:THEME.font,fontSize:10}}>TOTAL</span>}
                   {col.key==="cost"    && `$${totalCost.toLocaleString("en-US",{maximumFractionDigits:0})}`}
                   {col.key==="curValue"&& (totalValue>0?`$${totalValue.toLocaleString("en-US",{maximumFractionDigits:0})}`:"")}
+                  {col.key==="prdAbs" && hasPrdGL&&totalPrdGL!==0&&(
+                    <span style={{color:totalPrdGL>=0?THEME.green:THEME.red}}>
+                      {totalPrdGL>=0?"+":"−"}${Math.abs(totalPrdGL).toLocaleString("en-US",{maximumFractionDigits:0})}
+                    </span>
+                  )}
+                  {col.key==="prdPct" && hasPrdGL&&totalPrdGL!==0&&totalValue>0&&(
+                    <span style={{color:totalPrdGL>=0?THEME.green:THEME.red}}>
+                      {totalPrdGL>=0?"+":""}{(totalPrdGL/totalValue*100).toFixed(1)}%
+                    </span>
+                  )}
                   {col.key==="glAbs"  && totalGL!==0&&(
                     <span style={{color:totalGL>=0?THEME.green:THEME.red}}>
                       {totalGL>=0?"+":"−"}${Math.abs(totalGL).toLocaleString("en-US",{maximumFractionDigits:0})}
@@ -3437,7 +3615,8 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
 
 // ── ETF Holdings Table ────────────────────────────────────────────────────────
 function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
-                            onRefreshHoldings, refreshing, fetchedAt, period, onPeriod }) {
+                            onRefreshHoldings, refreshing, fetchedAt, period, onPeriod,
+                            divCache, onFetchDiv }) {
   const rate = rates[currency] ?? 1;
   const cSym = CCY_SYM[currency] ?? "$";
 
@@ -3455,10 +3634,22 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
           if (ref != null && q.price > 0) return ((q.price - ref) / ref) * 100;
           return q.changePct ?? null;
         })();
-        return { ...h, price:q?.price??null, perf, shortName:q?.shortName||q?.name||null };
+        const div = divCache?.[h.symbol];
+        return { ...h, price:q?.price??null, perf, shortName:q?.shortName||q?.name||null, div };
       }),
-    [holdings, quotes, period]
+    [holdings, quotes, period, divCache]
   );
+
+  // Fetch missing div data lazily
+  useEffect(() => {
+    if (!onFetchDiv) return;
+    const missing = rows.filter(r => r.div === undefined).map(r => r.symbol);
+    if (missing.length > 0) {
+      // Fetch in small batches to avoid hammering the API
+      const batch = missing.slice(0, 5);
+      batch.forEach(sym => onFetchDiv(sym));
+    }
+  }, [rows, onFetchDiv, divCache]);
 
   const lastUpdated = fetchedAt
     ? new Date(fetchedAt).toLocaleString("de-CH", {
@@ -3467,6 +3658,23 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
     : null;
 
   const periodLabel = period === "Intraday" ? "1D" : period;
+
+  // ── Portfolio Dividend Cache — lazy fetch per symbol ──────────────────────
+  useEffect(() => {
+    const symbols = Object.keys(quotes);
+    if (!symbols.length) return;
+    const missing = symbols.filter(s => portfolioDivCache[s] === undefined);
+    if (!missing.length) return;
+    const batch = missing.slice(0, 6);
+    batch.forEach(sym => {
+      setPortfolioDivCache(prev => ({ ...prev, [sym]: null }));
+      fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
+        .then(r => r.json())
+        .then(d => setPortfolioDivCache(prev => ({ ...prev, [sym]: d })))
+        .catch(() => setPortfolioDivCache(prev => ({ ...prev, [sym]: null })));
+    });
+  }, [quotes]); // eslint-disable-line
+
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
@@ -3509,7 +3717,7 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
         <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
           <thead>
             <tr style={{ borderBottom:`1px solid ${THEME.border2}` }}>
-              {["#","Symbol","Name","Weight","Trend","Price",periodLabel].map(h => (
+              {["#","Symbol","Name","Weight","Trend","Price",periodLabel,"Div. Yield","Ex-Date"].map(h => (
                 <th key={h} style={{ padding:"7px 12px",
                   textAlign:["#","Weight","Price",periodLabel].includes(h)?"right":"left",
                   fontSize:9, fontWeight:700, color:THEME.text3,
@@ -3597,6 +3805,35 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
                       ? `${h.perf>=0?"+":""}${h.perf.toFixed(2)}%`
                       : "—"}
                   </td>
+
+                  {/* Div. Yield */}
+                  <td style={{ padding:"6px 12px", textAlign:"right",
+                    fontFamily:"'JetBrains Mono',monospace" }}>
+                    {h.div === undefined
+                      ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                      : h.div?.yieldPct != null
+                        ? <span style={{ color:"#fbbf24", fontWeight:600 }}>
+                            {h.div.yieldPct.toFixed(2)}%
+                          </span>
+                        : <span style={{color:THEME.text3}}>—</span>}
+                  </td>
+
+                  {/* Ex-Date */}
+                  <td style={{ padding:"6px 12px", textAlign:"right",
+                    fontFamily:"'JetBrains Mono',monospace", fontSize:10,
+                    color:THEME.text3 }}>
+                    {h.div === undefined ? "" :
+                      h.div?.exDate
+                        ? <span title={h.div.nextExDate ? `Est. next: ${h.div.nextExDate}` : undefined}>
+                            {h.div.exDate}
+                            {h.div.nextExDate && (
+                              <div style={{fontSize:9, color:"#60a5fa", marginTop:1}}>
+                                → {h.div.nextExDate}
+                              </div>
+                            )}
+                          </span>
+                        : "—"}
+                  </td>
                 </tr>
               );
             })}
@@ -3611,6 +3848,7 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
 function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut }) {
   useGlobalStyles();
 
+  const [divCache,          setDivCache]          = useState({}); // symbol → dividend data
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
     try { return localStorage.getItem(ETF_LS_KEY) || "ARKK"; } catch { return "ARKK"; }
   });
@@ -3656,6 +3894,19 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
     } catch(e) { setHoldingsError(e.message); setHoldings([]); }
     setLoadingHoldings(false);
   }, []);
+
+  // Fetch dividend data for a symbol, cache the result
+  const fetchDiv = useCallback(async (symbol) => {
+    if (divCache[symbol] !== undefined) return; // already cached (even null = no div)
+    // Set sentinel so we don't double-fetch
+    setDivCache(prev => ({ ...prev, [symbol]: null }));
+    try {
+      const d = await fetch(`/api/quotes/dividend/${encodeURIComponent(symbol)}`).then(r=>r.json());
+      setDivCache(prev => ({ ...prev, [symbol]: d }));
+    } catch(e) {
+      setDivCache(prev => ({ ...prev, [symbol]: null }));
+    }
+  }, [divCache]);
 
   useEffect(() => { if (selectedTicker) loadHoldings(selectedTicker); },
     [selectedTicker, loadHoldings]);
@@ -3769,9 +4020,10 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
           gap:2, flexShrink:0 }}>
 
           {[
-            { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"  },
+            { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"   },
             { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart" },
             { key:"transactions", icon:<List size={14}/>,            label:"Holdings"  },
+            { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends" },
           ].map(t => (
             <button key={t.key} onClick={()=>setActiveTab(t.key)}
               style={{
@@ -3875,6 +4127,16 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 colorMode="market" period={period} subView={barSubView}
                 onCellHover={handleCellHover} onCellLeave={handleCellLeave}/>
             </div>
+          ) : activeTab==="calendar" ? (
+            <div style={{ height:"100%", overflow:"hidden" }}>
+              <DividendCalendar
+                allNodes={nodes}
+                divCache={divCache}
+                etfHoldings={holdings}
+                isEtfMode={true}
+                currency={currency}
+                rates={rates}/>
+            </div>
           ) : (
             <EtfHoldingsTable
               holdings={holdings} quotes={quotes}
@@ -3883,7 +4145,8 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
               fetchedAt={fetchedAt}
               period={period} onPeriod={setPeriod}
               onRefreshHoldings={()=>loadHoldings(selectedTicker,true)}
-              refreshing={loadingHoldings}/>
+              refreshing={loadingHoldings}
+              divCache={divCache} onFetchDiv={fetchDiv}/>
           )}
         </div>
       </div>
@@ -3936,6 +4199,7 @@ export default function App() {
   const [showAddPort,setShowAddPort]= useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [savedEtfs,       setSavedEtfs]        = useState([]);
+  const [portfolioDivCache, setPortfolioDivCache] = useState({});
   const [showSettings,setShowSettings]=useState(false);
   const [tooltip,    setTooltip]    = useState(null);
 
@@ -4270,6 +4534,8 @@ export default function App() {
   const handleTab = useCallback((tab) => {
     if (tab === "_addtx") { setShowAddTx(true); return; }
     setActiveTab(tab);
+    // Analytics tabs don't use viewMode
+    if (["correlation","montecarlo","rebalance","calendar"].includes(tab)) return;
     setViewMode(prev => {
       if (tab === "holdings") {
         // chart/tx use single|split — map "split" to "consolidated", keep aggregated
@@ -4337,11 +4603,13 @@ export default function App() {
         {/* ── MAIN CONTENT ───────────────────────────────────────────── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
 
-          {/* Period toolbar */}
-          <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView}/>
+          {/* Period toolbar — hide for analytics tabs */}
+          {!["correlation","montecarlo","rebalance","calendar"].includes(activeTab) && (
+            <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView}/>
+          )}
 
           {/* Summary bar */}
-          {allNodes.length > 0 && (
+          {allNodes.length > 0 && !["correlation","montecarlo","rebalance","calendar"].includes(activeTab) && (
             <SummaryBar
               nodes={allNodes}
               totalValueUSD={totalValueUSD} totalCostUSD={totalCostUSD}
@@ -4428,7 +4696,8 @@ export default function App() {
                   rates={rates} quotes={quotes}
                   onDelete={handleDeleteTx}
                   onRefreshSymbol={sym => fetchQuotes([sym], true)}
-                  onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}/>
+                  onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}
+                  period={period} divCache={portfolioDivCache}/>
               </div>
             )}
             {activeTab === "transactions" && viewMode === "split" && (
@@ -4439,7 +4708,46 @@ export default function App() {
                   rates={rates} quotes={quotes}
                   onDelete={handleDeleteTx}
                   onRefreshSymbol={sym => fetchQuotes([sym], true)}
-                  onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}/>
+                  onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}
+                  period={period} divCache={portfolioDivCache}/>
+              </div>
+            )}
+            {activeTab === "correlation" && (
+              <div style={{ flex:1, height:"100%", overflow:"hidden" }}>
+                <CorrelationMatrix
+                  allNodes={allNodes}
+                  quotes={quotes}
+                  currency={currency}
+                  rates={rates}/>
+              </div>
+            )}
+            {activeTab === "montecarlo" && (
+              <div style={{ flex:1, height:"100%", overflow:"hidden" }}>
+                <MonteCarlo
+                  allNodes={allNodes}
+                  quotes={quotes}
+                  rates={rates}
+                  divCache={portfolioDivCache}/>
+              </div>
+            )}
+            {activeTab === "rebalance" && (
+              <div style={{ flex:1, height:"100%", overflow:"hidden" }}>
+                <RebalancingAssistant
+                  allNodes={allNodes}
+                  quotes={quotes}
+                  rates={rates}
+                  currency={currency}
+                  user={user}/>
+              </div>
+            )}
+            {activeTab === "calendar" && (
+              <div style={{ flex:1, height:"100%", overflow:"hidden" }}>
+                <DividendCalendar
+                  allNodes={allNodes}
+                  divCache={portfolioDivCache}
+                  isEtfMode={false}
+                  currency={currency}
+                  rates={rates}/>
               </div>
             )}
           </div>

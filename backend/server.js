@@ -114,6 +114,13 @@ db.exec(`
     updated_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS user_kv (
+    user_id    INTEGER NOT NULL,
+    key        TEXT    NOT NULL,
+    value      TEXT    NOT NULL DEFAULT '{}',
+    updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, key)
+  );
   CREATE TABLE IF NOT EXISTS user_etfs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,
@@ -1046,14 +1053,91 @@ app.get('/api/etf/:ticker/holdings', async (req, res) => {
   res.json({ ticker, holdings, fetched_at: now, from_cache: false });
 });
 
+// ── GET /api/quotes/dividend/:symbol — annual dividend rate + next ex-date ────
+app.get('/api/quotes/dividend/:symbol', async (req, res) => {
+  const symbol = req.params.symbol.toUpperCase();
+  const CACHE_KEY = `div_${symbol}`;
+  const TTL_HOURS = 12;
+
+  // Check cache
+  const cached = db.prepare(
+    `SELECT data, updated_at FROM quotes_cache WHERE symbol=?
+     AND datetime(updated_at) > datetime('now', '-${TTL_HOURS*60} minutes')`
+  ).get(CACHE_KEY);
+  if (cached) {
+    return res.json({ ...JSON.parse(cached.data), _cached: true });
+  }
+
+  try {
+    // Fetch 2 years of monthly data with dividend events
+    const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+                `?interval=1mo&range=2y&events=dividends&includePrePost=false`;
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json',
+                 'Referer': 'https://finance.yahoo.com' },
+    });
+    if (!r.ok) throw new Error(`Yahoo HTTP ${r.status}`);
+    const data = await r.json();
+
+    const result   = data.chart?.result?.[0];
+    const divEvents = result?.events?.dividends ?? {};
+    const allDivs  = Object.values(divEvents).sort((a, b) => b.date - a.date);
+
+    // Estimate annual dividend from last 4 payments
+    const last4    = allDivs.slice(0, 4);
+    const annualRate = last4.reduce((s, d) => s + d.amount, 0);
+
+    // Latest ex-dividend date
+    const latestDiv = allDivs[0] ?? null;
+    const exDate    = latestDiv ? new Date(latestDiv.date * 1000).toISOString().slice(0, 10) : null;
+    const lastAmt   = latestDiv?.amount ?? null;
+
+    // Current price for yield calculation
+    const meta  = result?.meta ?? {};
+    const price = meta.regularMarketPrice ?? 0;
+    const yieldPct = (price > 0 && annualRate > 0) ? (annualRate / price) * 100 : null;
+
+    // Next ex-date: estimate based on frequency (approximate)
+    let nextExDate = null;
+    if (allDivs.length >= 2) {
+      const gaps = [];
+      for (let i = 0; i < Math.min(allDivs.length - 1, 4); i++) {
+        gaps.push((allDivs[i].date - allDivs[i+1].date) / 86400); // days
+      }
+      const avgGap = gaps.reduce((a,b)=>a+b,0) / gaps.length;
+      if (latestDiv && avgGap > 0) {
+        const nextTs = (latestDiv.date + avgGap * 86400) * 1000;
+        const nextD  = new Date(nextTs);
+        if (nextD > new Date()) {
+          nextExDate = nextD.toISOString().slice(0, 10);
+        }
+      }
+    }
+
+    const payload = { symbol, annualRate, yieldPct, exDate, lastAmt, nextExDate,
+                      payments: last4.length };
+    db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo_div', CURRENT_TIMESTAMP)`)
+      .run(CACHE_KEY, JSON.stringify(payload));
+
+    res.json(payload);
+  } catch(e) {
+    // Return empty but valid object — dividend data is optional
+    res.json({ symbol, annualRate: null, yieldPct: null, exDate: null, lastAmt: null, nextExDate: null, error: e.message });
+  }
+});
+
+
 // ════════════════════════════════════════════════════════════════════════════
 // USER SAVED ETFs
 // ════════════════════════════════════════════════════════════════════════════
 
 // Simple user-id header auth (same pattern as rest of app — stateless, no JWT)
 function getUserId(req) {
-  const uid = req.headers['x-user-id'];
-  return uid ? parseInt(uid, 10) : null;
+  // Accept header (standard for most requests) or query param (fallback for GET downloads)
+  const uid = req.headers['x-user-id'] || req.query['uid'];
+  if (!uid) return null;
+  const id = parseInt(uid, 10);
+  return isNaN(id) ? null : id;
 }
 
 // GET /api/user/etfs  — list saved ETFs for a user
@@ -1070,8 +1154,13 @@ app.get('/api/user/etfs', (req, res) => {
 app.post('/api/user/etfs', (req, res) => {
   const userId = getUserId(req);
   if (!userId) return err(res, 401, 'x-user-id header required');
-  const { ticker, name, provider } = req.body;
-  if (!ticker) return err(res, 400, 'ticker required');
+  const body = req.body || {};
+  const { ticker, name, provider } = body;
+  log.debug?.('POST /user/etfs body:', body);
+  if (!ticker) {
+    log.warn('POST /user/etfs: missing ticker, body was:', body, 'content-type:', req.headers['content-type']);
+    return err(res, 400, 'ticker required');
+  }
   try {
     db.prepare(
       'INSERT OR IGNORE INTO user_etfs (user_id, ticker, name, provider) VALUES (?, ?, ?, ?)'
@@ -1494,4 +1583,68 @@ app.post('/api/portfolios/:id/import', upload.single('file'), async (req, res) =
     splitAdjusted,
     portfolio: { id: port.id, name: port.name },
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ANALYTICS ENDPOINTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/quotes/history-multi  — fetch daily close series for correlation / monte carlo
+// Body: { symbols: ["AAPL","MSFT",...], range: "2y"|"1y" }
+app.post('/api/quotes/history-multi', async (req, res) => {
+  const { symbols = [], range = '2y' } = req.body;
+  if (!Array.isArray(symbols) || !symbols.length) return err(res, 400, 'symbols required');
+  const uniq = [...new Set(symbols.map(s => s.toUpperCase()))].slice(0, 40);
+  const CACHE_TTL = 240; // 4 hours
+  const results = {};
+
+  await Promise.all(uniq.map(async sym => {
+    const cacheKey = `hist_${range}_${sym}`;
+    try {
+      const cached = db.prepare(
+        `SELECT data, updated_at FROM quotes_cache WHERE symbol=?
+         AND datetime(updated_at) > datetime('now', '-${CACHE_TTL} minutes')`
+      ).get(cacheKey);
+      if (cached) { results[sym] = JSON.parse(cached.data); return; }
+
+      const data = await fetchYahoo(sym, range, '1d');
+      const r    = data.chart?.result?.[0];
+      if (!r) { results[sym] = null; return; }
+      const ts     = r.timestamp ?? [];
+      const closes = r.indicators?.quote?.[0]?.close ?? [];
+      // Build compact [date, close] array
+      const series = ts.map((t, i) => [
+        new Date(t * 1000).toISOString().slice(0, 10),
+        closes[i]
+      ]).filter(([, v]) => v != null);
+
+      db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'hist', CURRENT_TIMESTAMP)`)
+        .run(cacheKey, JSON.stringify(series));
+      results[sym] = series;
+    } catch(e) {
+      results[sym] = null;
+    }
+  }));
+
+  res.json({ results });
+});
+
+// GET/PUT /api/users/:id/rebalance-targets  — store per-user rebalance targets
+app.get('/api/users/:id/rebalance-targets', (req, res) => {
+  const userId = parseInt(req.params.id);
+  if (!userId) return err(res, 400, 'invalid id');
+  const row = db.prepare('SELECT value FROM user_kv WHERE user_id=? AND key=?').get(userId, 'rebalance_targets');
+  res.json({ targets: row ? JSON.parse(row.value) : {} });
+});
+
+app.put('/api/users/:id/rebalance-targets', (req, res) => {
+  const userId = parseInt(req.params.id);
+  if (!userId) return err(res, 400, 'invalid id');
+  const { targets } = req.body;
+  if (!targets || typeof targets !== 'object') return err(res, 400, 'targets required');
+  db.prepare(`
+    INSERT INTO user_kv (user_id, key, value, updated_at) VALUES (?, 'rebalance_targets', ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+  `).run(userId, JSON.stringify(targets));
+  res.json({ ok: true });
 });
