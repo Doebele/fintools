@@ -58,7 +58,8 @@ function useGlobalStyles() {
     s.id = "ptv3-global";
     s.textContent = `
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      html, body { height: 100%; overflow: hidden; }
+      html { height: 100%; overflow: hidden; }
+      body { height: 100%; }
       
       /* ── Pro mode (default): compact information density ── */
       :root { --fs-base: 13px; --fs-scale: 1; }
@@ -69,11 +70,13 @@ function useGlobalStyles() {
       }
       
       /* ── Comfort mode: WCAG AA compliant scaling ── */
-      /* CSS zoom uniformly scales ALL child pixel dimensions including inline styles */
-      body[data-mode="comfort"] { --fs-base: 16px; }
-      body[data-mode="comfort"] #ptv3-root {
+      /* Zoom applied to body so ALL content scales uniformly:
+         - ETF Explorer, Portfolio View, Login, Modals — everything
+         - CSS zoom scales all px dimensions (inline styles, SVG, D3, etc.)
+         - width/height compensation prevents scrollbars from appearing */
+      body[data-mode="comfort"] {
+        --fs-base: 16px;
         zoom: 1.18;
-        /* Compensate so zoomed content still fills the viewport exactly */
         width: calc(100vw / 1.18);
         height: calc(100vh / 1.18);
         overflow: hidden;
@@ -107,12 +110,15 @@ function useDisplayMode() {
   const [mode, setModeState] = useState(() => {
     // Apply synchronously on init to avoid flash of wrong mode
     const saved = localStorage.getItem("ptv3-display-mode") || "pro";
+    // Set on BOTH html and body — html for zoom scope, body as fallback
+    document.documentElement.setAttribute("data-mode", saved);
     document.body.setAttribute("data-mode", saved);
     return saved;
   });
 
-  // Keep body attribute in sync with state
+  // Keep attributes in sync with state
   useEffect(() => {
+    document.documentElement.setAttribute("data-mode", mode);
     document.body.setAttribute("data-mode", mode);
     localStorage.setItem("ptv3-display-mode", mode);
   }, [mode]);
