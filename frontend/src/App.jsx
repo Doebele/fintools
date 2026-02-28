@@ -2986,19 +2986,15 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
   // If user already logged in, save immediately on mount
   useEffect(() => {
     if (user && mode === "save") {
-      doSave(user);
+      setLoading(true); setError(null);
+      doSave(user).catch(e => { setError(e.message); setLoading(false); });
     }
   }, []); // eslint-disable-line
 
   const doSave = async (u) => {
-    setLoading(true); setError(null);
-    try {
-      const res = await etfApi.save(u.id, { ticker: etf.ticker, name: etf.name, provider: etf.provider });
-      onSaved(u, res.etfs || []);
-    } catch(e) {
-      setError(e.message);
-      setLoading(false);
-    }
+    // Note: caller (handleAuth or useEffect) manages loading/error state
+    const res = await etfApi.save(u.id, { ticker: etf.ticker, name: etf.name, provider: etf.provider });
+    onSaved(u, res.etfs || []);
   };
 
   const handleAuth = async () => {
@@ -3007,8 +3003,10 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
       const loggedIn = mode === "register"
         ? await userApi.register(uname, pin)
         : await userApi.login(uname, pin);
-      onLogin(loggedIn);
+      // Save FIRST so modal can close cleanly, then update App auth state.
       await doSave(loggedIn);
+      // Notify parent last — this triggers App re-render/portfolio load.
+      onLogin(loggedIn);
     } catch(e) {
       setError(e.message);
       setLoading(false);
@@ -3364,7 +3362,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           </div>
         )}
         {/* Mode switcher — only shown when logged in */}
-        {open && onSwitchToPortfolio && (
+        {open && user && onSwitchToPortfolio && (
           <button onClick={onSwitchToPortfolio}
             title="Switch to Portfolio View"
             style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 8px",
@@ -3729,7 +3727,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 </div>
               </div>
             )}
-            {onSwitchToPortfolio && (
+            {user && onSwitchToPortfolio && (
               <RailBtn open={open} icon={<LayoutDashboard size={16}/>} label="Portfolio View"
                 onClick={onSwitchToPortfolio}/>
             )}
@@ -4831,10 +4829,10 @@ export default function App() {
       user={user}
       savedEtfs={savedEtfs}
       onLogin={(loggedIn) => {
-        setUser(loggedIn);
-        etfApi.list(loggedIn.id).then(r => setSavedEtfs(r.etfs||[])).catch(()=>{});
+        // Use the full handleLogin flow so Portfolio view works immediately after switch
+        handleLogin(loggedIn);
       }}
-      onSwitchToPortfolio={user ? () => setEtfMode(false) : null}
+      onSwitchToPortfolio={() => setEtfMode(false)}
       onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
     />
   );
