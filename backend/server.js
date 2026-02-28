@@ -1330,6 +1330,222 @@ async function lookupPriceForImport(symbol, date) {
   }
 }
 
+
+// POST /api/portfolios/:id/import/preview  — parse file, detect conflicts, return preview
+// Body: multipart form with 'file' field
+app.post('/api/portfolios/:id/import/preview', upload.single('file'), async (req, res) => {
+  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  const pid = req.params.id;
+  const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
+                  .get(pid, getUserId(req));
+  if (!port) return err(res, 404, 'Portfolio not found');
+  if (!req.file) return err(res, 400, 'No file uploaded');
+
+  const isCSV = req.file.originalname.toLowerCase().endsWith('.csv') ||
+                req.file.mimetype === 'text/csv' ||
+                req.file.mimetype === 'application/csv';
+
+  // Reuse the same parsing logic (inlined helper)
+  let col = {}, rawRows = [];
+  if (isCSV) {
+    let text = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, '');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) return err(res, 400, 'CSV file is empty');
+    const parseCSVLine = (line) => {
+      const fields = []; let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQ) { if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; } else if (ch === '"') inQ = false; else cur += ch; }
+        else { if (ch === '"') inQ = true; else if (ch === ',') { fields.push(cur); cur = ''; } else cur += ch; }
+      }
+      fields.push(cur); return fields.map(f => f.trim());
+    };
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      const f = parseCSVLine(lines[i]).map(v => v.toLowerCase());
+      if (f.includes('date') && f.includes('symbol') && f.includes('type')) { headerIdx = i; f.forEach((h,idx) => { if (h) col[h]=idx; }); break; }
+    }
+    if (headerIdx === -1) return err(res, 400, 'Could not find header row');
+    for (let i = headerIdx + 1; i < lines.length; i++) rawRows.push(parseCSVLine(lines[i]));
+  } else {
+    const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(req.file.buffer); } catch(e) { return err(res, 400, 'Could not read Excel: ' + e.message); }
+    const ws = wb.getWorksheet('Transactions') || wb.worksheets[0];
+    if (!ws) return err(res, 400, 'No worksheet found');
+    let headerRowNum = 0, headerArr = null;
+    ws.eachRow((row, rowNum) => {
+      if (headerArr) return;
+      const vals = row.values.map(v => String(v||'').toLowerCase().trim());
+      if (vals.includes('date') && vals.includes('symbol') && vals.includes('type')) { headerArr = vals; headerRowNum = rowNum; }
+    });
+    if (!headerArr) return err(res, 400, 'Could not find header row');
+    headerArr.forEach((h, i) => { if (h) col[h] = i; });
+    ws.eachRow((row, rowNum) => {
+      if (rowNum <= headerRowNum) return;
+      const maxIdx = Math.max(...Object.values(col));
+      const arr = [];
+      for (let i = 0; i <= maxIdx + 1; i++) {
+        const v = row.getCell(i+1).value;
+        if (v instanceof Date) arr.push(v.toISOString().slice(0,10));
+        else arr.push(v === null || v === undefined ? '' : String(v).trim());
+      }
+      rawRows.push(arr);
+    });
+  }
+
+  const getField = (arr, field) => { const idx = col[field]; return (idx === undefined || idx >= arr.length) ? '' : (arr[idx] || '').trim(); };
+  const REQUIRED = ['date','type','symbol','quantity'];
+  const missing = REQUIRED.filter(f => col[f] === undefined);
+  if (missing.length) return err(res, 400, `Missing columns: ${missing.join(', ')}`);
+
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const EXAMPLE_DATES = new Set(['2024-01-15','2024-02-20','2024-03-10']);
+  const EXAMPLE_SYMS  = new Set(['AAPL','SAP.DE']);
+
+  // Get existing transactions for this portfolio
+  const existing = db.prepare(
+    'SELECT id, symbol, date, type, quantity, price, currency, name, notes FROM transactions WHERE portfolio_id=? ORDER BY date ASC'
+  ).all(pid);
+
+  // Build a lookup: symbol+date+type → [existing tx]
+  const existMap = {};
+  for (const tx of existing) {
+    const k = `${tx.symbol}|${tx.date}|${tx.type}`;
+    if (!existMap[k]) existMap[k] = [];
+    existMap[k].push(tx);
+  }
+
+  const preview = [], skipped = [];
+  rawRows.forEach((arr, idx) => {
+    const rowNum = idx + 1;
+    const date   = getField(arr, 'date');
+    const type   = getField(arr, 'type').toUpperCase();
+    const symbol = getField(arr, 'symbol').toUpperCase();
+    const qty    = parseFloat(getField(arr, 'quantity'));
+    const price  = parseFloat(getField(arr, 'price')) || null;
+    const ccy    = getField(arr, 'currency').toUpperCase() || null;
+    const name   = getField(arr, 'name') || null;
+    const notes  = getField(arr, 'notes') || null;
+
+    if (!date && !symbol) return;
+    if (EXAMPLE_SYMS.has(symbol) && EXAMPLE_DATES.has(date)) { skipped.push({ row:rowNum, reason:'example row' }); return; }
+
+    const errors = [];
+    if (!DATE_RE.test(date))              errors.push('invalid date format');
+    if (!['BUY','SELL'].includes(type))   errors.push('type must be BUY/SELL');
+    if (!symbol)                          errors.push('symbol empty');
+    if (isNaN(qty) || qty <= 0)           errors.push('quantity must be > 0');
+    if (errors.length) { skipped.push({ row:rowNum, symbol, reason:errors.join('; ') }); return; }
+
+    // Conflict detection: same symbol + date + type in existing portfolio
+    const k = `${symbol}|${date}|${type}`;
+    const conflicts = existMap[k] || [];
+    const hasConflict = conflicts.length > 0;
+
+    preview.push({
+      row: rowNum,
+      symbol, date, type, quantity: qty, price, currency: ccy, name, notes,
+      // Conflict info
+      conflict: hasConflict,
+      conflictIds: conflicts.map(c => c.id),
+      conflictRows: conflicts.map(c => ({
+        id: c.id, symbol:c.symbol, date:c.date, type:c.type,
+        quantity:c.quantity, price:c.price, currency:c.currency,
+        name:c.name, notes:c.notes,
+      })),
+      // Default resolution for conflicting rows
+      resolution: hasConflict ? 'keep_existing' : 'import', // import|keep_existing|overwrite|add_new
+    });
+  });
+
+  res.json({
+    preview,
+    skipped,
+    existingCount: existing.length,
+    conflictCount: preview.filter(r => r.conflict).length,
+    newCount: preview.filter(r => !r.conflict).length,
+    portfolio: { id: port.id, name: port.name },
+  });
+});
+
+
+// POST /api/portfolios/:id/import/selective  — import with conflict resolutions
+// Body JSON: { rows: [{ symbol, date, type, quantity, price, currency, name, notes, resolution, conflictIds }] }
+app.post('/api/portfolios/:id/import/selective', async (req, res) => {
+  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  const pid = req.params.id;
+  const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
+                  .get(pid, getUserId(req));
+  if (!port) return err(res, 404, 'Portfolio not found');
+
+  const { rows } = req.body;
+  if (!Array.isArray(rows) || !rows.length) return err(res, 400, 'rows array required');
+
+  const insertTx = db.prepare(`
+    INSERT INTO transactions (portfolio_id, symbol, name, quantity, price, price_usd, date, type, currency, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const deleteTx = db.prepare('DELETE FROM transactions WHERE id=? AND portfolio_id=?');
+  const fxCache = {};
+
+  const getUSD = async (price, currency, date) => {
+    if (!price || currency === 'USD') return price;
+    const cacheKey = `hist_${date}_${currency}_USD`;
+    if (fxCache[cacheKey]) return price * fxCache[cacheKey];
+    const cached = db.prepare('SELECT rate FROM fx_cache WHERE pair=?').get(cacheKey);
+    if (cached) { fxCache[cacheKey] = cached.rate; return price * cached.rate; }
+    try {
+      const fxRes = await fetch(`https://api.frankfurter.app/${date}?from=${currency}&to=USD`);
+      if (fxRes.ok) {
+        const fxData = await fxRes.json();
+        const rate = fxData.rates?.USD;
+        if (rate) {
+          db.prepare('INSERT OR REPLACE INTO fx_cache (pair, rate, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(cacheKey, rate);
+          fxCache[cacheKey] = rate;
+          return price * rate;
+        }
+      }
+    } catch(e) {}
+    return price; // fallback
+  };
+
+  let imported = 0, overwritten = 0, skipped = 0;
+  const errors = [];
+
+  for (const r of rows) {
+    const { symbol, date, type, quantity, price, currency, name, notes, resolution, conflictIds } = r;
+    try {
+      if (resolution === 'keep_existing' || resolution === 'skip') {
+        skipped++; continue;
+      }
+      const priceUSD = price ? await getUSD(price, currency || 'USD', date) : null;
+      const ccy = currency || 'USD';
+
+      if (resolution === 'overwrite') {
+        // Delete existing conflicting rows first
+        if (conflictIds && conflictIds.length) {
+          db.transaction(() => {
+            for (const id of conflictIds) deleteTx.run(id, pid);
+          })();
+          overwritten += conflictIds.length;
+        }
+        // Insert new
+        insertTx.run(pid, symbol, name||null, quantity, price||0, priceUSD||price||0, date, type, ccy, notes||null);
+        imported++;
+      } else if (resolution === 'add_new' || resolution === 'import') {
+        // Insert without touching existing
+        insertTx.run(pid, symbol, name||null, quantity, price||0, priceUSD||price||0, date, type, ccy, notes||null);
+        imported++;
+      }
+    } catch(e) {
+      errors.push({ symbol, date, reason: e.message });
+    }
+  }
+
+  log.info(`Selective import into portfolio ${pid}: ${imported} imported, ${overwritten} overwritten, ${skipped} skipped`);
+  res.json({ imported, overwritten, skipped, errors, portfolio: { id: port.id, name: port.name } });
+});
+
 app.post('/api/portfolios/:id/import', upload.single('file'), async (req, res) => {
   if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
   const pid = req.params.id;

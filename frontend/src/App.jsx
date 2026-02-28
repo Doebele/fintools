@@ -140,6 +140,12 @@ const txApi = {
     return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true });
   },
   importTemplate: () => `/api/portfolios/import/template`,
+  importPreview: (pid, file) => {
+    const fd = new FormData(); fd.append("file", file);
+    return apiFetch(`/portfolios/${pid}/import/preview`, { method:"POST", body:fd, isForm:true });
+  },
+  importSelective: (pid, rows) =>
+    apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }) }),
 };
 const quotesApi = {
   batch: (symbols, source, apiKey) => apiFetch("/quotes/batch", {
@@ -414,15 +420,26 @@ function LoginScreen({ onLogin, onEtfMode }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// IMPORT / EXPORT MODAL
+// IMPORT / EXPORT MODAL  — with conflict resolution preview
 // ════════════════════════════════════════════════════════════════════════════
+const RESOLUTION_LABELS = {
+  import:        { label:"Import",          color:"#3b82f6", desc:"Add as new transaction" },
+  keep_existing: { label:"Behalten",        color:"#8896a8", desc:"Keep existing, skip this row" },
+  overwrite:     { label:"Überschreiben",   color:"#f87171", desc:"Replace existing with imported" },
+  add_new:       { label:"Als Neu",         color:"#4ade80", desc:"Add alongside existing (both kept)" },
+};
+
 function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone }) {
-  const [tab,        setTab]        = useState("export");
-  const [selPort,    setSelPort]    = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
-  const [file,       setFile]       = useState(null);
-  const [importing,  setImporting]  = useState(false);
-  const [result,     setResult]     = useState(null);  // { imported, skipped, skippedRows }
-  const [importErr,  setImportErr]  = useState(null);
+  const [tab,         setTab]         = useState("export");
+  const [selPort,     setSelPort]     = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
+  const [file,        setFile]        = useState(null);
+  const [importing,   setImporting]   = useState(false);
+  const [previewing,  setPreviewing]  = useState(false);
+  const [result,      setResult]      = useState(null);
+  const [importErr,   setImportErr]   = useState(null);
+  const [previewData, setPreviewData] = useState(null);  // { preview, skipped, conflictCount, newCount }
+  const [resolutions, setResolutions] = useState({});    // { rowIndex: resolution }
+  const [filterMode,  setFilterMode]  = useState("all"); // all|conflicts|new
   const fileRef = useRef(null);
 
   const selectedPort = portfolios.find(p => p.id === Number(selPort) || p.id === selPort);
@@ -439,59 +456,110 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 2000);
-    } catch(e) {
-      setExportErr(e.message || "Export failed");
-    }
+    } catch(e) { setExportErr(e.message || "Export failed"); }
     setExporting(false);
   };
 
-  // ── Import ────────────────────────────────────────────────────────────────
-  const handleImport = async () => {
+  // ── Preview / Import flow ─────────────────────────────────────────────────
+  const handlePreview = async () => {
     if (!file || !selPort) return;
-    setImporting(true); setResult(null); setImportErr(null);
+    setPreviewing(true); setPreviewData(null); setImportErr(null); setResult(null);
     try {
-      const data = await txApi.importXlsx(selPort, file);
+      const data = await txApi.importPreview(selPort, file);
+      setPreviewData(data);
+      // Set default resolutions
+      const defaults = {};
+      data.preview.forEach((row, i) => {
+        defaults[i] = row.conflict ? "keep_existing" : "import";
+      });
+      setResolutions(defaults);
+    } catch(e) { setImportErr(e.message || "Preview failed"); }
+    setPreviewing(false);
+  };
+
+  const handleConfirmImport = async () => {
+    if (!previewData || !selPort) return;
+    setImporting(true); setImportErr(null);
+    try {
+      const rows = previewData.preview.map((row, i) => ({
+        ...row,
+        resolution: resolutions[i] ?? (row.conflict ? "keep_existing" : "import"),
+      }));
+      const data = await txApi.importSelective(selPort, rows);
       setResult(data);
+      setPreviewData(null);
       if (data.imported > 0) onImportDone();
-    } catch(e) {
-      setImportErr(e.message || "Import failed");
-    }
+    } catch(e) { setImportErr(e.message || "Import failed"); }
     setImporting(false);
   };
 
-  const isValidFile = (f) => f && (f.name.endsWith('.xlsx') || f.name.endsWith('.csv'));
+  const setAllConflicts = (resolution) => {
+    if (!previewData) return;
+    setResolutions(prev => {
+      const next = { ...prev };
+      previewData.preview.forEach((row, i) => { if (row.conflict) next[i] = resolution; });
+      return next;
+    });
+  };
 
+  const isValidFile = (f) => f && (f.name.endsWith('.xlsx') || f.name.endsWith('.csv'));
   const handleDrop = (e) => {
     e.preventDefault();
     const f = e.dataTransfer.files[0];
-    if (isValidFile(f)) { setFile(f); setResult(null); setImportErr(null); }
+    if (isValidFile(f)) { setFile(f); setPreviewData(null); setResult(null); setImportErr(null); }
   };
 
   const btnStyle = (active) => ({
     flex:1, padding:"8px 0", border:"none", cursor:"pointer",
     borderRadius:8, fontSize:12, fontWeight:700, fontFamily:"inherit",
     background: active ? THEME.accent : "rgba(255,255,255,0.05)",
-    color: active ? "#fff" : THEME.text3,
-    transition:"all 0.15s",
+    color: active ? "#fff" : THEME.text3, transition:"all 0.15s",
   });
 
   const PortSelect = () => (
     <div style={{ marginBottom:16 }}>
-      <label style={{ fontSize:11, color:THEME.text3, display:"block", marginBottom:5 }}>
-        Portfolio
-      </label>
-      <select value={selPort} onChange={e=>setSelPort(e.target.value)}
-        style={{ width:"100%", padding:"8px 10px", borderRadius:8,
-          border:`1px solid ${THEME.border}`, background:THEME.bg,
-          color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
-        {portfolios.map(p => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
+      <label style={{ fontSize:11, color:THEME.text3, display:"block", marginBottom:5 }}>Portfolio</label>
+      <select value={selPort} onChange={e => { setSelPort(e.target.value); setPreviewData(null); setResult(null); }}
+        style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+          background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
+        {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
+    </div>
+  );
+
+  // Filtered preview rows
+  const filteredRows = previewData?.preview.filter((row, i) => {
+    if (filterMode === "conflicts") return row.conflict;
+    if (filterMode === "new") return !row.conflict;
+    return true;
+  }) ?? [];
+
+  const filteredIndices = previewData?.preview.reduce((acc, row, i) => {
+    if (filterMode === "all") acc.push(i);
+    else if (filterMode === "conflicts" && row.conflict) acc.push(i);
+    else if (filterMode === "new" && !row.conflict) acc.push(i);
+    return acc;
+  }, []) ?? [];
+
+  // Summary of what will happen
+  const willImport    = previewData?.preview.filter((r,i) => ["import","add_new","overwrite"].includes(resolutions[i])).length ?? 0;
+  const willSkip      = previewData?.preview.filter((r,i) => ["keep_existing","skip"].includes(resolutions[i])).length ?? 0;
+  const willOverwrite = previewData?.preview.filter((r,i) => resolutions[i]==="overwrite").length ?? 0;
+
+  const ResolutionPill = ({ value, onChange }) => (
+    <div style={{ display:"flex", gap:3 }}>
+      {Object.entries(RESOLUTION_LABELS).map(([key, { label, color }]) => (
+        <button key={key} onClick={() => onChange(key)} style={{
+          padding:"2px 7px", borderRadius:5, border:`1px solid ${value===key?color:THEME.border}`,
+          background:value===key?`${color}22`:"transparent",
+          color:value===key?color:THEME.text3,
+          fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+          textTransform:"uppercase", letterSpacing:"0.04em", whiteSpace:"nowrap",
+          transition:"all 0.1s",
+        }}>{label}</button>
+      ))}
     </div>
   );
 
@@ -501,205 +569,348 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       justifyContent:"center", zIndex:2000 }}
       onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
 
-      <div style={{ width:420, background:THEME.surface, borderRadius:18,
-        border:`1px solid ${THEME.border}`,
-        boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-        padding:"24px 24px 20px", position:"relative" }}>
-
+      {/* Modal — wider when showing preview */}
+      <div style={{
+        width: previewData ? Math.min(900, window.innerWidth-40) : 440,
+        maxHeight: "90vh", background:THEME.surface, borderRadius:18,
+        border:`1px solid ${THEME.border}`, boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
+        display:"flex", flexDirection:"column", overflow:"hidden",
+        transition:"width 0.3s ease",
+      }}>
         {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-          marginBottom:18 }}>
-          <div style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>
-            Import / Export
-          </div>
-          <button onClick={onClose} style={{ background:"none", border:"none",
-            cursor:"pointer", color:THEME.text3, display:"flex", padding:4, borderRadius:7 }}>
-            <X size={16}/>
-          </button>
-        </div>
-
-        {/* Tab switcher */}
-        <div style={{ display:"flex", gap:6, padding:4,
-          background:"rgba(0,0,0,0.3)", borderRadius:10, marginBottom:20 }}>
-          <button style={btnStyle(tab==="export")} onClick={()=>{setTab("export");setResult(null);}}>
-            <FileDown size={13} style={{marginRight:5,verticalAlign:"middle"}}/>
-            Export Excel
-          </button>
-          <button style={btnStyle(tab==="import")} onClick={()=>{setTab("import");setResult(null);}}>
-            <Upload size={13} style={{marginRight:5,verticalAlign:"middle"}}/>
-            Import Excel
-          </button>
-        </div>
-
-        {/* ── EXPORT TAB ─────────────────────────────────────────────────── */}
-        {tab === "export" && (
-          <div>
-            <PortSelect/>
-            <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 16px",
-              lineHeight:1.5 }}>
-              Downloads all transactions of the selected portfolio as a formatted
-              Excel file. The file can be re-imported to another portfolio.
-            </p>
-            {exportErr && (
-              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:10,
-                background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
-                fontSize:11, color:THEME.red, display:"flex", gap:6 }}>
-                <AlertCircle size={12} style={{flexShrink:0,marginTop:1}}/> {exportErr}
-              </div>
-            )}
-            <button onClick={handleExport} disabled={!selPort||exporting}
-              style={{ width:"100%", padding:"11px 0", borderRadius:10,
-                border:"none", background:THEME.accent, color:"#fff",
-                fontSize:13, fontWeight:700, cursor:(selPort&&!exporting)?"pointer":"not-allowed",
-                fontFamily:"inherit", display:"flex", alignItems:"center",
-                justifyContent:"center", gap:8, opacity:(selPort&&!exporting)?1:0.4 }}>
-              {exporting
-                ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={15}/></span> Exporting…</>
-                : <><FileDown size={15}/> {selectedPort ? `Download "${selectedPort.name}" as CSV` : "Select a portfolio"}</>}
+        <div style={{ padding:"20px 24px 0", flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+            <div style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>Import / Export</div>
+            <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer",
+              color:THEME.text3, display:"flex", padding:4, borderRadius:7 }}>
+              <X size={16}/>
             </button>
           </div>
-        )}
+          <div style={{ display:"flex", gap:6, padding:4, background:"rgba(0,0,0,0.3)", borderRadius:10, marginBottom:16 }}>
+            <button style={btnStyle(tab==="export")} onClick={()=>{ setTab("export"); setPreviewData(null); setResult(null); }}>
+              <FileDown size={13} style={{marginRight:5,verticalAlign:"middle"}}/> Export Excel
+            </button>
+            <button style={btnStyle(tab==="import")} onClick={()=>{ setTab("import"); setPreviewData(null); setResult(null); }}>
+              <Upload size={13} style={{marginRight:5,verticalAlign:"middle"}}/> Import Excel
+            </button>
+          </div>
+        </div>
 
-        {/* ── IMPORT TAB ─────────────────────────────────────────────────── */}
-        {tab === "import" && (
-          <div>
-            <PortSelect/>
+        {/* Body */}
+        <div style={{ flex:1, overflowY:"auto", padding:"0 24px 20px" }}>
 
-            {/* Template download */}
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-              padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
-              border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
-              <div>
-                <div style={{ fontSize:11, fontWeight:600, color:THEME.accent }}>
-                  Import Template
-                </div>
-                <div style={{ fontSize:10, color:THEME.text3, marginTop:1 }}>
-                  Download the template with instructions & dropdown validation
-                </div>
-              </div>
-              <a href={txApi.importTemplate()} download
-                style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px",
-                  borderRadius:8, border:`1px solid ${THEME.accent}`,
-                  color:THEME.accent, fontSize:11, fontWeight:600,
-                  textDecoration:"none", background:"transparent",
-                  whiteSpace:"nowrap" }}>
-                <FileDown size={12}/> Template
-              </a>
+          {/* ── EXPORT TAB ─────────────────────────────────────────────────── */}
+          {tab === "export" && (
+            <div>
+              <PortSelect/>
+              <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 16px", lineHeight:1.5 }}>
+                Downloads alle Transaktionen des gewählten Portfolios als Excel-Datei. Kann in ein anderes Portfolio re-importiert werden.
+              </p>
+              {exportErr && (
+                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:10,
+                  background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
+                  fontSize:11, color:THEME.red }}><AlertCircle size={12}/> {exportErr}</div>
+              )}
+              <button onClick={handleExport} disabled={!selPort||exporting}
+                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
+                  background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700,
+                  cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center",
+                  justifyContent:"center", gap:8, opacity:(!selPort||exporting)?0.4:1 }}>
+                {exporting
+                  ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={15}/></span> Exportiere…</>
+                  : <><FileDown size={15}/> {selectedPort ? `"${selectedPort.name}" als CSV laden` : "Portfolio wählen"}</>}
+              </button>
             </div>
+          )}
 
-            {/* File drop zone */}
-            <div
-              onDragOver={e=>e.preventDefault()}
-              onDrop={handleDrop}
-              onClick={()=>fileRef.current?.click()}
-              style={{ border:`2px dashed ${file ? THEME.accent : THEME.border}`,
-                borderRadius:10, padding:"20px 16px", textAlign:"center",
-                cursor:"pointer", background: file?"rgba(59,130,246,0.06)":"transparent",
-                transition:"all 0.15s", marginBottom:14 }}>
-              <input ref={fileRef} type="file" accept=".xlsx,.csv"
-                style={{ display:"none" }}
-                onChange={e=>{ const f=e.target.files[0]; if(isValidFile(f)){setFile(f);setResult(null);setImportErr(null);}}}/>
-              {file ? (
+          {/* ── IMPORT TAB ─────────────────────────────────────────────────── */}
+          {tab === "import" && !previewData && !result && (
+            <div>
+              <PortSelect/>
+              {/* Template */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
+                border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
                 <div>
-                  <FileUp size={20} style={{ color:THEME.accent, marginBottom:4 }}/>
-                  <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>
-                    {file.name}
+                  <div style={{ fontSize:11, fontWeight:600, color:THEME.accent }}>Import-Vorlage</div>
+                  <div style={{ fontSize:10, color:THEME.text3, marginTop:1 }}>Excel mit Anleitung und Dropdown-Validierung</div>
+                </div>
+                <a href={txApi.importTemplate()} download
+                  style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px",
+                    borderRadius:8, border:`1px solid ${THEME.accent}`,
+                    color:THEME.accent, fontSize:11, fontWeight:600,
+                    textDecoration:"none", background:"transparent", whiteSpace:"nowrap" }}>
+                  <FileDown size={12}/> Vorlage
+                </a>
+              </div>
+              {/* Drop zone */}
+              <div onDragOver={e=>e.preventDefault()} onDrop={handleDrop}
+                onClick={()=>fileRef.current?.click()}
+                style={{ border:`2px dashed ${file ? THEME.accent : THEME.border}`,
+                  borderRadius:10, padding:"20px 16px", textAlign:"center",
+                  cursor:"pointer", background: file?"rgba(59,130,246,0.06)":"transparent",
+                  transition:"all 0.15s", marginBottom:14 }}>
+                <input ref={fileRef} type="file" accept=".xlsx,.csv" style={{ display:"none" }}
+                  onChange={e=>{ const f=e.target.files[0]; if(isValidFile(f)){setFile(f);setPreviewData(null);setResult(null);setImportErr(null);}}}/>
+                {file ? (
+                  <div>
+                    <FileUp size={20} style={{ color:THEME.accent, marginBottom:4 }}/>
+                    <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>{file.name}</div>
+                    <div style={{ fontSize:10, color:THEME.text3, marginTop:2 }}>{(file.size/1024).toFixed(1)} KB — klicken zum Ändern</div>
                   </div>
-                  <div style={{ fontSize:10, color:THEME.text3, marginTop:2 }}>
-                    {(file.size/1024).toFixed(1)} KB — click to change
+                ) : (
+                  <div>
+                    <Upload size={20} style={{ color:THEME.text3, marginBottom:6 }}/>
+                    <div style={{ fontSize:12, color:THEME.text2 }}>xlsx/csv hier ablegen oder klicken</div>
+                    <div style={{ fontSize:10, color:THEME.text3, marginTop:4 }}>Importvorlage und exportierte Dateien werden unterstützt</div>
+                  </div>
+                )}
+              </div>
+              {importErr && (
+                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
+                  background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
+                  fontSize:11, color:THEME.red, display:"flex", gap:7 }}>
+                  <AlertCircle size={13} style={{flexShrink:0,marginTop:1}}/> {importErr}
+                </div>
+              )}
+              <button onClick={handlePreview} disabled={!file || !selPort || previewing}
+                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
+                  background: file&&selPort ? THEME.accent : "rgba(255,255,255,0.05)",
+                  color: file&&selPort ? "#fff" : THEME.text3, fontSize:13, fontWeight:700,
+                  cursor: file&&selPort ? "pointer" : "default", fontFamily:"inherit",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                  transition:"all 0.15s" }}>
+                {previewing
+                  ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={14}/></span> Analysiere…</>
+                  : <><Search size={14}/> Prüfen &amp; Vorschau</>}
+              </button>
+            </div>
+          )}
+
+          {/* ── PREVIEW / CONFLICT RESOLUTION ──────────────────────────────── */}
+          {tab === "import" && previewData && !result && (
+            <div>
+              {/* Summary bar */}
+              <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+                <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.1)",
+                  border:"1px solid rgba(59,130,246,0.2)", flex:"1 1 0", minWidth:100 }}>
+                  <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+                    letterSpacing:"0.07em" }}>Gesamt</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                    fontWeight:700, color:THEME.text1 }}>{previewData.preview.length}</div>
+                </div>
+                <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(74,222,128,0.08)",
+                  border:"1px solid rgba(74,222,128,0.2)", flex:"1 1 0", minWidth:100 }}>
+                  <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+                    letterSpacing:"0.07em" }}>Neu</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                    fontWeight:700, color:THEME.green }}>{previewData.newCount}</div>
+                </div>
+                <div style={{ padding:"8px 12px", borderRadius:8,
+                  background:previewData.conflictCount>0?"rgba(248,113,113,0.08)":"rgba(255,255,255,0.03)",
+                  border:previewData.conflictCount>0?"1px solid rgba(248,113,113,0.25)":"1px solid rgba(255,255,255,0.06)",
+                  flex:"1 1 0", minWidth:100 }}>
+                  <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+                    letterSpacing:"0.07em" }}>Konflikte</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                    fontWeight:700, color:previewData.conflictCount>0?THEME.red:THEME.text3 }}>
+                    {previewData.conflictCount}
                   </div>
                 </div>
-              ) : (
-                <div>
-                  <Upload size={20} style={{ color:THEME.text3, marginBottom:6 }}/>
-                  <div style={{ fontSize:12, color:THEME.text2 }}>
-                    Drop .xlsx file here or click to browse
+                {previewData.skipped.length > 0 && (
+                  <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(251,191,36,0.08)",
+                    border:"1px solid rgba(251,191,36,0.2)", flex:"1 1 0", minWidth:100 }}>
+                    <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
+                      letterSpacing:"0.07em" }}>Übersprungen</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                      fontWeight:700, color:THEME.yellow }}>{previewData.skipped.length}</div>
                   </div>
-                  <div style={{ fontSize:10, color:THEME.text3, marginTop:4 }}>
-                    Supports the import template and exported files
+                )}
+              </div>
+
+              {/* Conflict bulk actions */}
+              {previewData.conflictCount > 0 && (
+                <div style={{ padding:"10px 12px", borderRadius:9, background:"rgba(248,113,113,0.06)",
+                  border:"1px solid rgba(248,113,113,0.2)", marginBottom:12 }}>
+                  <div style={{ fontSize:11, color:THEME.text2, marginBottom:8 }}>
+                    ⚠ <strong>{previewData.conflictCount} Zeilen</strong> haben dieselbe Symbol+Datum+Typ Kombination wie bestehende Transaktionen.
+                  </div>
+                  <div style={{ fontSize:10, color:THEME.text3, marginBottom:8 }}>
+                    Alle Konflikte auf einmal lösen:
+                  </div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {Object.entries(RESOLUTION_LABELS).map(([key, { label, color, desc }]) => (
+                      <button key={key} onClick={() => setAllConflicts(key)} style={{
+                        padding:"5px 12px", borderRadius:7, border:`1px solid ${color}40`,
+                        background:`${color}12`, color, fontSize:10, fontWeight:700,
+                        cursor:"pointer", fontFamily:"inherit", display:"flex",
+                        flexDirection:"column", alignItems:"flex-start", gap:1,
+                      }}>
+                        <span>{label}</span>
+                        <span style={{ fontSize:8, fontWeight:400, color:`${color}cc` }}>{desc}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* Required columns info */}
-            <div style={{ fontSize:10, color:THEME.text3, marginBottom:14,
-              padding:"8px 10px", background:"rgba(0,0,0,0.2)", borderRadius:8,
-              lineHeight:1.6 }}>
-              <span style={{ color:THEME.text2, fontWeight:600 }}>Required: </span>
-              date · type · symbol · quantity
-              <br/>
-              <span style={{ color:THEME.accent, fontWeight:600 }}>Auto-lookup (optional): </span>
-              <span style={{ color:THEME.text3 }}>price & currency are fetched from Yahoo Finance if blank</span>
-              <br/>
-              <span style={{ color:THEME.text2, fontWeight:600 }}>Optional: </span>
-              name · price_usd · notes · portfolio
-            </div>
-
-            {/* Error */}
-            {importErr && (
-              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
-                background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
-                fontSize:11, color:THEME.red, display:"flex", gap:7 }}>
-                <AlertCircle size={13} style={{flexShrink:0, marginTop:1}}/>
-                {importErr}
+              {/* Filter tabs */}
+              <div style={{ display:"flex", gap:4, marginBottom:10 }}>
+                {[
+                  { key:"all",       label:`Alle (${previewData.preview.length})` },
+                  { key:"conflicts", label:`Konflikte (${previewData.conflictCount})` },
+                  { key:"new",       label:`Neu (${previewData.newCount})` },
+                ].map(f => (
+                  <button key={f.key} onClick={()=>setFilterMode(f.key)} style={{
+                    padding:"4px 10px", borderRadius:6,
+                    border:`1px solid ${filterMode===f.key?THEME.accent:THEME.border}`,
+                    background:filterMode===f.key?"rgba(59,130,246,0.15)":"transparent",
+                    color:filterMode===f.key?THEME.accent:THEME.text3,
+                    fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                  }}>{f.label}</button>
+                ))}
               </div>
-            )}
 
-            {/* Result */}
-            {result && (
-              <div style={{ padding:"10px 12px", borderRadius:8, marginBottom:12,
-                background:"rgba(34,197,94,0.08)", border:"1px solid rgba(34,197,94,0.25)" }}>
-                <div style={{ fontSize:13, fontWeight:700, color:THEME.green, marginBottom:4 }}>
-                  ✓ Imported {result.imported} transaction{result.imported!==1?"s":""}
-                </div>
-                {result.priceLookedUp > 0 && (
-                  <div style={{ fontSize:11, color:THEME.text3, marginBottom:2 }}>
-                    {result.priceLookedUp} price{result.priceLookedUp!==1?"s":""} fetched from Yahoo Finance
+              {/* Row table */}
+              <div style={{ border:`1px solid ${THEME.border}`, borderRadius:10, overflow:"hidden", marginBottom:14 }}>
+                <div style={{ maxHeight:360, overflowY:"auto" }}>
+                  {/* Header */}
+                  <div style={{ display:"grid", gridTemplateColumns:"80px 80px 60px 70px 70px 1fr",
+                    padding:"7px 10px", background:THEME.surface2, borderBottom:`1px solid ${THEME.border2}`,
+                    position:"sticky", top:0, zIndex:1 }}>
+                    {["Symbol","Datum","Typ","Menge","Preis","Aktion"].map(h => (
+                      <div key={h} style={{ fontSize:9, color:THEME.text3, fontWeight:700,
+                        textTransform:"uppercase", letterSpacing:"0.07em" }}>{h}</div>
+                    ))}
                   </div>
-                )}
-                {result.splitAdjusted > 0 && (
-                  <div style={{ fontSize:11, color:THEME.yellow ?? "#fbbf24", marginBottom:2,
-                    display:"flex", alignItems:"center", gap:5 }}>
-                    <span>⚡</span>
-                    {result.splitAdjusted} transaction{result.splitAdjusted!==1?"s":""} split-adjusted (historical price corrected for stock splits)
-                  </div>
-                )}
-                {result.skipped > 0 && (
-                  <div style={{ fontSize:11, color:THEME.yellow ?? "#fbbf24" }}>
-                    {result.skipped} row{result.skipped!==1?"s":""} skipped
-                    {result.skippedRows?.length > 0 && (
-                      <div style={{ marginTop:4, fontSize:10, color:THEME.text3,
-                        maxHeight:80, overflowY:"auto" }}>
-                        {result.skippedRows.map((r,i)=>(
-                          <div key={i}>Row {r.row}{r.symbol?` (${r.symbol})`:""}: {r.reason}</div>
+                  {filteredRows.length === 0 && (
+                    <div style={{ padding:"16px", textAlign:"center", color:THEME.text3, fontSize:12 }}>
+                      Keine Zeilen in diesem Filter.
+                    </div>
+                  )}
+                  {filteredRows.map((row, fi) => {
+                    const realIdx = filteredIndices[fi];
+                    const res = resolutions[realIdx] ?? (row.conflict ? "keep_existing" : "import");
+                    const resInfo = RESOLUTION_LABELS[res];
+                    return (
+                      <div key={realIdx} style={{
+                        borderBottom:`1px solid ${THEME.border2}`,
+                        background:row.conflict?"rgba(248,113,113,0.04)":"transparent",
+                      }}>
+                        {/* Import row */}
+                        <div style={{ display:"grid", gridTemplateColumns:"80px 80px 60px 70px 70px 1fr",
+                          padding:"7px 10px", alignItems:"start" }}>
+                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
+                            fontWeight:700, color:THEME.accent }}>{row.symbol}</div>
+                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text2 }}>{row.date}</div>
+                          <div style={{ fontSize:10, color:row.type==="BUY"?THEME.green:THEME.red, fontWeight:700 }}>{row.type}</div>
+                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text1 }}>{row.quantity}</div>
+                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text2 }}>
+                            {row.price ? row.price.toFixed(2) : "—"} {row.currency||""}
+                          </div>
+                          <div>
+                            <ResolutionPill
+                              value={res}
+                              onChange={r => setResolutions(prev => ({...prev, [realIdx]: r}))}
+                            />
+                          </div>
+                        </div>
+                        {/* Existing rows (conflict) */}
+                        {row.conflict && row.conflictRows.map(ex => (
+                          <div key={ex.id} style={{ display:"grid",
+                            gridTemplateColumns:"80px 80px 60px 70px 70px 1fr",
+                            padding:"4px 10px 6px", alignItems:"center",
+                            background:"rgba(0,0,0,0.2)", borderTop:`1px solid ${THEME.border2}` }}>
+                            <div style={{ fontSize:8, color:THEME.text3, fontStyle:"italic", gridColumn:"1/3" }}>
+                              ↳ Bestehend (ID {ex.id})
+                            </div>
+                            <div/>
+                            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9,
+                              color:THEME.text3 }}>{ex.quantity}</div>
+                            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:THEME.text3 }}>
+                              {ex.price?.toFixed(2)} {ex.currency||""}
+                            </div>
+                            <div style={{ fontSize:9, color:THEME.text3 }}>
+                              {resInfo && (
+                                <span style={{ color:resInfo.color }}>{resInfo.desc}</span>
+                              )}
+                            </div>
+                          </div>
                         ))}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action summary + buttons */}
+              <div style={{ padding:"10px 12px", borderRadius:9, background:THEME.surface2,
+                border:`1px solid ${THEME.border}`, marginBottom:12,
+                display:"flex", gap:16, alignItems:"center" }}>
+                <span style={{ fontSize:11, color:THEME.green }}>✓ {willImport} importieren</span>
+                {willOverwrite > 0 && <span style={{ fontSize:11, color:THEME.red }}>⚡ {willOverwrite} überschreiben</span>}
+                <span style={{ fontSize:11, color:THEME.text3 }}>∅ {willSkip} überspringen</span>
+              </div>
+
+              {importErr && (
+                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
+                  background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
+                  fontSize:11, color:THEME.red }}><AlertCircle size={13}/> {importErr}</div>
+              )}
+
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={() => { setPreviewData(null); setImportErr(null); }}
+                  style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
+                    background:"transparent", color:THEME.text2, fontSize:12, fontWeight:600,
+                    cursor:"pointer", fontFamily:"inherit" }}>
+                  ← Zurück
+                </button>
+                <button onClick={handleConfirmImport} disabled={importing || willImport === 0}
+                  style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
+                    background: willImport > 0 ? THEME.accent : "rgba(255,255,255,0.05)",
+                    color: willImport > 0 ? "#fff" : THEME.text3, fontSize:13, fontWeight:700,
+                    cursor: willImport > 0 ? "pointer" : "default", fontFamily:"inherit",
+                    display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  {importing
+                    ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={14}/></span> Importiere…</>
+                    : <><Upload size={14}/> {willImport} Transaktionen importieren{willOverwrite>0?` (${willOverwrite} ersetzen)`:""}</>}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── RESULT ─────────────────────────────────────────────────────── */}
+          {tab === "import" && result && (
+            <div>
+              <div style={{ padding:"16px", borderRadius:12, marginBottom:16,
+                background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)",
+                textAlign:"center" }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>✓</div>
+                <div style={{ fontSize:15, fontWeight:700, color:THEME.green, marginBottom:4 }}>
+                  {result.imported} Transaktion{result.imported!==1?"en":""} importiert
+                </div>
+                {result.overwritten > 0 && (
+                  <div style={{ fontSize:12, color:THEME.red, marginBottom:2 }}>
+                    {result.overwritten} überschrieben
                   </div>
                 )}
+                <div style={{ fontSize:11, color:THEME.text3 }}>
+                  {result.skipped} übersprungen
+                </div>
               </div>
-            )}
-
-            <button onClick={handleImport}
-              disabled={!file || !selPort || importing}
-              style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
-                background: file&&selPort ? THEME.accent : "rgba(255,255,255,0.05)",
-                color: file&&selPort ? "#fff" : THEME.text3,
-                fontSize:13, fontWeight:700, cursor: file&&selPort?"pointer":"default",
-                fontFamily:"inherit", display:"flex", alignItems:"center",
-                justifyContent:"center", gap:8, transition:"all 0.15s" }}>
-              {importing
-                ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={14}/></span> Importing…</>
-                : <><Upload size={14}/> Import into {selectedPort?`"${selectedPort.name}"`:"portfolio"}</>}
-            </button>
-          </div>
-        )}
+              <button onClick={() => { setResult(null); setFile(null); setPreviewData(null); }}
+                style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
+                  background:"transparent", color:THEME.text2, fontSize:12, fontWeight:600,
+                  cursor:"pointer", fontFamily:"inherit" }}>
+                Weiteren Import
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
 // ════════════════════════════════════════════════════════════════════════════
 // RAIL NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
@@ -3377,13 +3588,76 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           </>
         )}
 
-        {/* Closed-rail: show search icon */}
+        {/* Closed-rail: show presets + saved ETFs as compact badges */}
         {!open && (
-          <button onClick={onToggle} style={{ width:"100%", background:"none",
-            border:"none", cursor:"pointer", color:THEME.text3,
-            display:"flex", justifyContent:"center", padding:"6px 0" }}>
-            <Search size={14}/>
-          </button>
+          <>
+            {/* Preset ETFs — small badges */}
+            {PREDEFINED_ETFS_CLIENT.map(etf => (
+              <button key={etf.ticker} onClick={() => handleSelect(etf.ticker)}
+                title={etf.name}
+                style={{
+                  width:"100%", background:selectedTicker===etf.ticker
+                    ?"rgba(59,130,246,0.18)":"none",
+                  border:"none", cursor:"pointer",
+                  display:"flex", justifyContent:"center",
+                  alignItems:"center", padding:"5px 0",
+                  borderRadius:7, transition:"background 0.1s",
+                }}>
+                <div style={{
+                  width:34, height:34, borderRadius:8,
+                  background:selectedTicker===etf.ticker
+                    ?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.06)",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                }}>
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace",
+                    fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
+                    color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
+                    {etf.ticker.replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {/* Divider before saved */}
+            {savedEtfs && savedEtfs.length > 0 && (
+              <div style={{ height:1, background:THEME.border2, margin:"4px 6px" }}/>
+            )}
+            {/* Saved ETFs */}
+            {savedEtfs && savedEtfs.map(etf => (
+              <button key={etf.ticker} onClick={() => handleSelect(etf.ticker)}
+                title={`★ ${etf.name || etf.ticker}`}
+                style={{
+                  width:"100%", background:selectedTicker===etf.ticker
+                    ?"rgba(59,130,246,0.18)":"none",
+                  border:"none", cursor:"pointer",
+                  display:"flex", justifyContent:"center",
+                  alignItems:"center", padding:"5px 0",
+                  borderRadius:7, transition:"background 0.1s",
+                }}>
+                <div style={{ position:"relative" }}>
+                  <div style={{
+                    width:34, height:34, borderRadius:8,
+                    background:selectedTicker===etf.ticker
+                      ?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.06)",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    border:selectedTicker===etf.ticker
+                      ?"1px solid rgba(59,130,246,0.4)":"1px solid rgba(255,255,255,0.08)",
+                  }}>
+                    <span style={{ fontFamily:"'JetBrains Mono',monospace",
+                      fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
+                      color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
+                      {(etf.ticker||"").replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
+                    </span>
+                  </div>
+                  {/* Star badge */}
+                  <div style={{ position:"absolute", top:-3, right:-3,
+                    width:10, height:10, borderRadius:"50%",
+                    background:"rgba(251,191,36,0.9)",
+                    fontSize:6, display:"flex", alignItems:"center",
+                    justifyContent:"center", color:"#000", fontWeight:900 }}>★</div>
+                </div>
+              </button>
+            ))}
+          </>
         )}
       </div>
 

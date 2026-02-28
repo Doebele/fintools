@@ -402,6 +402,12 @@ function runMonteCarlo({
   };
 }
 
+// Swiss tax constants
+const CH_VERRECHNUNGSSTEUER = 0.35; // 35% withholding on dividends
+const CH_EFFECTIVE_DIV_TAX  = 0.00; // Fully refundable if declared in tax return (Privatanleger)
+const CH_CG_TAX             = 0.00; // No capital gains tax for private investors
+const CH_WEALTH_TAX_RATE    = 0.002; // ~0.2% p.a. on assets (Vermögenssteuer, canton average)
+
 export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
   const rate = rates["USD"] ?? 1;
 
@@ -454,7 +460,8 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
   const [years,      setYears]      = useState(10);
   const [monthly,    setMonthly]    = useState(500);
   const [inflation,  setInflation]  = useState(2.5);
-  const [taxRate,    setTaxRate]    = useState(25);
+  const [taxMode,    setTaxMode]    = useState("ch_private"); // ch_private|ch_declared|custom
+  const [taxRate,    setTaxRate]    = useState(0); // custom only
   const [drip,       setDrip]       = useState(true);
   const [nSims,      setNSims]      = useState(500);
   const [result,     setResult]     = useState(null);
@@ -465,17 +472,34 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
     if (!totalValueUSD) return;
     setRunning(true);
     setTimeout(() => {
+      // Determine effective tax rates based on mode
+      let effectiveDivTax = 0, effectiveCGTax = 0, wealthTaxAnnual = 0;
+      if (taxMode === "ch_private") {
+        // CH: No CG tax, dividends: 35% Verrechnungssteuer, refundable → effectively 0
+        effectiveDivTax = CH_EFFECTIVE_DIV_TAX;
+        effectiveCGTax  = CH_CG_TAX;
+        wealthTaxAnnual = CH_WEALTH_TAX_RATE;
+      } else if (taxMode === "ch_declared") {
+        // CH: Dividends taxed as income (~30% marginal + 35% VSt already deducted)
+        // Net additional burden ~15% after refund
+        effectiveDivTax = 0.15;
+        effectiveCGTax  = CH_CG_TAX;
+        wealthTaxAnnual = CH_WEALTH_TAX_RATE;
+      } else {
+        effectiveDivTax = taxRate / 100;
+        effectiveCGTax  = taxRate / 100;
+      }
       const r = runMonteCarlo({
         initialValue:  totalValueUSD,
         annualDivYield:divYield,
         years,
         nSims,
         monthlyAddition: monthly,
-        annualMu:   portfolioStats.mu,
+        annualMu:   portfolioStats.mu - wealthTaxAnnual, // wealth tax reduces effective return
         annualSigma:portfolioStats.sigma,
         drip,
         inflation:  inflation / 100,
-        taxRate:    taxRate   / 100,
+        taxRate:    effectiveDivTax, // used for div tax; CG applied at end separately
       });
       setResult(r);
       setRunning(false);
@@ -661,11 +685,44 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
                 onChange={e=>setInflation(+e.target.value)}
                 style={{ width:"100%", accentColor:C.accent }}/>
             </div>
+            {/* Swiss tax mode */}
             <div>
-              <label style={lbl}>Tax Rate (CG + Div): {taxRate}%</label>
-              <input type="range" min={0} max={50} step={1} value={taxRate}
-                onChange={e=>setTaxRate(+e.target.value)}
-                style={{ width:"100%", accentColor:C.accent }}/>
+              <label style={lbl}>Steuermodell</label>
+              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                {[
+                  { key:"ch_private",  label:"🇨🇭 CH Privatanleger",   sub:"0% KG-Steuer · Verrechnungssteuer zurückgefordert" },
+                  { key:"ch_declared", label:"🇨🇭 CH Einkommenssteuer",  sub:"Dividenden als Einkommen (~15% Netto)" },
+                  { key:"custom",      label:"Benutzerdefiniert",        sub:`${taxRate}% auf Gewinne und Dividenden` },
+                ].map(m => (
+                  <button key={m.key} onClick={()=>setTaxMode(m.key)} style={{
+                    padding:"5px 8px", borderRadius:6, border:`1px solid ${taxMode===m.key?C.accent:C.border}`,
+                    background:taxMode===m.key?"rgba(59,130,246,0.12)":"rgba(255,255,255,0.02)",
+                    color:taxMode===m.key?C.text1:C.text3,
+                    fontFamily:"inherit", cursor:"pointer", textAlign:"left",
+                  }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:taxMode===m.key?C.accent:C.text2 }}>{m.label}</div>
+                    <div style={{ fontSize:8, marginTop:2, color:C.text3 }}>{m.sub}</div>
+                  </button>
+                ))}
+              </div>
+              {taxMode === "custom" && (
+                <div style={{ marginTop:8 }}>
+                  <label style={lbl}>Steuersatz: {taxRate}%</label>
+                  <input type="range" min={0} max={50} step={1} value={taxRate}
+                    onChange={e=>setTaxRate(+e.target.value)}
+                    style={{ width:"100%", accentColor:C.accent }}/>
+                </div>
+              )}
+              {taxMode === "ch_private" && (
+                <div style={{ marginTop:6, padding:"6px 8px", borderRadius:6,
+                  background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.2)" }}>
+                  <div style={{ fontSize:8, color:C.green, lineHeight:1.5 }}>
+                    ✓ Keine Kapitalgewinnsteuer (Privatanleger)<br/>
+                    ✓ Verrechnungssteuer (35%) via Steuererklärung zurückgefordert<br/>
+                    + Vermögenssteuer ~0.2% p.a. eingerechnet
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <label style={lbl}>Simulations: {nSims}</label>
@@ -738,9 +795,11 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache }) {
                   })}
                 </div>
                 <div style={{ marginTop:8, fontSize:10, color:C.text3, lineHeight:1.6 }}>
-                  ⚠ This simulation uses historical return estimates and assumes normally-distributed returns.
-                  It does not account for sequence-of-returns risk, fat tails, or black-swan events.
-                  Not financial advice.
+                  ⚠ Simulation basiert auf historischen Schätzungen und normalverteilten Renditen.
+                  Kein Sequenzrisiko, Fat Tails oder Black-Swan-Events berücksichtigt.
+                  CH Privatanleger: keine Kapitalgewinnsteuer · Verrechnungssteuer anrechenbar ·
+                  Vermögenssteuer ~0.2% p.a. reduziert effektive Rendite.
+                  Keine Anlageberatung.
                 </div>
               </div>
             </>
@@ -1141,16 +1200,27 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
   const rate = rates[currency] ?? 1;
   const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
   const now  = new Date();
-  const [viewYear, setViewYear] = useState(now.getFullYear());
-  const [selected, setSelected] = useState(null); // selected month index
+  const [viewYear,     setViewYear]     = useState(now.getFullYear());
+  const [selected,     setSelected]     = useState(null); // selected month index
+  const [fictValue,    setFictValue]    = useState(10000); // ETF mode: fictitious portfolio value
 
   // Build positions with quantities
   const positions = useMemo(() => {
     if (isEtfMode) {
-      // ETF mode: use holdings without personal quantities
-      return (etfHoldings || []).map(h => ({
-        symbol:h.symbol, name:h.name, qty:null, valueUSD:null,
-      }));
+      // ETF mode: simulate quantities based on fictitious portfolio value + weight
+      return (etfHoldings || []).map(h => {
+        const q = divCache?.[h.symbol];
+        const price = q?.yieldPct != null ? null : null; // price from divCache not available here
+        // Estimate shares: fictValue * weight% / price (price not available here → use weight for payout)
+        const allocatedUSD = fictValue * (h.weight / 100);
+        return {
+          symbol:h.symbol, name:h.name,
+          qty:null, // qty unknown without price — use allocatedUSD for payout
+          valueUSD: allocatedUSD,
+          isEtfFict: true,
+          fictAllocated: allocatedUSD,
+        };
+      });
     }
     // Portfolio mode: aggregate from nodes
     const map = {};
@@ -1161,7 +1231,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
       map[n.symbol].valueUSD += n.valueUSD ?? 0;
     }
     return Object.values(map);
-  }, [allNodes, etfHoldings, isEtfMode]);
+  }, [allNodes, etfHoldings, isEtfMode, fictValue]);
 
   // Build calendar events
   const events = useMemo(() => {
@@ -1179,7 +1249,15 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
         payDate.setDate(payDate.getDate() + 14);
         // Amount per position
         const perShare  = ev.amount ?? div.annualRate / (div.payments || 4);
-        const totalUSD  = pos.qty ? perShare * pos.qty : null;
+        // For ETF mode: estimate income from allocated value × div yield / payments
+        let totalUSD = null;
+        if (pos.qty) {
+          totalUSD = perShare * pos.qty;
+        } else if (pos.fictAllocated && div.yieldPct) {
+          // annual yield / payments per year
+          const paymentsPerYear = div.payments || 4;
+          totalUSD = pos.fictAllocated * (div.yieldPct / 100) / paymentsPerYear;
+        }
         result.push({
           month: m,
           exDate: ev.date,
@@ -1233,6 +1311,33 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
           </div>
         }
       />
+
+      {/* ETF mode: fictitious portfolio size selector */}
+      {isEtfMode && (
+        <div style={{ padding:"0 22px 10px", display:"flex", alignItems:"center", gap:12,
+          borderBottom:`1px solid ${C.border2}`, flexShrink:0 }}>
+          <span style={{ fontSize:11, color:C.text3 }}>Simulated portfolio:</span>
+          {[10000, 20000, 50000, 100000].map(v => (
+            <button key={v} onClick={()=>setFictValue(v)} style={{
+              padding:"4px 12px", borderRadius:7,
+              border:`1px solid ${fictValue===v?C.accent:C.border}`,
+              background:fictValue===v?"rgba(59,130,246,0.15)":"transparent",
+              color:fictValue===v?C.accent:C.text3,
+              fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            }}>
+              {v >= 1000 ? `${v/1000}K` : v} {currency}
+            </button>
+          ))}
+          {annualTotal > 0 && (
+            <div style={{ marginLeft:"auto", fontFamily:C.mono }}>
+              <span style={{ fontSize:10, color:C.text3 }}>Est. annual income: </span>
+              <span style={{ fontSize:13, fontWeight:700, color:"#fbbf24" }}>
+                {cSym}{(annualTotal * rate).toFixed(2)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Annual summary */}
       {!isEtfMode && annualTotal > 0 && (
