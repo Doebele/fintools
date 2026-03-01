@@ -400,6 +400,37 @@ const PERIODS = [
 ];
 
 // ─── Small UI Helpers ─────────────────────────────────────────────────────────
+function RefreshIconButton({ onClick, loading }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      disabled={loading}
+      title="Refresh Quotes"
+      style={{
+        display:"flex", alignItems:"center", gap:5,
+        padding: hov ? "4px 10px" : "4px 7px",
+        borderRadius:8, border:`1px solid ${hov ? THEME.accent+"66" : THEME.border}`,
+        background: hov ? "rgba(59,130,246,0.12)" : "transparent",
+        color: loading ? THEME.text3 : hov ? THEME.accent : THEME.text3,
+        cursor: loading ? "not-allowed" : "pointer",
+        fontSize:11, fontFamily:"inherit", fontWeight:600,
+        transition:"all 0.15s", whiteSpace:"nowrap", overflow:"hidden",
+        maxWidth: hov ? 100 : 28,
+      }}>
+      {loading
+        ? <span className="spin" style={{display:"flex"}}><RefreshCw size={13}/></span>
+        : <RefreshCw size={13}/>}
+      <span style={{
+        maxWidth: hov ? 60 : 0, opacity: hov ? 1 : 0,
+        overflow:"hidden", transition:"max-width 0.18s, opacity 0.15s", whiteSpace:"nowrap",
+      }}>Refresh</span>
+    </button>
+  );
+}
+
 const FLabel = ({ children }) => (
   <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
                 letterSpacing:"0.08em", marginBottom:5 }}>{children}</div>
@@ -5249,39 +5280,7 @@ export default function App() {
                 </div>
               )}
               {/* Refresh button — icon only, shows label on hover */}
-              {(() => {
-                const [hovRef, setHovRef] = useState(false);
-                return (
-                  <button
-                    onClick={handleRefresh}
-                    onMouseEnter={() => setHovRef(true)}
-                    onMouseLeave={() => setHovRef(false)}
-                    disabled={!!fetchStatus}
-                    title="Refresh Quotes"
-                    style={{
-                      display:"flex", alignItems:"center", gap:5,
-                      padding: hovRef ? "4px 10px" : "4px 7px",
-                      borderRadius:8, border:`1px solid ${hovRef ? THEME.accent+"66" : THEME.border}`,
-                      background: hovRef ? "rgba(59,130,246,0.12)" : "transparent",
-                      color: fetchStatus ? THEME.text3 : hovRef ? THEME.accent : THEME.text3,
-                      cursor: fetchStatus ? "not-allowed" : "pointer",
-                      fontSize:11, fontFamily:"inherit", fontWeight:600,
-                      transition:"all 0.15s", whiteSpace:"nowrap", overflow:"hidden",
-                      maxWidth: hovRef ? 100 : 28,
-                    }}>
-                    {fetchStatus
-                      ? <span className="spin" style={{display:"flex"}}><RefreshCw size={13}/></span>
-                      : <RefreshCw size={13}/>}
-                    <span style={{
-                      maxWidth: hovRef ? 60 : 0,
-                      opacity: hovRef ? 1 : 0,
-                      overflow:"hidden",
-                      transition:"max-width 0.18s, opacity 0.15s",
-                      whiteSpace:"nowrap",
-                    }}>Refresh</span>
-                  </button>
-                );
-              })()}
+              <RefreshIconButton onClick={handleRefresh} loading={!!fetchStatus} />
             </div>
           </div>
 
