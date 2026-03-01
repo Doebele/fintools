@@ -1216,31 +1216,92 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 // ════════════════════════════════════════════════════════════════════════════
 // RAIL NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
-const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => (
-  <button onClick={onClick} title={!open ? label : undefined}
-    className={active ? undefined : "rail-btn"}
-    style={{
-      display:"flex", alignItems:"center", gap:10,
-      width:"100%", padding: open ? "9px 12px" : "9px 0",
-      justifyContent: open ? "flex-start" : "center",
-      borderRadius:9, border:"none", cursor:"pointer",
-      background: active ? "rgba(59,130,246,0.15)" : "transparent",
-      color: active ? THEME.accent : (color || THEME.text3),
-      fontSize:12, fontWeight: active ? 700 : 500,
-      fontFamily:THEME.font, transition:"background 0.12s, color 0.12s",
-      position:"relative",
-    }}>
-    <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
-    {open && <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>}
-    {badge && (
-      <span style={{
-        marginLeft:"auto", flexShrink:0,
-        background:"rgba(59,130,246,0.2)", color:THEME.accent,
-        fontSize:9, fontWeight:700, borderRadius:4, padding:"2px 5px",
-      }}>{badge}</span>
-    )}
-  </button>
-);
+// ─── Delayed tooltip for collapsed sidebar icons ──────────────────────────
+const SidebarTip = ({ children, label, open }) => {
+  const [tip, setTip]       = useState(false);
+  const [pos, setPos]       = useState({ x:0, y:0 });
+  const timerRef            = useRef(null);
+  if (open) return children;
+  return (
+    <div style={{ position:"relative" }}
+      onMouseEnter={e => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        setPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
+        timerRef.current = setTimeout(() => setTip(true), 1200);
+      }}
+      onMouseLeave={() => { clearTimeout(timerRef.current); setTip(false); }}>
+      {children}
+      {tip && (
+        <div style={{
+          position:"fixed", left:pos.x, top:pos.y,
+          transform:"translateY(-50%)",
+          background:"#1e2030", border:`1px solid ${THEME.border}`,
+          borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
+          color:THEME.text1, whiteSpace:"nowrap", zIndex:9999,
+          boxShadow:"0 4px 16px rgba(0,0,0,0.5)", pointerEvents:"none",
+        }}>{label}</div>
+      )}
+    </div>
+  );
+};
+
+const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
+  const [tip, setTip]       = useState(false);
+  const [tipPos, setTipPos] = useState({ x:0, y:0 });
+  const timerRef            = useRef(null);
+
+  const showTip = (e) => {
+    if (open) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTipPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
+    timerRef.current = setTimeout(() => setTip(true), 1200);
+  };
+  const hideTip = () => {
+    clearTimeout(timerRef.current);
+    setTip(false);
+  };
+
+  return (
+    <>
+      <button onClick={onClick}
+        onMouseEnter={showTip}
+        onMouseLeave={hideTip}
+        className={active ? undefined : "rail-btn"}
+        style={{
+          display:"flex", alignItems:"center", gap:10,
+          width:"100%", padding: open ? "9px 12px" : "9px 0",
+          justifyContent: open ? "flex-start" : "center",
+          borderRadius:9, border:"none", cursor:"pointer",
+          background: active ? "rgba(59,130,246,0.15)" : "transparent",
+          color: active ? THEME.accent : (color || THEME.text3),
+          fontSize:12, fontWeight: active ? 700 : 500,
+          fontFamily:THEME.font, transition:"background 0.12s, color 0.12s",
+          position:"relative",
+        }}>
+        <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
+        {open && <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>}
+        {badge && (
+          <span style={{
+            marginLeft:"auto", flexShrink:0,
+            background:"rgba(59,130,246,0.2)", color:THEME.accent,
+            fontSize:9, fontWeight:700, borderRadius:4, padding:"2px 5px",
+          }}>{badge}</span>
+        )}
+      </button>
+      {tip && !open && (
+        <div style={{
+          position:"fixed", left:tipPos.x, top:tipPos.y,
+          transform:"translateY(-50%)",
+          background:"#1e2030", border:`1px solid ${THEME.border}`,
+          borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
+          color:THEME.text1, whiteSpace:"nowrap", zIndex:9999,
+          boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
+          pointerEvents:"none",
+        }}>{label}</div>
+      )}
+    </>
+  );
+};
 
 const RailSection = ({ label, open=true }) => open && (
   <div style={{ fontSize:9, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
@@ -1325,8 +1386,8 @@ function Rail({
         {portfolios.map(p => {
           const isActive = activePortfolioIds.includes(p.id);
           return (
-            <button key={p.id} onClick={() => onTogglePortfolio(p.id)}
-              title={!open ? p.name : undefined}
+            <SidebarTip key={p.id} label={p.name} open={open}>
+            <button onClick={() => onTogglePortfolio(p.id)}
               style={{
                 display:"flex", alignItems:"center", gap:8,
                 width:"100%", padding: open ? "7px 12px" : "7px 0",
@@ -1366,6 +1427,7 @@ function Rail({
                 </>
               )}
             </button>
+            </SidebarTip>
           );
         })}
         {open && (
@@ -1432,7 +1494,8 @@ function Rail({
               const code = CCY_FLAG[c];
               const SIZE = open ? 22 : 16;
               return (
-                <button key={c} onClick={() => onCurrency(c)} title={c}
+                <SidebarTip key={c} label={`${c} — ${CCY_NAME[c]}`} open={open}>
+                <button onClick={() => onCurrency(c)}
                   className={isActive ? undefined : "ccy-btn"}
                   style={{
                     display:"flex", alignItems:"center",
@@ -1467,6 +1530,7 @@ function Rail({
                     </div>
                   )}
                 </button>
+                </SidebarTip>
               );
             })}
           </div>
@@ -2441,7 +2505,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
   const glLabel = currency !== "USD" ? `G/L ${cSym}` : "G/L $";
 
   return (
-    <>
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", minHeight:0 }}>
       {/* Summary row — hidden in compact (per-portfolio split) mode */}
       {!compact && (
       <div style={{
@@ -2768,7 +2832,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
           onCancel={()=>setDeletePending(null)}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -5478,7 +5542,7 @@ export default function App() {
               </div>
             )}
             {activeTab === "transactions" && viewMode !== "split" && (
-              <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"12px 0 0", minHeight:0 }}>
+              <div style={{ height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", padding:"12px 0 0" }}>
                 <TransactionList
                   portfolios={activePortfolios}
                   allTransactions={allTransactions}
@@ -5491,7 +5555,7 @@ export default function App() {
               </div>
             )}
             {activeTab === "transactions" && viewMode === "split" && (
-              <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minHeight:0 }}>
+              <div style={{ height:"100%", display:"flex", flexDirection:"column", overflow:"hidden" }}>
                 <SplitTransactionList
                   portfolios={activePortfolios}
                   allTransactions={allTransactions}
@@ -5523,7 +5587,7 @@ export default function App() {
               </div>
             )}
             {activeTab === "rebalance" && (
-              <div style={{ flex:1, overflowY:"auto", minHeight:0 }}>
+              <div style={{ height:"100%", overflow:"hidden" }}>
                 <RebalancingAssistant
                   allNodes={allNodes}
                   quotes={quotes}

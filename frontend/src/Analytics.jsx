@@ -590,7 +590,18 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
   const [nSims,      setNSims]      = useState(500);
   const [result,     setResult]     = useState(null);
   const [running,    setRunning]    = useState(false);
-  const svgRef = useRef(null);
+  const svgRef    = useRef(null);
+  const svgWrapRef = useRef(null);
+
+  // Redraw chart on resize
+  useEffect(() => {
+    if (!svgWrapRef.current) return;
+    const ro = new ResizeObserver(() => {
+      if (result) setResult(r => r ? {...r} : r);
+    });
+    ro.observe(svgWrapRef.current);
+    return () => ro.disconnect();
+  }, [result]);
 
   const run = useCallback(() => {
     if (!totalValueUSD) return;
@@ -885,7 +896,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
           ) : (
             <>
               {/* Chart */}
-              <div style={{ flex:1, minHeight:0, padding:"8px 12px 0" }}>
+              <div ref={svgWrapRef} style={{ flex:1, minHeight:0, padding:"8px 12px 0" }}>
                 <svg ref={svgRef} width="100%" height="100%"/>
               </div>
 
