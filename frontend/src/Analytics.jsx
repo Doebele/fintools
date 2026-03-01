@@ -79,6 +79,87 @@ function corrColor(r) {
   return `rgba(100,149,237,${0.15+Math.abs(r)*0.4})`;   // blue = negative
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RISK & CORRELATION HELPERS  (used by RebalancingAssistant)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute annualised volatility from a price series [[date, price], ...]
+ * using the last `days` trading days.
+ */
+function calcVolatility(series, days = 90) {
+  if (!series || series.length < 2) return null;
+  const slice = series.slice(-Math.min(days + 1, series.length));
+  const returns = [];
+  for (let i = 1; i < slice.length; i++) {
+    const prev = slice[i - 1][1], cur = slice[i][1];
+    if (prev > 0 && cur > 0 && isFinite(cur / prev)) {
+      returns.push(Math.log(cur / prev));
+    }
+  }
+  if (returns.length < 5) return null;
+  const mean = returns.reduce((s, v) => s + v, 0) / returns.length;
+  const variance = returns.reduce((s, v) => s + (v - mean) ** 2, 0) / (returns.length - 1);
+  return Math.sqrt(variance * 252); // annualised
+}
+
+/**
+ * Detect correlated clusters from a correlation matrix.
+ * Returns list of clusters: [{ symbols:[], avgCorr }]
+ * Two symbols are clustered when |corr| > threshold (default 0.7).
+ */
+function detectClusters(symbols, matrix, threshold = 0.7) {
+  const n = symbols.length;
+  const visited = new Array(n).fill(false);
+  const clusters = [];
+  for (let i = 0; i < n; i++) {
+    if (visited[i]) continue;
+    const cluster = [i];
+    visited[i] = true;
+    for (let j = i + 1; j < n; j++) {
+      if (visited[j]) continue;
+      const v = matrix?.[i]?.[j];
+      if (v != null && v >= threshold) {
+        cluster.push(j);
+        visited[j] = true;
+      }
+    }
+    if (cluster.length > 1) clusters.push(cluster.map(k => symbols[k]));
+  }
+  return clusters;
+}
+
+/**
+ * Smart cash allocation: cover BUY orders using cash first.
+ * Returns { buys, sells } where each sell has been reduced if cash suffices.
+ */
+function smartCashAllocation(actions, cashAddUSD) {
+  // Sort buys largest first
+  const buys  = actions.filter(a => a.action === "BUY"  && a.tgtPct > 0)
+    .sort((a, b) => b.diffUSD - a.diffUSD);
+  const sells = actions.filter(a => a.action === "SELL" && a.tgtPct > 0)
+    .sort((a, b) => a.diffUSD - b.diffUSD);
+
+  let remainingCash = cashAddUSD;
+  const adjustedBuys = buys.map(a => {
+    const cover = Math.min(remainingCash, a.diffUSD);
+    remainingCash -= cover;
+    return { ...a, coveredByCash: cover, needsFunding: a.diffUSD - cover };
+  });
+
+  // Only generate sell orders for the shortfall that cash cannot cover
+  const totalUncovered = adjustedBuys.reduce((s, a) => s + a.needsFunding, 0);
+  let sellBudget = totalUncovered;
+  const adjustedSells = sells.map(a => {
+    const sellAmt = Math.min(Math.abs(a.diffUSD), sellBudget);
+    sellBudget -= sellAmt;
+    return { ...a, effectiveSellUSD: -sellAmt, suppressed: sellAmt < 0.01 };
+  }).filter(a => !a.suppressed);
+
+  return { buys: adjustedBuys, sells: adjustedSells };
+}
+
 export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
   const [histData, setHistData]   = useState({});
   const [loading,  setLoading]    = useState(false);
@@ -285,6 +366,44 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
           )}
         </div>
       )}
+
+      {/* ── Cluster Analysis ── */}
+      {!loading && matrix && (() => {
+        const clusters = detectClusters(symbols, matrix, 0.7);
+        if (!clusters.length) return (
+          <div style={{ padding:"8px 22px 14px", fontSize:10, color:C.green }}>
+            ✓ No high-correlation clusters detected — portfolio is well diversified
+          </div>
+        );
+        return (
+          <div style={{ padding:"0 22px 18px", flexShrink:0 }}>
+            <div style={{ fontSize:9, color:"#f87171", fontWeight:700,
+              textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:8 }}>
+              ⚠ Correlated Clusters (r ≥ 0.70) — Hidden Concentration Risk
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              {clusters.map((cluster, i) => (
+                <div key={i} style={{ padding:"7px 12px", borderRadius:9,
+                  background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.25)" }}>
+                  <div style={{ fontSize:9, color:C.text3, marginBottom:5 }}>Cluster {i+1}</div>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    {cluster.map(sym => (
+                      <span key={sym} style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
+                        color:"#f87171", padding:"2px 7px", borderRadius:4,
+                        background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)" }}>
+                        {sym}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ fontSize:9, color:C.text3, marginTop:5 }}>
+                    These assets move together — treat as single exposure
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -994,6 +1113,25 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
   const [showPlan,    setShowPlan]  = useState(false);  // Rebalancing Plan modal
   const [cashExpanded,setCashExpanded] = useState(false); // Cash simulation detail
   const [roundMode,   setRoundMode] = useState("precise"); // precise|hundreds|thousands|shares
+  const [rebalMode,   setRebalMode] = useState("weight");  // weight | risk
+  const [histData,    setHistData]  = useState({});        // { symbol: [[date,price],...] }
+  const [histLoading, setHistLoading] = useState(false);
+  const [smartCash,   setSmartCash] = useState(true);      // Smart cash utilization on/off
+
+  // Load historical price data for risk-based rebalancing
+  const symbols_list = positions.map(p => p.symbol);
+  useEffect(() => {
+    if (rebalMode !== "risk" || !symbols_list.length) return;
+    setHistLoading(true);
+    fetch(`${BASE}/quotes/history-multi`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ symbols: symbols_list, range: "1y" }),
+    })
+      .then(r => r.json())
+      .then(d => setHistData(d.results || {}))
+      .catch(() => {})
+      .finally(() => setHistLoading(false));
+  }, [rebalMode, symbols_list.join(",")]);
 
   // Load saved targets
   useEffect(() => {
@@ -1022,31 +1160,82 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
 
   const totalTarget = Object.values(targets).reduce((s,t)=>s+(t.tickerPct||0),0);
 
-  // Compute rebalancing actions — sector comes from auto-inference or saved override
+  // Volatility per symbol (annualised, 90-day)
+  const volatilities = useMemo(() => {
+    const out = {};
+    for (const sym of positions.map(p => p.symbol)) {
+      out[sym] = calcVolatility(histData[sym], 90);
+    }
+    return out;
+  }, [histData, positions]);
+
+  // Compute rebalancing actions — weight-based or risk-based
   const actions = useMemo(() => {
     const total = totalValueUSD + cashAdd;
     if (total <= 0) return [];
+
+    // ── Risk-based: volatility-adjusted target weights ──────────────────────
+    let riskAdjTargets = null;
+    if (rebalMode === "risk") {
+      const symsWithVol = positions.filter(p => volatilities[p.symbol] != null);
+      if (symsWithVol.length > 1) {
+        // Inverse-vol weights, then blend with user targets
+        const invVols = symsWithVol.map(p => 1 / (volatilities[p.symbol] || 0.3));
+        const sumInv  = invVols.reduce((s, v) => s + v, 0);
+        riskAdjTargets = {};
+        symsWithVol.forEach((p, i) => {
+          const userTgt  = (targets[p.symbol]?.tickerPct || 0) / 100;
+          const riskTgt  = invVols[i] / sumInv;
+          // Blend: 60% risk-adjusted, 40% user target (when user has set a target)
+          riskAdjTargets[p.symbol] = userTgt > 0
+            ? 0.6 * riskTgt + 0.4 * userTgt
+            : riskTgt;
+        });
+        // Normalise to sum=1
+        const sum = Object.values(riskAdjTargets).reduce((s, v) => s + v, 0);
+        if (sum > 0) Object.keys(riskAdjTargets).forEach(k => { riskAdjTargets[k] /= sum; });
+      }
+    }
+
     return positions.map(pos => {
       const t   = targets[pos.symbol];
-      const tgt = (t?.tickerPct || 0) / 100;
+      // Effective target: risk-adjusted or user weight
+      const tgt = riskAdjTargets
+        ? (riskAdjTargets[pos.symbol] ?? 0)
+        : (t?.tickerPct || 0) / 100;
+
       const cur = totalValueUSD > 0 ? pos.valueUSD / totalValueUSD : 0;
-      const targetValueUSD  = total * tgt;
-      const diffUSD  = targetValueUSD - pos.valueUSD;
+      const targetValueUSD = total * tgt;
+      let diffUSD  = targetValueUSD - pos.valueUSD;
+
+      // Risk mode: dampen rebalance pressure proportional to volatility
+      // High-vol assets: only rebalance if drift is larger (vol-adjusted threshold)
+      const vol      = volatilities[pos.symbol];
+      const volScale = rebalMode === "risk" && vol != null ? Math.min(vol / 0.25, 2.5) : 1;
       const driftPct = cur > 0 ? ((cur - tgt) / tgt) * 100 : tgt > 0 ? -100 : 0;
+      // Suppress tiny adjustments for volatile assets
+      if (rebalMode === "risk" && vol != null && Math.abs(driftPct) < threshold * volScale) {
+        diffUSD = 0;
+      }
+
       const q       = quotes[pos.symbol];
       const qCcy    = q?.currency;
-      const qRate   = (qCcy && qCcy!=="USD") ? (rates[qCcy]??1) : 1;
-      const priceUSD= q ? (qRate>0 ? q.price/qRate : q.price) : null;
-      const shares  = priceUSD && priceUSD>0 ? Math.round(Math.abs(diffUSD)/priceUSD*10)/10 : null;
-      // sector: prefer auto-inferred, allow saved override
+      const qRate   = (qCcy && qCcy !== "USD") ? (rates[qCcy] ?? 1) : 1;
+      const priceUSD= q ? (qRate > 0 ? q.price / qRate : q.price) : null;
+      const shares  = priceUSD && priceUSD > 0 ? Math.round(Math.abs(diffUSD) / priceUSD * 10) / 10 : null;
       const sector  = t?.sectorOverride || pos.autoSector;
+
+      // Risk contribution = weight × volatility
+      const riskContrib = vol != null && totalValueUSD > 0
+        ? (pos.valueUSD / totalValueUSD) * vol : null;
+
       return {
-        ...pos, tgtPct:tgt*100, curPct:cur*100, diffUSD, driftPct,
-        priceUSD, shares, action: diffUSD>0?"BUY":diffUSD<0?"SELL":"OK",
-        sector,
+        ...pos, tgtPct: tgt * 100, curPct: cur * 100, diffUSD, driftPct,
+        priceUSD, shares, action: diffUSD > 0 ? "BUY" : diffUSD < 0 ? "SELL" : "OK",
+        sector, volatility: vol, riskContrib, volScale,
       };
     });
-  }, [positions, targets, totalValueUSD, cashAdd, quotes, rates]);
+  }, [positions, targets, totalValueUSD, cashAdd, quotes, rates, rebalMode, volatilities, threshold]);
 
   const sectorGroups = useMemo(() => {
     const map = {};
@@ -1093,6 +1282,32 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
     Math.abs(a.driftPct) > threshold &&
     (mode==="both"||(mode==="buy"&&a.action==="BUY")||(mode==="sell"&&a.action==="SELL"))
   );
+
+  // ── Correlation clusters (uses histData shared with risk mode) ────────────
+  const corrClusters = useMemo(() => {
+    const syms = positions.map(p => p.symbol);
+    if (syms.length < 2 || !Object.keys(histData).length) return [];
+    // Build mini correlation matrix for cluster detection
+    const matrix = syms.map((a, i) =>
+      syms.map((b, j) => {
+        if (i === j) return 1;
+        const sA = histData[a], sB = histData[b];
+        if (!sA || !sB) return null;
+        return computeCorrelation(sA, sB);
+      })
+    );
+    return detectClusters(syms, matrix, 0.7);
+  }, [histData, positions]);
+
+  // Total risk contribution
+  const totalRiskContrib = actions.reduce((s, a) => s + (a.riskContrib ?? 0), 0);
+
+  // ── Smart cash: adjust buy/sell list based on available cash ─────────────
+  const cashAddUSD = cashAdd / (rates[currency] ?? 1);
+  const smartAlloc = useMemo(() => {
+    if (!smartCash) return null;
+    return smartCashAllocation(actions, cashAddUSD);
+  }, [actions, cashAddUSD, smartCash]);
 
   // Color palettes for donuts
   const SECTOR_COLORS = ["#3b82f6","#4ade80","#fbbf24","#f87171","#a78bfa","#34d399",
@@ -1151,11 +1366,16 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
 
       {/* ── Rebalancing Plan Panel ── */}
       {showPlan && (() => {
-        const buyList  = actions.filter(a=>a.action==="BUY"  && a.tgtPct>0).sort((a,b)=>b.diffUSD-a.diffUSD);
-        const sellList = actions.filter(a=>a.action==="SELL" && a.tgtPct>0).sort((a,b)=>a.diffUSD-b.diffUSD);
-        const totalBuy  = buyList.reduce((s,a)=>s+a.diffUSD,0);
-        const totalSell = Math.abs(sellList.reduce((s,a)=>s+a.diffUSD,0));
         const cashRate  = rates[currency] ?? 1;
+        // Use smart allocation if enabled, else plain buy/sell lists
+        const buyList  = smartCash && smartAlloc
+          ? smartAlloc.buys
+          : actions.filter(a=>a.action==="BUY"  && a.tgtPct>0).sort((a,b)=>b.diffUSD-a.diffUSD);
+        const sellList = smartCash && smartAlloc
+          ? smartAlloc.sells
+          : actions.filter(a=>a.action==="SELL" && a.tgtPct>0).sort((a,b)=>a.diffUSD-b.diffUSD);
+        const totalBuy  = buyList.reduce((s,a)=>s+(a.diffUSD||0),0);
+        const totalSell = Math.abs(sellList.reduce((s,a)=>s+((a.effectiveSellUSD??a.diffUSD)||0),0));
         // Rounding helper
         const applyRounding = (rawUSD) => {
           const abs = Math.abs(rawUSD) * cashRate;
@@ -1279,6 +1499,55 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               </select>
             </div>
 
+            {/* Smart cash info */}
+            {smartCash && smartAlloc && smartAlloc.buys.some(a => a.coveredByCash > 0) && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8,
+                padding:"5px 10px", borderRadius:7, fontSize:10,
+                background:"rgba(74,222,128,0.07)", border:"1px solid rgba(74,222,128,0.2)" }}>
+                <span style={{ color:C.green, fontWeight:700 }}>💰 Smart Cash</span>
+                <span style={{ color:C.text3 }}>
+                  {fmtSym(smartAlloc.buys.reduce((s,a)=>s+(a.coveredByCash||0)*cashRate,0),0)} of BUY orders covered by cash —
+                  {smartAlloc.sells.length === 0
+                    ? " no sells needed"
+                    : ` ${smartAlloc.sells.length} sell order${smartAlloc.sells.length>1?"s":""} remain`}
+                </span>
+              </div>
+            )}
+
+            {/* Correlation cluster warnings */}
+            {corrClusters.length > 0 && (
+              <div style={{ marginBottom:8 }}>
+                <div style={{ fontSize:9, color:"#f87171", fontWeight:700,
+                  textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:4 }}>
+                  ⚠ Correlated Asset Clusters Detected
+                </div>
+                {corrClusters.map((cluster, i) => {
+                  const totalPct = cluster.reduce((s, sym) => {
+                    const a = actions.find(x => x.symbol === sym);
+                    return s + (a?.curPct || 0);
+                  }, 0);
+                  return (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:6,
+                      padding:"4px 8px", borderRadius:6, marginBottom:4,
+                      background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)" }}>
+                      <span style={{ fontSize:9, color:C.text3 }}>Cluster {i+1}:</span>
+                      {cluster.map(sym => (
+                        <span key={sym} style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
+                          color:"#f87171", padding:"1px 5px", borderRadius:4,
+                          background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.2)" }}>
+                          {sym}
+                        </span>
+                      ))}
+                      <span style={{ fontSize:9, color:C.text3, marginLeft:"auto" }}>
+                        Combined: {totalPct.toFixed(1)}%
+                        {totalPct > 25 && <span style={{ color:"#f87171", fontWeight:700 }}> — overweight!</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Two-column: BUY | SELL */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:0 }}>
               <div style={{ paddingRight:16, borderRight:`1px solid ${C.border2}` }}>
@@ -1312,6 +1581,42 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             borderRight:`1px solid ${C.border2}` }}>
             <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
               letterSpacing:"0.08em", marginBottom:8 }}>Settings</div>
+
+            {/* Rebalancing Mode */}
+            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Mode:</span>
+              {[
+                { key:"weight", label:"Weight-Based" },
+                { key:"risk",   label:"Risk-Based" + (histLoading?" ⟳":"") },
+              ].map(({key,label}) => (
+                <button key={key} onClick={()=>setRebalMode(key)} style={{
+                  padding:"3px 10px", borderRadius:6,
+                  border:`1px solid ${rebalMode===key?C.accent:C.border}`,
+                  background:rebalMode===key?"rgba(59,130,246,0.15)":"transparent",
+                  color:rebalMode===key?C.accent:C.text3,
+                  fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                }}>{label}</button>
+              ))}
+              {rebalMode==="risk" && !histLoading && Object.keys(histData).length > 0 && (
+                <span style={{ fontSize:9, color:C.green }}>✓ vol loaded</span>
+              )}
+            </div>
+
+            {/* Smart Cash toggle */}
+            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Smart Cash:</span>
+              <button onClick={()=>setSmartCash(v=>!v)} style={{
+                padding:"3px 10px", borderRadius:6,
+                border:`1px solid ${smartCash?C.green:C.border}`,
+                background:smartCash?"rgba(74,222,128,0.12)":"transparent",
+                color:smartCash?C.green:C.text3,
+                fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+              }}>{smartCash?"ON":"OFF"}</button>
+              <span style={{ fontSize:9, color:C.text3 }}>
+                {smartCash ? "Cash covers buys before selling" : "Classic mode"}
+              </span>
+            </div>
+
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:cashAdd>0?4:8 }}>
               <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Cash to invest:</label>
               <input type="number" value={cashAdd} min={0} step={100}
@@ -1549,11 +1854,23 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                         textAlign:"right" }}/>
                     <span style={{ fontSize:10, color:C.text3, width:14 }}>%</span>
                   </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:2 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:2, flexWrap:"wrap" }}>
                     <span style={{ fontSize:9, color:C.text3 }}>Now {cur}%</span>
                     <span style={{ fontSize:9, color:C.text3, marginLeft:4 }}>
                       {fmtSym(pos.valueUSD*(rates[currency]??1))}
                     </span>
+                    {rebalMode==="risk" && a?.volatility != null && (
+                      <span style={{ fontSize:8, color:"#fbbf24", padding:"1px 5px", borderRadius:3,
+                        background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.2)" }}>
+                        σ {(a.volatility*100).toFixed(0)}%
+                      </span>
+                    )}
+                    {rebalMode==="risk" && a?.riskContrib != null && totalRiskContrib > 0 && (
+                      <span style={{ fontSize:8, color:"#a78bfa", padding:"1px 5px", borderRadius:3,
+                        background:"rgba(167,139,250,0.08)", border:"1px solid rgba(167,139,250,0.2)" }}>
+                        risk {(a.riskContrib/totalRiskContrib*100).toFixed(0)}%
+                      </span>
+                    )}
                   </div>
                 </div>
 
