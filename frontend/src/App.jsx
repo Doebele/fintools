@@ -227,64 +227,51 @@ try {
   }
 } catch {}
 
-const globalDivCache = {
-  get: (sym) => _divMem[sym],
-  has: (sym) => sym in _divMem,
-  // Fetch and cache a symbol — returns promise, deduped
-  fetch: (sym) => {
-    if (_divMem[sym] !== undefined) return Promise.resolve(_divMem[sym]);
-    if (_divPend.has(sym)) {
-      // Wait for the in-flight request to resolve
-      return new Promise(resolve => {
-        const poll = setInterval(() => {
-          if (_divMem[sym] !== undefined) { clearInterval(poll); resolve(_divMem[sym]); }
-        }, 50);
-      });
-    }
-    _divPend.add(sym);
-    return fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
-      .then(r => r.json())
-      .then(d => {
-        _divMem[sym] = d;
-        try { sessionStorage.setItem(DIV_SESSION_PREFIX + sym, JSON.stringify(d)); } catch {}
-        return d;
-      })
-      .catch(() => {
-        _divMem[sym] = null;
-        return null;
-      })
-      .finally(() => _divPend.delete(sym));
-  },
-  // Prefetch a list of symbols using the batch endpoint (max 50 per request)
-  // Falls back to individual fetches if batch endpoint fails
-  prefetch: (symbols) => {
-    const missing = symbols.filter(s => !globalDivCache.has(s));
-    if (!missing.length) return;
-    // Mark all as in-flight immediately to prevent concurrent individual fetches
-    missing.forEach(s => _divPend.add(s));
-    // Use batch endpoint for efficiency
-    fetch('/api/quotes/dividend/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbols: missing }),
+// globalDivCache implemented as plain functions (avoids self-reference TDZ in minified builds)
+function _divGet(sym)  { return _divMem[sym]; }
+function _divHas(sym)  { return sym in _divMem; }
+function _divFetch(sym) {
+  if (_divMem[sym] !== undefined) return Promise.resolve(_divMem[sym]);
+  if (_divPend.has(sym)) {
+    return new Promise(resolve => {
+      const poll = setInterval(() => {
+        if (_divMem[sym] !== undefined) { clearInterval(poll); resolve(_divMem[sym]); }
+      }, 50);
+    });
+  }
+  _divPend.add(sym);
+  return fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
+    .then(r => r.json())
+    .then(d => {
+      _divMem[sym] = d;
+      try { sessionStorage.setItem(DIV_SESSION_PREFIX + sym, JSON.stringify(d)); } catch {}
+      return d;
     })
-      .then(r => r.json())
-      .then(({ results = {} }) => {
-        for (const [sym, data] of Object.entries(results)) {
-          _divMem[sym] = data;
-          try { sessionStorage.setItem(DIV_SESSION_PREFIX + sym, JSON.stringify(data)); } catch {}
-          _divPend.delete(sym);
-        }
-      })
-      .catch(() => {
-        // Batch failed — fall back to individual fetches
-        missing.forEach(s => {
-          _divPend.delete(s);
-          globalDivCache.fetch(s);
-        });
-      });
-  },
-};
+    .catch(() => { _divMem[sym] = null; return null; })
+    .finally(() => _divPend.delete(sym));
+}
+function _divPrefetch(symbols) {
+  const missing = symbols.filter(s => !_divHas(s));
+  if (!missing.length) return;
+  missing.forEach(s => _divPend.add(s));
+  fetch('/api/quotes/dividend/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbols: missing }),
+  })
+    .then(r => r.json())
+    .then(({ results = {} }) => {
+      for (const [sym, data] of Object.entries(results)) {
+        _divMem[sym] = data;
+        try { sessionStorage.setItem(DIV_SESSION_PREFIX + sym, JSON.stringify(data)); } catch {}
+        _divPend.delete(sym);
+      }
+    })
+    .catch(() => {
+      missing.forEach(s => { _divPend.delete(s); _divFetch(s); });
+    });
+}
+const globalDivCache = { get: _divGet, has: _divHas, fetch: _divFetch, prefetch: _divPrefetch };
 
 // ─── useDivCache hook — React-reactive wrapper around globalDivCache ────────────
 // Returns a {symbol: data} object that triggers re-renders as div data arrives.
@@ -329,26 +316,23 @@ function useDivCache(symbols) {
 const _chartMem   = {};   // { symbol → raw Yahoo JSON, symbol_1d → intraday }
 const _chartPend  = new Set();
 
-const globalChartCache = {
-  get:    (key)       => _chartMem[key],
-  has:    (key)       => key in _chartMem,
-  set:    (key, data) => { _chartMem[key] = data; },
-  // Fetch daily + intraday for a symbol, deduped
-  prefetch: (sym) => {
-    const dailyKey    = sym;
-    const intradayKey = `${sym}_1d`;
-    if (_chartMem[dailyKey] && _chartMem[intradayKey]) return;
-    if (_chartPend.has(sym)) return;
-    _chartPend.add(sym);
-    Promise.all([
-      _chartMem[dailyKey]    ? null : quotesApi.raw(sym).catch(() => null),
-      _chartMem[intradayKey] ? null : quotesApi.raw(sym, false, '2d', '5m').catch(() => null),
-    ]).then(([daily, intraday]) => {
-      if (daily)    _chartMem[dailyKey]    = daily;
-      if (intraday) _chartMem[intradayKey] = intraday;
-    }).finally(() => _chartPend.delete(sym));
-  },
-};
+function _chartGet(key)        { return _chartMem[key]; }
+function _chartHas(key)        { return key in _chartMem; }
+function _chartSet(key, data)  { _chartMem[key] = data; }
+function _chartPrefetch(sym) {
+  const dailyKey = sym, intradayKey = `${sym}_1d`;
+  if (_chartMem[dailyKey] && _chartMem[intradayKey]) return;
+  if (_chartPend.has(sym)) return;
+  _chartPend.add(sym);
+  Promise.all([
+    _chartMem[dailyKey]    ? null : quotesApi.raw(sym).catch(() => null),
+    _chartMem[intradayKey] ? null : quotesApi.raw(sym, false, '2d', '5m').catch(() => null),
+  ]).then(([daily, intraday]) => {
+    if (daily)    _chartMem[dailyKey]    = daily;
+    if (intraday) _chartMem[intradayKey] = intraday;
+  }).finally(() => _chartPend.delete(sym));
+}
+const globalChartCache = { get: _chartGet, has: _chartHas, set: _chartSet, prefetch: _chartPrefetch };
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function fmtPct(v, dec=2) {
