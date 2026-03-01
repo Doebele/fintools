@@ -9,7 +9,7 @@ import {
   RefreshCw, Settings, LogOut, Plus, CheckSquare, Square, Pencil,
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
-  GitFork, Sigma, CalendarDays, Target,
+  GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
@@ -1358,14 +1358,14 @@ function Rail({
         {/* ETF Explorer quick-switch */}
         {open && onEtfExplorer && (
           <button onClick={onEtfExplorer}
-            title="Open ETF Explorer"
+            title="Open ETF Screener"
             style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 9px",
               borderRadius:7, border:`1px solid ${THEME.border}`,
               background:"rgba(255,255,255,0.04)", color:THEME.accent,
               fontSize:10, fontWeight:600, cursor:"pointer",
               fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.12s",
               flexShrink:0 }}>
-            <TrendingUp size={11}/> ETF
+            <TrendingUp size={11}/> ETF Screener
           </button>
         )}
         <button onClick={onToggle}
@@ -1560,13 +1560,38 @@ function Rail({
         <RailBtn open={open} icon={<Settings size={14}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
           onClick={onSettings}/>
 
-        {/* ── ETF Explorer link — mirrors "Portfolio View" in EtfRail ── */}
+        {/* ── ETF Screener link ── */}
         {onEtfExplorer && (
-          <RailBtn open={open} icon={<TrendingUp size={16}/>} label="ETF Explorer"
-            onClick={onEtfExplorer} color={THEME.accent}/>
+          open ? (
+            <button onClick={onEtfExplorer} style={{
+              display:"flex", alignItems:"center", gap:10,
+              width:"100%", padding:"9px 12px", borderRadius:9,
+              border:"none", cursor:"pointer", background:"transparent",
+              color:THEME.accent, fontFamily:THEME.font,
+              transition:"background 0.12s, color 0.12s",
+            }}
+            className="rail-btn">
+              <span style={{ flexShrink:0, display:"flex" }}><TrendingUp size={16}/></span>
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-start", gap:0 }}>
+                <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>ETF Screener</span>
+                <span style={{ fontSize:9, color:THEME.text3, fontWeight:400, lineHeight:1.2 }}>Screener</span>
+              </div>
+            </button>
+          ) : (
+            <SidebarTip label="ETF Screener" open={open}>
+              <button onClick={onEtfExplorer} style={{
+                display:"flex", alignItems:"center", justifyContent:"center",
+                width:"100%", padding:"9px 0", borderRadius:9,
+                border:"none", cursor:"pointer", background:"transparent",
+                color:THEME.accent, transition:"background 0.12s",
+              }} className="rail-btn">
+                <TrendingUp size={16}/>
+              </button>
+            </SidebarTip>
+          )
         )}
 
-        {/* ── Display mode toggle — same as EtfRail ── */}
+        {/* ── Display mode toggle ── */}
         {onToggleDisplayMode && (
           <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
             {open ? (
@@ -3771,7 +3796,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         {/* Mode switcher — only shown when logged in */}
         {open && user && onSwitchToPortfolio && (
           <button onClick={onSwitchToPortfolio}
-            title="Switch to Portfolio View"
+            title="Switch to Portfolio Explorer"
             style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 8px",
               borderRadius:7, border:`1px solid ${THEME.border}`,
               background:"rgba(255,255,255,0.04)", color:THEME.text3,
@@ -4132,13 +4157,37 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 </div>
                 <div>
                   <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>{user.username}</div>
-                  <div style={{ fontSize:9, color:THEME.text3 }}>ETF Explorer</div>
+                  <div style={{ fontSize:9, color:THEME.text3 }}>ETF Screener</div>
                 </div>
               </div>
             )}
             {user && onSwitchToPortfolio && (
-              <RailBtn open={open} icon={<LayoutDashboard size={16}/>} label="Portfolio View"
-                onClick={onSwitchToPortfolio}/>
+              open ? (
+                <button onClick={onSwitchToPortfolio} style={{
+                  display:"flex", alignItems:"center", gap:10,
+                  width:"100%", padding:"9px 12px", borderRadius:9,
+                  border:"none", cursor:"pointer", background:"transparent",
+                  color:THEME.text2, fontFamily:THEME.font,
+                  transition:"background 0.12s",
+                }} className="rail-btn">
+                  <span style={{ flexShrink:0, display:"flex" }}><LayoutDashboard size={16}/></span>
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-start", gap:0 }}>
+                    <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>Portfolio Explorer</span>
+                    <span style={{ fontSize:9, color:THEME.text3, fontWeight:400, lineHeight:1.2 }}>Explorer</span>
+                  </div>
+                </button>
+              ) : (
+                <SidebarTip label="Portfolio Explorer" open={open}>
+                  <button onClick={onSwitchToPortfolio} style={{
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    width:"100%", padding:"9px 0", borderRadius:9,
+                    border:"none", cursor:"pointer", background:"transparent",
+                    color:THEME.text2, transition:"background 0.12s",
+                  }} className="rail-btn">
+                    <LayoutDashboard size={16}/>
+                  </button>
+                </SidebarTip>
+              )
             )}
             {onSignOut && (
               <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out"
@@ -4192,6 +4241,11 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               </button>
             )}
           </div>
+        )}
+        {/* Sign Out — always last */}
+        {onSignOut && user && (
+          <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out"
+            onClick={onSignOut} color={THEME.text3}/>
         )}
       </div>
     </div>

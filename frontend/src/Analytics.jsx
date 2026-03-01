@@ -2,6 +2,7 @@
  * Portfolio Analytics — Correlation · Monte Carlo · Rebalancing · Dividend Calendar
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { PieChart, ArrowLeftRight } from "lucide-react";
 import * as d3 from "d3";
 
 // Persistent UI settings store (survives ETF switches within session)
@@ -1351,17 +1352,18 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             <div style={{ display:"flex", background:"rgba(255,255,255,0.04)",
               borderRadius:8, padding:2, border:`1px solid ${C.border}` }}>
               {[
-                { key:"allocations", label:"📊 Allocations" },
-                { key:"plan",        label:"⚖ Plan" },
-              ].map(({key,label}) => (
+                { key:"allocations", icon:<PieChart size={12}/>,        label:"Allocations" },
+                { key:"plan",        icon:<ArrowLeftRight size={12}/>,   label:"Plan" },
+              ].map(({key,icon,label}) => (
                 <button key={key} onClick={()=>setActiveView(key)} style={{
-                  padding:"4px 14px", borderRadius:6,
+                  display:"flex", alignItems:"center", gap:5,
+                  padding:"4px 12px", borderRadius:6,
                   border:"none",
                   background:activeView===key ? "rgba(59,130,246,0.18)" : "transparent",
                   color:activeView===key ? C.accent : C.text3,
                   fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
                   transition:"background 0.2s, color 0.2s",
-                }}>{label}</button>
+                }}>{icon}{label}</button>
               ))}
             </div>
             {user && (
