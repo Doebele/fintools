@@ -183,17 +183,20 @@ const txApi = {
     const name = cd.match(/filename="([^"]+)"/)?.[1] || 'export.csv';
     return { blob, name };
   },
-  importXlsx:  (pid, file)  => {
+  importXlsx:  (pid, file, userId)  => {
     const fd = new FormData(); fd.append("file", file);
-    return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true });
+    return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true,
+      headers:{ "x-user-id": String(userId) } });
   },
   importTemplate: () => `/api/portfolios/import/template`,
-  importPreview: (pid, file) => {
+  importPreview: (pid, file, userId) => {
     const fd = new FormData(); fd.append("file", file);
-    return apiFetch(`/portfolios/${pid}/import/preview`, { method:"POST", body:fd, isForm:true });
+    return apiFetch(`/portfolios/${pid}/import/preview`, { method:"POST", body:fd, isForm:true,
+      headers:{ "x-user-id": String(userId) } });
   },
-  importSelective: (pid, rows) =>
-    apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }) }),
+  importSelective: (pid, rows, userId) =>
+    apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }),
+      headers:{ "x-user-id": String(userId) } }),
 };
 const quotesApi = {
   batch: (symbols, source, apiKey, force=false) => apiFetch("/quotes/batch", {
@@ -670,7 +673,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     if (!file || !selPort) return;
     setPreviewing(true); setPreviewData(null); setImportErr(null); setResult(null);
     try {
-      const data = await txApi.importPreview(selPort, file);
+      const data = await txApi.importPreview(selPort, file, user?.id);
       setPreviewData(data);
       // Set default resolutions
       const defaults = {};
@@ -690,7 +693,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
         ...row,
         resolution: resolutions[i] ?? (row.conflict ? "keep_existing" : "import"),
       }));
-      const data = await txApi.importSelective(selPort, rows);
+      const data = await txApi.importSelective(selPort, rows, user?.id);
       setResult(data);
       setPreviewData(null);
       if (data.imported > 0) onImportDone();
