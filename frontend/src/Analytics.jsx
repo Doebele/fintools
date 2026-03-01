@@ -993,6 +993,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
   const [mode,        setMode]      = useState("both");
   const [showPlan,    setShowPlan]  = useState(false);  // Rebalancing Plan modal
   const [cashExpanded,setCashExpanded] = useState(false); // Cash simulation detail
+  const [roundMode,   setRoundMode] = useState("precise"); // precise|hundreds|thousands|shares
 
   // Load saved targets
   useEffect(() => {
@@ -1113,7 +1114,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
   const sectorColorMap = Object.fromEntries(sectorDonut.map(d=>[d.label,d.color]));
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+    <div style={{ display:"flex", flexDirection:"column", minHeight:"100%", overflowY:"auto" }}>
       <SectionHeader
         title="Rebalancing Assistant"
         subtitle="Target weights, drift zones, and sector distribution"
@@ -1155,11 +1156,37 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         const totalBuy  = buyList.reduce((s,a)=>s+a.diffUSD,0);
         const totalSell = Math.abs(sellList.reduce((s,a)=>s+a.diffUSD,0));
         const cashRate  = rates[currency] ?? 1;
+        // Rounding helper
+        const applyRounding = (rawUSD) => {
+          const abs = Math.abs(rawUSD) * cashRate;
+          if (roundMode === "hundreds")   return Math.round(abs / 100) * 100;
+          if (roundMode === "thousands")  return Math.round(abs / 1000) * 1000;
+          if (roundMode === "shares") {
+            // Will be computed per-row — return abs (shares computed separately)
+            return abs;
+          }
+          return abs; // precise
+        };
+
         const PlanRow = ({a, type}) => {
           const aColor = type==="BUY" ? C.green : C.red;
-          const amt = Math.abs(a.diffUSD) * cashRate;
-          const sharesEst = a.priceUSD && a.priceUSD>0
-            ? Math.ceil(Math.abs(a.diffUSD) / a.priceUSD * 10)/10 : null;
+          const rawAmt = Math.abs(a.diffUSD) * cashRate;
+
+          // Rounded amount
+          let displayAmt, displayShares;
+          if (roundMode === "shares" && a.priceUSD && a.priceUSD > 0) {
+            const rawShares = Math.abs(a.diffUSD) / a.priceUSD;
+            displayShares = Math.round(rawShares); // whole shares
+            displayAmt = displayShares * a.priceUSD * cashRate;
+          } else {
+            displayAmt = applyRounding(rawAmt);
+            displayShares = a.priceUSD && a.priceUSD > 0
+              ? (roundMode === "precise"
+                  ? Math.ceil(rawAmt / (a.priceUSD * cashRate) * 10) / 10
+                  : Math.round(displayAmt / (a.priceUSD * cashRate)))
+              : null;
+          }
+
           return (
             <div style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0",
               borderBottom:`1px solid ${C.border2}` }}>
@@ -1189,13 +1216,14 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                 </div>
               </div>
               {/* Amount */}
-              <div style={{ textAlign:"right", flexShrink:0, width:80 }}>
+              <div style={{ textAlign:"right", flexShrink:0, width:90 }}>
                 <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:aColor }}>
-                  {fmtSym(amt,0)}
+                  {fmtSym(displayAmt, roundMode==="precise" ? 0 : 0)}
                 </div>
-                {sharesEst && a.priceUSD && (
+                {displayShares != null && a.priceUSD && (
                   <div style={{ fontSize:8, color:C.text3 }}>
-                    {sharesEst} sh. @ {fmtSym(a.priceUSD*cashRate,2)}
+                    {roundMode==="shares" ? `${displayShares} sh.` : `≈${displayShares} sh.`}
+                    {" @ "}{fmtSym(a.priceUSD*cashRate,2)}
                   </div>
                 )}
               </div>
@@ -1205,8 +1233,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
 
         return (
           <div style={{ flexShrink:0, borderBottom:`2px solid rgba(251,191,36,0.25)`,
-            background:"rgba(251,191,36,0.04)", padding:"12px 20px 8px",
-            maxHeight:320, overflowY:"auto" }}>
+            background:"rgba(251,191,36,0.04)", padding:"12px 20px 8px" }}>
             {/* Plan header */}
             <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:10, flexWrap:"wrap" }}>
               <div style={{ fontSize:10, fontWeight:700, color:"#fbbf24",
@@ -1240,6 +1267,16 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   Net {fmtSym((totalBuy-totalSell)*cashRate,0)}
                 </div>
               </div>
+              {/* Rounding mode selector */}
+              <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
+                style={{ background:"rgba(255,255,255,0.07)", border:`1px solid ${C.border}`,
+                  borderRadius:6, color:C.text2, padding:"3px 8px", fontSize:10,
+                  fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
+                <option value="precise">Precise</option>
+                <option value="hundreds">Rounded by hundreds</option>
+                <option value="thousands">Rounded by thousands</option>
+                <option value="shares">Rounded by shares</option>
+              </select>
             </div>
 
             {/* Two-column: BUY | SELL */}
@@ -1265,7 +1302,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         );
       })()}
 
-      <div style={{ display:"flex", flex:1, overflow:"hidden", flexDirection:"column" }}>
+      <div style={{ display:"flex", flexDirection:"column" }}>
 
         {/* ── Fixed header: Settings (left) + Distribution (right) ── */}
         <div style={{ display:"flex", borderBottom:`1px solid ${C.border2}`, flexShrink:0 }}>
