@@ -4388,13 +4388,13 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                        displayMode, onToggleDisplayMode }) {
   useGlobalStyles();
 
-  // divCache via useDivCache hook — React-reactive, backed by globalDivCache (sessionStorage)
-  const holdingSymbols = useMemo(() => holdings.map(h => h.symbol), [holdings]);
-  const divCache = useDivCache(holdingSymbols);
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
     try { return localStorage.getItem(ETF_LS_KEY) || "ARKK"; } catch { return "ARKK"; }
   });
   const [holdings,          setHoldings]          = useState([]);
+  // divCache via useDivCache hook — React-reactive, backed by globalDivCache (sessionStorage)
+  const holdingSymbols = useMemo(() => holdings.map(h => h.symbol), [holdings]);
+  const divCache = useDivCache(holdingSymbols);
   const [fetchedAt,         setFetchedAt]         = useState(null);
   const [loadingHoldings,   setLoadingHoldings]   = useState(false);
   const [holdingsError,     setHoldingsError]     = useState(null);
