@@ -4696,6 +4696,7 @@ export default function App() {
   const [fetchStatus,     setFetchStatus]     = useState("");
   const [fetchErrors,     setFetchErrors]     = useState({});
   const [apiStatus,       setApiStatus]       = useState(null);
+  const [lastUpdated,     setLastUpdated]     = useState(null);  // Date of last successful quote fetch
   const [initialized,     setInitialized]     = useState(false);
   const [chartDataMap,    setChartDataMap]    = useState({});
 
@@ -4910,6 +4911,7 @@ export default function App() {
       const hasErrors = Object.keys(result.errors??{}).length > 0;
       const hasStale  = Object.values(result.results).some(q => q._stale);
       setApiStatus(hasErrors ? "error" : hasStale ? "stale" : "ok");
+      if (!hasErrors || Object.keys(result.results).length > 0) setLastUpdated(new Date());
       if (dataSource==="alphavantage") avApi.usage().then(setAvUsage).catch(()=>{});
     } catch(e) { setApiStatus("error"); }
     setFetchStatus("");
@@ -5141,27 +5143,70 @@ export default function App() {
               </button>
             ))}
 
-            {/* Spacer + API status */}
-            <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>
-              {apiStatus && (
+            {/* Spacer + Last Update + Refresh button */}
+            <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
+              {/* Status pill */}
+              {apiStatus && apiStatus !== "ok" && (
                 <div style={{ display:"flex", alignItems:"center", gap:5,
                   padding:"2px 8px", borderRadius:12, fontSize:9, fontWeight:700,
                   border:"1px solid",
-                  ...(apiStatus==="ok"
-                    ? { background:"rgba(74,222,128,0.1)", borderColor:"rgba(74,222,128,0.25)", color:THEME.green }
-                    : apiStatus==="stale"
-                      ? { background:"rgba(251,191,36,0.1)", borderColor:"rgba(251,191,36,0.3)", color:"#fbbf24" }
+                  ...(apiStatus==="stale"
+                    ? { background:"rgba(251,191,36,0.1)", borderColor:"rgba(251,191,36,0.3)", color:"#fbbf24" }
                     : apiStatus==="testing"
                       ? { background:"rgba(59,130,246,0.12)", borderColor:"rgba(59,130,246,0.3)", color:THEME.accent }
                       : { background:"rgba(248,113,113,0.1)", borderColor:"rgba(248,113,113,0.25)", color:THEME.red })
                 }}>
                   <span style={{ fontSize:6 }}>●</span>
-                  {apiStatus==="testing" ? "Fetching…"
-                    : apiStatus==="stale" ? "⚠ Stale"
-                    : apiStatus==="ok" ? (dataSource==="alphavantage" ? "AV ✓" : "Yahoo ✓")
-                    : "Error"}
+                  {apiStatus==="testing" ? "Fetching…" : apiStatus==="stale" ? "⚠ Stale" : "Error"}
                 </div>
               )}
+              {/* Last Update timestamp */}
+              {lastUpdated && apiStatus !== "testing" && (
+                <div style={{ fontSize:9, color:THEME.text3,
+                  display:"flex", alignItems:"center", gap:4 }}>
+                  <span style={{ opacity:0.5 }}>Updated</span>
+                  <span style={{ fontFamily:THEME.mono, color:THEME.text2, fontWeight:600 }}>
+                    {lastUpdated.toLocaleString("de-CH", {
+                      day:"2-digit", month:"2-digit", year:"numeric",
+                      hour:"2-digit", minute:"2-digit"
+                    })}
+                  </span>
+                </div>
+              )}
+              {/* Refresh button — icon only, shows label on hover */}
+              {(() => {
+                const [hovRef, setHovRef] = React.useState(false);
+                return (
+                  <button
+                    onClick={handleRefresh}
+                    onMouseEnter={() => setHovRef(true)}
+                    onMouseLeave={() => setHovRef(false)}
+                    disabled={!!fetchStatus}
+                    title="Refresh Quotes"
+                    style={{
+                      display:"flex", alignItems:"center", gap:5,
+                      padding: hovRef ? "4px 10px" : "4px 7px",
+                      borderRadius:8, border:`1px solid ${hovRef ? THEME.accent+"66" : THEME.border}`,
+                      background: hovRef ? "rgba(59,130,246,0.12)" : "transparent",
+                      color: fetchStatus ? THEME.text3 : hovRef ? THEME.accent : THEME.text3,
+                      cursor: fetchStatus ? "not-allowed" : "pointer",
+                      fontSize:11, fontFamily:"inherit", fontWeight:600,
+                      transition:"all 0.15s", whiteSpace:"nowrap", overflow:"hidden",
+                      maxWidth: hovRef ? 100 : 28,
+                    }}>
+                    {fetchStatus
+                      ? <span className="spin" style={{display:"flex"}}><RefreshCw size={13}/></span>
+                      : <RefreshCw size={13}/>}
+                    <span style={{
+                      maxWidth: hovRef ? 60 : 0,
+                      opacity: hovRef ? 1 : 0,
+                      overflow:"hidden",
+                      transition:"max-width 0.18s, opacity 0.15s",
+                      whiteSpace:"nowrap",
+                    }}>Refresh</span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
 

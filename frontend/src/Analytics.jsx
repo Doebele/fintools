@@ -1651,14 +1651,36 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
   const nowMonth = new Date().getMonth();
   const nowYear  = new Date().getFullYear();
   const [hov, setHov]         = useState(null);
+  const [hovSym, setHovSym]   = useState(null);  // symbol under cursor within bar
   const [tipPos, setTipPos]   = useState({ x:0, y:0 });
   const chartRef              = useRef(null);
+  const barRefs               = useRef({});  // month index → bar DOM element
   const annualTotal           = monthly.reduce((s,m)=>s+m.totalUSD,0);
 
   const handleMouseMove = (e, i) => {
-    if (i !== hov) setHov(i);
+    if (i !== hov) { setHov(i); setHovSym(null); }
     const rect = chartRef.current?.getBoundingClientRect();
     if (rect) setTipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+
+    // Determine which symbol segment the cursor is over within the stacked bar
+    const barEl = barRefs.current[i];
+    const m     = monthly[i];
+    if (barEl && m?.events?.length > 0 && m.totalUSD > 0) {
+      const barRect = barEl.getBoundingClientRect();
+      // Segments are stacked column-reverse (first event at bottom)
+      // cursor position relative to bar top, as fraction of bar height
+      const relY  = (e.clientY - barRect.top) / barRect.height;
+      // column-reverse means index 0 is at bottom → invert
+      const fromBottom = 1 - relY;
+      let cumFrac = 0;
+      let found   = null;
+      for (const ev of m.events) {
+        const frac = ev.totalUSD / m.totalUSD;
+        cumFrac += frac;
+        if (fromBottom <= cumFrac) { found = ev.symbol; break; }
+      }
+      if (found !== hovSym) setHovSym(found);
+    }
   };
 
   return (
@@ -1690,21 +1712,29 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
             <div style={{ fontSize:11, fontWeight:700, color:C.text1, marginBottom:6 }}>
               {MONTH_NAMES[hov]} {year}
             </div>
-            {m.events.map(ev => (
-              <div key={ev.symbol+ev.exDate} style={{ display:"flex",
-                justifyContent:"space-between", gap:8, fontSize:10, marginBottom:2 }}>
-                <span
-                  onMouseEnter={onSymbolHover ? e => onSymbolHover(e, ev.symbol) : undefined}
-                  onMouseLeave={onSymbolLeave}
-                  style={{ color:symColors[ev.symbol]||C.accent,
-                    fontFamily:C.mono, fontWeight:700,
-                    cursor: onSymbolHover ? "pointer" : "default",
-                  }}>{ev.symbol}</span>
-                <span style={{ color:C.text2 }}>
-                  {ev.totalUSD ? `${cSym}${(ev.totalUSD*rate).toFixed(2)}` : "—"}
-                </span>
-              </div>
-            ))}
+            {m.events.map(ev => {
+              const isActive = hovSym === ev.symbol;
+              return (
+                <div key={ev.symbol+ev.exDate} style={{
+                  display:"flex", justifyContent:"space-between", gap:8,
+                  fontSize:10, marginBottom:2,
+                  padding:"2px 5px", borderRadius:4, margin:"0 -5px 2px",
+                  background: isActive ? `${symColors[ev.symbol]||C.accent}22` : "transparent",
+                  transition:"background 0.1s",
+                }}>
+                  <span
+                    onMouseEnter={onSymbolHover ? e => onSymbolHover(e, ev.symbol) : undefined}
+                    onMouseLeave={onSymbolLeave}
+                    style={{ color:symColors[ev.symbol]||C.accent,
+                      fontFamily:C.mono, fontWeight: isActive ? 800 : 700,
+                      cursor: onSymbolHover ? "pointer" : "default",
+                    }}>{ev.symbol}</span>
+                  <span style={{ color: isActive ? C.text1 : C.text2, fontWeight: isActive ? 700 : 400 }}>
+                    {ev.totalUSD ? `${cSym}${(ev.totalUSD*rate).toFixed(2)}` : "—"}
+                  </span>
+                </div>
+              );
+            })}
             <div style={{ marginTop:6, paddingTop:5, borderTop:`1px solid ${C.border2}`,
               display:"flex", justifyContent:"space-between" }}>
               <span style={{ fontSize:10, color:C.text3 }}>Total</span>
@@ -1728,7 +1758,7 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
               alignItems:"center", gap:4, cursor:hasDivs?"pointer":"default",
               height:"100%", justifyContent:"flex-end" }}
               onMouseMove={e=>handleMouseMove(e, i)}
-              onMouseLeave={()=>setHov(null)}>
+              onMouseLeave={()=>{ setHov(null); setHovSym(null); }}>
 
               {/* Amount label on top */}
               {hasDivs && (
@@ -1739,7 +1769,8 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
               )}
 
               {/* Stacked bar by symbol */}
-              <div style={{ width:"100%", height:`${barH}%`, minHeight:hasDivs?2:0,
+              <div ref={el => { if (el) barRefs.current[i] = el; }}
+                style={{ width:"100%", height:`${barH}%`, minHeight:hasDivs?2:0,
                 borderRadius:"4px 4px 0 0", overflow:"hidden", position:"relative",
                 display:"flex", flexDirection:"column-reverse",
                 transition:"transform 0.2s, filter 0.2s",
@@ -1748,13 +1779,16 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
                 filter:isHov?"brightness(1.15)":"brightness(1)",
                 background:hasDivs?"transparent":"rgba(255,255,255,0.04)" }}>
                 {m.events.map(ev => {
-                  const evFrac = ev.totalUSD && m.totalUSD > 0 ? ev.totalUSD / m.totalUSD : 0;
+                  const evFrac   = ev.totalUSD && m.totalUSD > 0 ? ev.totalUSD / m.totalUSD : 0;
+                  const isSegHov = isHov && hovSym === ev.symbol;
                   return (
                     <div key={ev.symbol+ev.exDate} style={{
                       width:"100%",
                       height:`${evFrac*100}%`,
                       background:symColors[ev.symbol] || C.accent,
-                      opacity:ev.isEstimate ? 0.65 : 1,
+                      opacity: isSegHov ? 1 : ev.isEstimate ? 0.65 : (isHov && hovSym ? 0.55 : 1),
+                      filter: isSegHov ? "brightness(1.35) saturate(1.2)" : "none",
+                      transition:"opacity 0.12s, filter 0.12s",
                     }}/>
                   );
                 })}
