@@ -2008,19 +2008,19 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const perfColor = isPos ? THEME.green : THEME.red;
   const bg    = getPerfColor(perf);
 
-  // Smart tooltip positioning: prefer right-of-cursor, flip left if too close to edge
+  // Smart tooltip positioning — constrain to viewport
   const TW = 290;
-  const MARGIN = 12;
-  const left = (x + 16 + TW + MARGIN > window.innerWidth)
+  const MARGIN = 14;
+  const viewW = window.innerWidth;
+  const viewH = window.innerHeight;
+  // Prefer right of cursor, flip left when too close to right edge
+  const left = (x + 20 + TW + MARGIN > viewW)
     ? Math.max(MARGIN, x - TW - 16)
-    : x + 16;
-  // For top: anchor near cursor, but clamp so bottom doesn't overflow
-  // Use a generous estimated height; the div auto-sizes
-  const estimatedH = 380 + (divData?.yieldPct != null ? 80 : 0);
-  const top = Math.min(
-    Math.max(MARGIN, y - 20),
-    window.innerHeight - estimatedH - MARGIN
-  );
+    : x + 20;
+  // Place below cursor by default; ensure it starts far enough from bottom
+  // We'll cap height in CSS so it never overflows vertically
+  const MAX_TIP_H = viewH - MARGIN * 2;
+  const top = Math.min(Math.max(MARGIN, y - 20), viewH - Math.min(460, MAX_TIP_H) - MARGIN);
 
   // Pick chart data
   const chartSrc = (period === "Intraday" && chartDataIntraday) ? chartDataIntraday : chartData;
@@ -2062,7 +2062,8 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
       background:THEME.surface, borderRadius:16,
       border:`1px solid ${THEME.border}`,
       boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
-      overflow:"hidden", pointerEvents:"none",
+      maxHeight:`calc(100vh - ${MARGIN*2}px)`, overflowY:"auto",
+      pointerEvents:"none",
     }}>
       <div style={{ background:bg, padding:"10px 14px 12px" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
@@ -5439,7 +5440,7 @@ export default function App() {
           <div style={{ flex:1, overflow:"hidden", minHeight:0 }}>
 
             {activeTab === "holdings" && viewMode === "consolidated" && (
-              <div style={{ padding:16, height:"100%", overflow:"hidden" }}>
+              <div style={{ padding:16, height:"100%", overflowY:"auto" }}>
                 <ConsolidatedTreeMap
                   portfolioNodes={treeNodesByPortfolio}
                   portfolios={activePortfolios}
@@ -5448,7 +5449,7 @@ export default function App() {
               </div>
             )}
             {activeTab === "holdings" && viewMode === "aggregated" && (
-              <div style={{ padding:16, height:"100%", overflow:"hidden" }}>
+              <div style={{ padding:16, height:"100%", overflowY:"auto" }}>
                 <TreeMapView
                   nodes={aggregatedNodes}
                   onCellHover={handleCellHover} onCellLeave={handleCellLeave}

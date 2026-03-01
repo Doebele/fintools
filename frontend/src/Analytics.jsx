@@ -1110,7 +1110,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
   const [saved,       setSaved]     = useState(false);
   const [threshold,   setThreshold] = useState(5);
   const [mode,        setMode]      = useState("both");
-  const [showPlan,    setShowPlan]  = useState(false);  // Rebalancing Plan modal
+  const [activeView,  setActiveView] = useState("allocations");  // 'allocations' | 'plan'
   const [cashExpanded,setCashExpanded] = useState(false); // Cash simulation detail
   const [roundMode,   setRoundMode] = useState("precise"); // precise|hundreds|thousands|shares
   const [rebalMode,   setRebalMode] = useState("weight");  // weight | risk
@@ -1336,20 +1336,27 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         action={
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {!user && <Pill label="Sign in to save targets" color={C.yellow}/>}
-            {/* Rebalancing Plan button — always visible when targets exist */}
-            {actions.some(a=>a.action!=="OK" && a.tgtPct>0) && (
-              <button onClick={()=>setShowPlan(v=>!v)} style={{
-                padding:"5px 14px", borderRadius:8,
-                border:`1px solid ${showPlan?"rgba(251,191,36,0.6)":"rgba(251,191,36,0.3)"}`,
-                background:showPlan?"rgba(251,191,36,0.15)":"rgba(251,191,36,0.07)",
-                color:"#fbbf24", fontSize:11, fontWeight:700,
-                cursor:"pointer", fontFamily:"inherit", display:"flex",
-                alignItems:"center", gap:6, transition:"all 0.15s",
-              }}>
-                <span style={{ fontSize:13 }}>⚖</span>
-                {showPlan ? "Hide Plan" : "Rebalancing Plan"}
-              </button>
-            )}
+            {/* View tab buttons */}
+            <div style={{ display:"flex", background:"rgba(255,255,255,0.04)",
+              borderRadius:8, padding:2, border:`1px solid ${C.border}` }}>
+              {[
+                { key:"allocations", label:"📊 Allocations" },
+                { key:"plan",        label:"⚖ Plan" },
+              ].map(({key,label}) => (
+                <button key={key} onClick={()=>setActiveView(key)} style={{
+                  padding:"4px 14px", borderRadius:6,
+                  border:"none",
+                  background:activeView===key
+                    ? (key==="plan" ? "rgba(251,191,36,0.18)" : "rgba(59,130,246,0.18)")
+                    : "transparent",
+                  color:activeView===key
+                    ? (key==="plan" ? "#fbbf24" : C.accent)
+                    : C.text3,
+                  fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                  transition:"all 0.12s",
+                }}>{label}</button>
+              ))}
+            </div>
             {user && (
               <button onClick={saveTargets} disabled={saving} style={{
                 padding:"5px 14px", borderRadius:8, border:`1px solid ${C.accent}`,
@@ -1364,222 +1371,66 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         }
       />
 
-      {/* ── Rebalancing Plan Panel ── */}
-      {showPlan && (() => {
-        const cashRate  = rates[currency] ?? 1;
-        // Use smart allocation if enabled, else plain buy/sell lists
-        const buyList  = smartCash && smartAlloc
-          ? smartAlloc.buys
-          : actions.filter(a=>a.action==="BUY"  && a.tgtPct>0).sort((a,b)=>b.diffUSD-a.diffUSD);
-        const sellList = smartCash && smartAlloc
-          ? smartAlloc.sells
-          : actions.filter(a=>a.action==="SELL" && a.tgtPct>0).sort((a,b)=>a.diffUSD-b.diffUSD);
-        const totalBuy  = buyList.reduce((s,a)=>s+(a.diffUSD||0),0);
-        const totalSell = Math.abs(sellList.reduce((s,a)=>s+((a.effectiveSellUSD??a.diffUSD)||0),0));
-        // Rounding helper
-        const applyRounding = (rawUSD) => {
-          const abs = Math.abs(rawUSD) * cashRate;
-          if (roundMode === "hundreds")   return Math.round(abs / 100) * 100;
-          if (roundMode === "thousands")  return Math.round(abs / 1000) * 1000;
-          if (roundMode === "shares") {
-            // Will be computed per-row — return abs (shares computed separately)
-            return abs;
-          }
-          return abs; // precise
-        };
+      {/* ── Top bar: Distribution (left) | Settings (right) ── */}
+      <div style={{ display:"flex", borderBottom:`1px solid ${C.border2}`, flexShrink:0 }}>
 
-        const PlanRow = ({a, type}) => {
-          const aColor = type==="BUY" ? C.green : C.red;
-          const rawAmt = Math.abs(a.diffUSD) * cashRate;
-
-          // Rounded amount
-          let displayAmt, displayShares;
-          if (roundMode === "shares" && a.priceUSD && a.priceUSD > 0) {
-            const rawShares = Math.abs(a.diffUSD) / a.priceUSD;
-            displayShares = Math.round(rawShares); // whole shares
-            displayAmt = displayShares * a.priceUSD * cashRate;
-          } else {
-            displayAmt = applyRounding(rawAmt);
-            displayShares = a.priceUSD && a.priceUSD > 0
-              ? (roundMode === "precise"
-                  ? Math.ceil(rawAmt / (a.priceUSD * cashRate) * 10) / 10
-                  : Math.round(displayAmt / (a.priceUSD * cashRate)))
-              : null;
-          }
-
-          return (
-            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0",
-              borderBottom:`1px solid ${C.border2}` }}>
-              {/* Action badge */}
-              <div style={{ width:36, textAlign:"center", flexShrink:0 }}>
-                <span style={{ fontSize:9, fontWeight:800, color:aColor,
-                  padding:"2px 6px", borderRadius:4,
-                  background:`${aColor}15`, border:`1px solid ${aColor}25`,
-                  textTransform:"uppercase" }}>{type}</span>
-              </div>
-              {/* Symbol */}
-              <div style={{ width:70, flexShrink:0 }}>
-                <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent }}>
-                  {a.symbol}
-                </div>
-                <div style={{ fontSize:8, color:C.text3 }}>{a.sector}</div>
-              </div>
-              {/* Amount bar */}
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ height:5, borderRadius:3,
-                  background:"rgba(255,255,255,0.06)", overflow:"hidden" }}>
-                  <div style={{ height:"100%", borderRadius:3, background:aColor, opacity:0.7,
-                    width:`${type==="BUY"
-                      ? (totalBuy>0?Math.abs(a.diffUSD)/totalBuy*100:0)
-                      : (totalSell>0?Math.abs(a.diffUSD)/totalSell*100:0)}%`,
-                    transition:"width 0.4s" }}/>
-                </div>
-              </div>
-              {/* Amount */}
-              <div style={{ textAlign:"right", flexShrink:0, width:90 }}>
-                <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:aColor }}>
-                  {fmtSym(displayAmt, roundMode==="precise" ? 0 : 0)}
-                </div>
-                {displayShares != null && a.priceUSD && (
-                  <div style={{ fontSize:8, color:C.text3 }}>
-                    {roundMode==="shares" ? `${displayShares} sh.` : `≈${displayShares} sh.`}
-                    {" @ "}{fmtSym(a.priceUSD*cashRate,2)}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        };
-
-        return (
-          <div style={{ flexShrink:0, borderBottom:`2px solid rgba(251,191,36,0.25)`,
-            background:"rgba(251,191,36,0.04)", padding:"12px 20px 8px" }}>
-            {/* Plan header */}
-            <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:10, flexWrap:"wrap" }}>
-              <div style={{ fontSize:10, fontWeight:700, color:"#fbbf24",
-                textTransform:"uppercase", letterSpacing:"0.08em" }}>
-                Rebalancing Plan
-              </div>
-              {cashAdd > 0 && (
-                <div style={{ fontSize:10, color:C.text3 }}>
-                  incl. <span style={{color:C.green,fontWeight:700}}>{fmtSym(cashAdd)} {currency}</span> new cash
-                </div>
+        {/* Left: Portfolio Distribution */}
+        <div style={{ flex:1, padding:"12px 20px", overflowX:"auto", borderRight:`1px solid ${C.border2}` }}>
+          <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
+            letterSpacing:"0.08em", marginBottom:12 }}>Portfolio Distribution</div>
+          <div style={{ display:"flex", gap:24, flexWrap:"wrap" }}>
+              {sectorDonut.length > 0 && (
+                <DonutChart data={sectorDonut} size={100} title="Sector"/>
               )}
-              {/* Summary pills */}
-              <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
-                {totalBuy > 0 && (
-                  <div style={{ padding:"3px 10px", borderRadius:6,
-                    background:"rgba(74,222,128,0.12)", border:"1px solid rgba(74,222,128,0.25)",
-                    fontSize:10, fontWeight:700, color:C.green, fontFamily:C.mono }}>
-                    ↑ BUY {fmtSym(totalBuy*cashRate,0)}
-                  </div>
-                )}
-                {totalSell > 0 && (
-                  <div style={{ padding:"3px 10px", borderRadius:6,
-                    background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)",
-                    fontSize:10, fontWeight:700, color:C.red, fontFamily:C.mono }}>
-                    ↓ SELL {fmtSym(totalSell*cashRate,0)}
-                  </div>
-                )}
-                <div style={{ padding:"3px 10px", borderRadius:6,
-                  background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`,
-                  fontSize:10, color:C.text3, fontFamily:C.mono }}>
-                  Net {fmtSym((totalBuy-totalSell)*cashRate,0)}
+              {regionDonut.length > 0 && (
+                <DonutChart data={regionDonut} size={100} title="Region"/>
+              )}
+              {ccyDonut.length > 0 && (
+                <DonutChart data={ccyDonut} size={100} title="Currency"/>
+              )}
+              {/* Sector allocation list — compact, next to donuts */}
+              <div style={{ flex:1, minWidth:160 }}>
+                <div style={{ fontSize:9, color:C.text3, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:8 }}>Sector Allocation</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                  {sectorGroups.map(sg => {
+                    const drift   = sg.tgtPct > 0 ? sg.curPct - sg.tgtPct : 0;
+                    const isOver  = sg.tgtPct > 0 && Math.abs(drift) > threshold;
+                    const sc      = sectorColorMap[sg.sector] || C.accent;
+                    const driftColor = drift > 0 ? C.red : C.green;
+                    return (
+                      <div key={sg.sector} style={{ padding:"5px 8px", borderRadius:7,
+                        background:C.surface2,
+                        border:`1px solid ${isOver?"rgba(248,113,113,0.3)":C.border}` }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <div style={{ width:6, height:6, borderRadius:2, background:sc, flexShrink:0 }}/>
+                          <div style={{ fontSize:9, color:C.text2, flex:1 }}>{sg.sector}</div>
+                          <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.text1 }}>
+                            {sg.curPct.toFixed(1)}%
+                          </span>
+                          {sg.tgtPct > 0 && (
+                            <span style={{ fontSize:9, color:isOver?driftColor:C.text3 }}>
+                              {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+                        {sg.tgtPct > 0 && (
+                          <DriftBar curPct={sg.curPct} tgtPct={sg.tgtPct}
+                            threshold={threshold} aColor={isOver?driftColor:C.accent}/>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-              {/* Rounding mode selector */}
-              <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
-                style={{ background:"rgba(255,255,255,0.07)", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.text2, padding:"3px 8px", fontSize:10,
-                  fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
-                <option value="precise">Precise</option>
-                <option value="hundreds">Rounded by hundreds</option>
-                <option value="thousands">Rounded by thousands</option>
-                <option value="shares">Rounded by shares</option>
-              </select>
-            </div>
-
-            {/* Smart cash info */}
-            {smartCash && smartAlloc && smartAlloc.buys.some(a => a.coveredByCash > 0) && (
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8,
-                padding:"5px 10px", borderRadius:7, fontSize:10,
-                background:"rgba(74,222,128,0.07)", border:"1px solid rgba(74,222,128,0.2)" }}>
-                <span style={{ color:C.green, fontWeight:700 }}>💰 Smart Cash</span>
-                <span style={{ color:C.text3 }}>
-                  {fmtSym(smartAlloc.buys.reduce((s,a)=>s+(a.coveredByCash||0)*cashRate,0),0)} of BUY orders covered by cash —
-                  {smartAlloc.sells.length === 0
-                    ? " no sells needed"
-                    : ` ${smartAlloc.sells.length} sell order${smartAlloc.sells.length>1?"s":""} remain`}
-                </span>
-              </div>
-            )}
-
-            {/* Correlation cluster warnings */}
-            {corrClusters.length > 0 && (
-              <div style={{ marginBottom:8 }}>
-                <div style={{ fontSize:9, color:"#f87171", fontWeight:700,
-                  textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:4 }}>
-                  ⚠ Correlated Asset Clusters Detected
-                </div>
-                {corrClusters.map((cluster, i) => {
-                  const totalPct = cluster.reduce((s, sym) => {
-                    const a = actions.find(x => x.symbol === sym);
-                    return s + (a?.curPct || 0);
-                  }, 0);
-                  return (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:6,
-                      padding:"4px 8px", borderRadius:6, marginBottom:4,
-                      background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)" }}>
-                      <span style={{ fontSize:9, color:C.text3 }}>Cluster {i+1}:</span>
-                      {cluster.map(sym => (
-                        <span key={sym} style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
-                          color:"#f87171", padding:"1px 5px", borderRadius:4,
-                          background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.2)" }}>
-                          {sym}
-                        </span>
-                      ))}
-                      <span style={{ fontSize:9, color:C.text3, marginLeft:"auto" }}>
-                        Combined: {totalPct.toFixed(1)}%
-                        {totalPct > 25 && <span style={{ color:"#f87171", fontWeight:700 }}> — overweight!</span>}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Two-column: BUY | SELL */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:0 }}>
-              <div style={{ paddingRight:16, borderRight:`1px solid ${C.border2}` }}>
-                <div style={{ fontSize:9, color:C.green, fontWeight:700, textTransform:"uppercase",
-                  letterSpacing:"0.08em", marginBottom:4 }}>Buy orders</div>
-                {buyList.length === 0
-                  ? <div style={{ fontSize:10, color:C.text3, padding:"8px 0" }}>None</div>
-                  : buyList.map(a=><PlanRow key={a.symbol} a={a} type="BUY"/>)
-                }
-              </div>
-              <div style={{ paddingLeft:16 }}>
-                <div style={{ fontSize:9, color:C.red, fontWeight:700, textTransform:"uppercase",
-                  letterSpacing:"0.08em", marginBottom:4 }}>Sell orders</div>
-                {sellList.length === 0
-                  ? <div style={{ fontSize:10, color:C.text3, padding:"8px 0" }}>None</div>
-                  : sellList.map(a=><PlanRow key={a.symbol} a={a} type="SELL"/>)
-                }
               </div>
             </div>
           </div>
-        );
-      })()}
 
-      <div style={{ display:"flex", flexDirection:"column" }}>
-
-        {/* ── Fixed header: Settings (left) + Distribution (right) ── */}
-        <div style={{ display:"flex", borderBottom:`1px solid ${C.border2}`, flexShrink:0 }}>
-
-          {/* Left: Settings */}
-          <div style={{ width:340, flexShrink:0, padding:"8px 16px 12px",
-            borderRight:`1px solid ${C.border2}` }}>
-            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
+        {/* Right: Settings */}
+        <div style={{ width:320, flexShrink:0, padding:"8px 16px 12px" }}>
+          <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
+            letterSpacing:"0.08em", marginBottom:8 }}>Settings</div>
+<div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
               letterSpacing:"0.08em", marginBottom:8 }}>Settings</div>
 
             {/* Rebalancing Mode */}
@@ -1720,61 +1571,226 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               Total target: {totalTarget.toFixed(1)}%
               {Math.abs(totalTarget-100)>0.5 && " — should sum to 100%"}
             </div>
-          </div>
+            {/* Rounding mode */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:6 }}>
+              <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Rounding:</label>
+              <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
+                style={{ flex:1, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
+                  borderRadius:6, color:C.text2, padding:"4px 7px", fontSize:11,
+                  fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
+                <option value="precise">Precise</option>
+                <option value="hundreds">± 100</option>
+                <option value="thousands">± 1000</option>
+                <option value="shares">Whole shares</option>
+              </select>
+            </div>
+        </div>
+      </div>
 
-          {/* Right: Distribution donuts */}
-          <div style={{ flex:1, padding:"12px 20px", overflowX:"auto" }}>
-            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
-              letterSpacing:"0.08em", marginBottom:12 }}>Portfolio Distribution</div>
-            <div style={{ display:"flex", gap:24, flexWrap:"wrap" }}>
-              {sectorDonut.length > 0 && (
-                <DonutChart data={sectorDonut} size={100} title="Sector"/>
-              )}
-              {regionDonut.length > 0 && (
-                <DonutChart data={regionDonut} size={100} title="Region"/>
-              )}
-              {ccyDonut.length > 0 && (
-                <DonutChart data={ccyDonut} size={100} title="Currency"/>
-              )}
-              {/* Sector allocation list — compact, next to donuts */}
-              <div style={{ flex:1, minWidth:160 }}>
-                <div style={{ fontSize:9, color:C.text3, fontWeight:700, textTransform:"uppercase",
-                  letterSpacing:"0.08em", marginBottom:8 }}>Sector Allocation</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                  {sectorGroups.map(sg => {
-                    const drift   = sg.tgtPct > 0 ? sg.curPct - sg.tgtPct : 0;
-                    const isOver  = sg.tgtPct > 0 && Math.abs(drift) > threshold;
-                    const sc      = sectorColorMap[sg.sector] || C.accent;
-                    const driftColor = drift > 0 ? C.red : C.green;
-                    return (
-                      <div key={sg.sector} style={{ padding:"5px 8px", borderRadius:7,
-                        background:C.surface2,
-                        border:`1px solid ${isOver?"rgba(248,113,113,0.3)":C.border}` }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                          <div style={{ width:6, height:6, borderRadius:2, background:sc, flexShrink:0 }}/>
-                          <div style={{ fontSize:9, color:C.text2, flex:1 }}>{sg.sector}</div>
-                          <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.text1 }}>
-                            {sg.curPct.toFixed(1)}%
-                          </span>
-                          {sg.tgtPct > 0 && (
-                            <span style={{ fontSize:9, color:isOver?driftColor:C.text3 }}>
-                              {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
-                            </span>
-                          )}
-                        </div>
-                        {sg.tgtPct > 0 && (
-                          <DriftBar curPct={sg.curPct} tgtPct={sg.tgtPct}
-                            threshold={threshold} aColor={isOver?driftColor:C.accent}/>
-                        )}
-                      </div>
-                    );
-                  })}
+      {/* ── Tab content ── */}
+      <div style={{ flex:1, overflowY:"auto", minHeight:0 }}>
+
+        {/* Plan tab */}
+        {activeView === "plan" && (() => {
+        const cashRate  = rates[currency] ?? 1;
+        // Use smart allocation if enabled, else plain buy/sell lists
+        const buyList  = smartCash && smartAlloc
+          ? smartAlloc.buys
+          : actions.filter(a=>a.action==="BUY"  && a.tgtPct>0).sort((a,b)=>b.diffUSD-a.diffUSD);
+        const sellList = smartCash && smartAlloc
+          ? smartAlloc.sells
+          : actions.filter(a=>a.action==="SELL" && a.tgtPct>0).sort((a,b)=>a.diffUSD-b.diffUSD);
+        const totalBuy  = buyList.reduce((s,a)=>s+(a.diffUSD||0),0);
+        const totalSell = Math.abs(sellList.reduce((s,a)=>s+((a.effectiveSellUSD??a.diffUSD)||0),0));
+        // Rounding helper
+        const applyRounding = (rawUSD) => {
+          const abs = Math.abs(rawUSD) * cashRate;
+          if (roundMode === "hundreds")   return Math.round(abs / 100) * 100;
+          if (roundMode === "thousands")  return Math.round(abs / 1000) * 1000;
+          if (roundMode === "shares") {
+            // Will be computed per-row — return abs (shares computed separately)
+            return abs;
+          }
+          return abs; // precise
+        };
+
+        const PlanRow = ({a, type}) => {
+          const aColor = type==="BUY" ? C.green : C.red;
+          const rawAmt = Math.abs(a.diffUSD) * cashRate;
+
+          // Rounded amount
+          let displayAmt, displayShares;
+          if (roundMode === "shares" && a.priceUSD && a.priceUSD > 0) {
+            const rawShares = Math.abs(a.diffUSD) / a.priceUSD;
+            displayShares = Math.round(rawShares); // whole shares
+            displayAmt = displayShares * a.priceUSD * cashRate;
+          } else {
+            displayAmt = applyRounding(rawAmt);
+            displayShares = a.priceUSD && a.priceUSD > 0
+              ? (roundMode === "precise"
+                  ? Math.ceil(rawAmt / (a.priceUSD * cashRate) * 10) / 10
+                  : Math.round(displayAmt / (a.priceUSD * cashRate)))
+              : null;
+          }
+
+          return (
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0",
+              borderBottom:`1px solid ${C.border2}` }}>
+              {/* Action badge */}
+              <div style={{ width:36, textAlign:"center", flexShrink:0 }}>
+                <span style={{ fontSize:9, fontWeight:800, color:aColor,
+                  padding:"2px 6px", borderRadius:4,
+                  background:`${aColor}15`, border:`1px solid ${aColor}25`,
+                  textTransform:"uppercase" }}>{type}</span>
+              </div>
+              {/* Symbol */}
+              <div style={{ width:70, flexShrink:0 }}>
+                <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent }}>
+                  {a.symbol}
                 </div>
+                <div style={{ fontSize:8, color:C.text3 }}>{a.sector}</div>
+              </div>
+              {/* Amount bar */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ height:5, borderRadius:3,
+                  background:"rgba(255,255,255,0.06)", overflow:"hidden" }}>
+                  <div style={{ height:"100%", borderRadius:3, background:aColor, opacity:0.7,
+                    width:`${type==="BUY"
+                      ? (totalBuy>0?Math.abs(a.diffUSD)/totalBuy*100:0)
+                      : (totalSell>0?Math.abs(a.diffUSD)/totalSell*100:0)}%`,
+                    transition:"width 0.4s" }}/>
+                </div>
+              </div>
+              {/* Amount */}
+              <div style={{ textAlign:"right", flexShrink:0, width:90 }}>
+                <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:aColor }}>
+                  {fmtSym(displayAmt, roundMode==="precise" ? 0 : 0)}
+                </div>
+                {displayShares != null && a.priceUSD && (
+                  <div style={{ fontSize:8, color:C.text3 }}>
+                    {roundMode==="shares" ? `${displayShares} sh.` : `≈${displayShares} sh.`}
+                    {" @ "}{fmtSym(a.priceUSD*cashRate,2)}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ flexShrink:0, borderBottom:`2px solid rgba(251,191,36,0.25)`,
+            background:"rgba(251,191,36,0.04)", padding:"12px 20px 8px" }}>
+            {/* Plan header */}
+            <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:10, flexWrap:"wrap" }}>
+              <div style={{ fontSize:10, fontWeight:700, color:"#fbbf24",
+                textTransform:"uppercase", letterSpacing:"0.08em" }}>
+                Rebalancing Plan
+              </div>
+              {cashAdd > 0 && (
+                <div style={{ fontSize:10, color:C.text3 }}>
+                  incl. <span style={{color:C.green,fontWeight:700}}>{fmtSym(cashAdd)} {currency}</span> new cash
+                </div>
+              )}
+              {/* Summary pills */}
+              <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
+                {totalBuy > 0 && (
+                  <div style={{ padding:"3px 10px", borderRadius:6,
+                    background:"rgba(74,222,128,0.12)", border:"1px solid rgba(74,222,128,0.25)",
+                    fontSize:10, fontWeight:700, color:C.green, fontFamily:C.mono }}>
+                    ↑ BUY {fmtSym(totalBuy*cashRate,0)}
+                  </div>
+                )}
+                {totalSell > 0 && (
+                  <div style={{ padding:"3px 10px", borderRadius:6,
+                    background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)",
+                    fontSize:10, fontWeight:700, color:C.red, fontFamily:C.mono }}>
+                    ↓ SELL {fmtSym(totalSell*cashRate,0)}
+                  </div>
+                )}
+                <div style={{ padding:"3px 10px", borderRadius:6,
+                  background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`,
+                  fontSize:10, color:C.text3, fontFamily:C.mono }}>
+                  Net {fmtSym((totalBuy-totalSell)*cashRate,0)}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Smart cash info */}
+            {smartCash && smartAlloc && smartAlloc.buys.some(a => a.coveredByCash > 0) && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8,
+                padding:"5px 10px", borderRadius:7, fontSize:10,
+                background:"rgba(74,222,128,0.07)", border:"1px solid rgba(74,222,128,0.2)" }}>
+                <span style={{ color:C.green, fontWeight:700 }}>💰 Smart Cash</span>
+                <span style={{ color:C.text3 }}>
+                  {fmtSym(smartAlloc.buys.reduce((s,a)=>s+(a.coveredByCash||0)*cashRate,0),0)} of BUY orders covered by cash —
+                  {smartAlloc.sells.length === 0
+                    ? " no sells needed"
+                    : ` ${smartAlloc.sells.length} sell order${smartAlloc.sells.length>1?"s":""} remain`}
+                </span>
+              </div>
+            )}
+
+            {/* Correlation cluster warnings */}
+            {corrClusters.length > 0 && (
+              <div style={{ marginBottom:8 }}>
+                <div style={{ fontSize:9, color:"#f87171", fontWeight:700,
+                  textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:4 }}>
+                  ⚠ Correlated Asset Clusters Detected
+                </div>
+                {corrClusters.map((cluster, i) => {
+                  const totalPct = cluster.reduce((s, sym) => {
+                    const a = actions.find(x => x.symbol === sym);
+                    return s + (a?.curPct || 0);
+                  }, 0);
+                  return (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:6,
+                      padding:"4px 8px", borderRadius:6, marginBottom:4,
+                      background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)" }}>
+                      <span style={{ fontSize:9, color:C.text3 }}>Cluster {i+1}:</span>
+                      {cluster.map(sym => (
+                        <span key={sym} style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
+                          color:"#f87171", padding:"1px 5px", borderRadius:4,
+                          background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.2)" }}>
+                          {sym}
+                        </span>
+                      ))}
+                      <span style={{ fontSize:9, color:C.text3, marginLeft:"auto" }}>
+                        Combined: {totalPct.toFixed(1)}%
+                        {totalPct > 25 && <span style={{ color:"#f87171", fontWeight:700 }}> — overweight!</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Two-column: BUY | SELL */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:0 }}>
+              <div style={{ paddingRight:16, borderRight:`1px solid ${C.border2}` }}>
+                <div style={{ fontSize:9, color:C.green, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:4 }}>Buy orders</div>
+                {buyList.length === 0
+                  ? <div style={{ fontSize:10, color:C.text3, padding:"8px 0" }}>None</div>
+                  : buyList.map(a=><PlanRow key={a.symbol} a={a} type="BUY"/>)
+                }
+              </div>
+              <div style={{ paddingLeft:16 }}>
+                <div style={{ fontSize:9, color:C.red, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:4 }}>Sell orders</div>
+                {sellList.length === 0
+                  ? <div style={{ fontSize:10, color:C.text3, padding:"8px 0" }}>None</div>
+                  : sellList.map(a=><PlanRow key={a.symbol} a={a} type="SELL"/>)
+                }
               </div>
             </div>
           </div>
-        </div>
+        );
+      })()}
 
+        {/* Allocations tab */}
+        {activeView === "allocations" && (
+          <div>
         {/* ── Unified scrollable rows: one row per position (slider LEFT + bar+action RIGHT) ── */}
         <div style={{ flex:1, overflowY:"auto" }}>
           {/* Column headers */}
@@ -1963,10 +1979,13 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             );
           })}
         </div>
+        </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 4. DIVIDEND CALENDAR  (Calendar view + Bar chart view)
