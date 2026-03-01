@@ -210,6 +210,146 @@ const fxApi = {
 };
 const avApi = { usage: () => apiFetch("/av/usage") };
 
+// ─── Global Dividend Cache ────────────────────────────────────────────────────
+// Singleton shared between Portfolio and ETF Explorer — avoids duplicate fetches.
+// sessionStorage-backed: survives tab switches/re-renders, cleared on page reload.
+const _divMem   = {};         // in-memory: { symbol → data }
+const _divPend  = new Set();  // in-flight symbols
+const DIV_SESSION_PREFIX = 'div_';
+
+// Restore from sessionStorage on first load
+try {
+  for (const key of Object.keys(sessionStorage)) {
+    if (key.startsWith(DIV_SESSION_PREFIX)) {
+      const sym = key.slice(DIV_SESSION_PREFIX.length);
+      _divMem[sym] = JSON.parse(sessionStorage.getItem(key));
+    }
+  }
+} catch {}
+
+const globalDivCache = {
+  get: (sym) => _divMem[sym],
+  has: (sym) => sym in _divMem,
+  // Fetch and cache a symbol — returns promise, deduped
+  fetch: (sym) => {
+    if (_divMem[sym] !== undefined) return Promise.resolve(_divMem[sym]);
+    if (_divPend.has(sym)) {
+      // Wait for the in-flight request to resolve
+      return new Promise(resolve => {
+        const poll = setInterval(() => {
+          if (_divMem[sym] !== undefined) { clearInterval(poll); resolve(_divMem[sym]); }
+        }, 50);
+      });
+    }
+    _divPend.add(sym);
+    return fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
+      .then(r => r.json())
+      .then(d => {
+        _divMem[sym] = d;
+        try { sessionStorage.setItem(DIV_SESSION_PREFIX + sym, JSON.stringify(d)); } catch {}
+        return d;
+      })
+      .catch(() => {
+        _divMem[sym] = null;
+        return null;
+      })
+      .finally(() => _divPend.delete(sym));
+  },
+  // Prefetch a list of symbols using the batch endpoint (max 50 per request)
+  // Falls back to individual fetches if batch endpoint fails
+  prefetch: (symbols) => {
+    const missing = symbols.filter(s => !globalDivCache.has(s));
+    if (!missing.length) return;
+    // Mark all as in-flight immediately to prevent concurrent individual fetches
+    missing.forEach(s => _divPend.add(s));
+    // Use batch endpoint for efficiency
+    fetch('/api/quotes/dividend/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: missing }),
+    })
+      .then(r => r.json())
+      .then(({ results = {} }) => {
+        for (const [sym, data] of Object.entries(results)) {
+          _divMem[sym] = data;
+          try { sessionStorage.setItem(DIV_SESSION_PREFIX + sym, JSON.stringify(data)); } catch {}
+          _divPend.delete(sym);
+        }
+      })
+      .catch(() => {
+        // Batch failed — fall back to individual fetches
+        missing.forEach(s => {
+          _divPend.delete(s);
+          globalDivCache.fetch(s);
+        });
+      });
+  },
+};
+
+// ─── useDivCache hook — React-reactive wrapper around globalDivCache ────────────
+// Returns a {symbol: data} object that triggers re-renders as div data arrives.
+function useDivCache(symbols) {
+  const [cache, setCache] = React.useState(() => {
+    // Initialize from already-loaded globalDivCache entries
+    const init = {};
+    for (const s of (symbols ?? [])) {
+      if (globalDivCache.has(s)) init[s] = globalDivCache.get(s);
+    }
+    return init;
+  });
+
+  React.useEffect(() => {
+    if (!symbols?.length) return;
+    let cancelled = false;
+    const missing = symbols.filter(s => !globalDivCache.has(s));
+    // Immediately populate from cache for already-loaded
+    setCache(prev => {
+      const next = { ...prev };
+      for (const s of symbols) {
+        if (globalDivCache.has(s) && !(s in next)) next[s] = globalDivCache.get(s);
+      }
+      return next;
+    });
+    // Fetch missing ones and update state when they arrive
+    Promise.all(missing.map(s =>
+      globalDivCache.fetch(s).then(d => {
+        if (!cancelled) setCache(prev => ({ ...prev, [s]: d }));
+      })
+    ));
+    return () => { cancelled = true; };
+  }, [symbols?.join(',')]); // eslint-disable-line
+
+  return cache;
+}
+
+// ─── Global Chart Data Cache ──────────────────────────────────────────────────
+// Shared chartDataMap ref — ETF Explorer and Portfolio share the same cache.
+// Raw Yahoo chart JSON is large (2y daily ~50KB per symbol) so we store in memory
+// only (not sessionStorage). Survives within a session without re-fetching.
+const _chartMem   = {};   // { symbol → raw Yahoo JSON, symbol_1d → intraday }
+const _chartPend  = new Set();
+
+const globalChartCache = {
+  get:    (key)       => _chartMem[key],
+  has:    (key)       => key in _chartMem,
+  set:    (key, data) => { _chartMem[key] = data; },
+  // Fetch daily + intraday for a symbol, deduped
+  prefetch: (sym) => {
+    const dailyKey    = sym;
+    const intradayKey = `${sym}_1d`;
+    if (_chartMem[dailyKey] && _chartMem[intradayKey]) return;
+    if (_chartPend.has(sym)) return;
+    _chartPend.add(sym);
+    Promise.all([
+      _chartMem[dailyKey]    ? null : quotesApi.raw(sym).catch(() => null),
+      _chartMem[intradayKey] ? null : quotesApi.raw(sym, false, '2d', '5m').catch(() => null),
+    ]).then(([daily, intraday]) => {
+      if (daily)    _chartMem[dailyKey]    = daily;
+      if (intraday) _chartMem[intradayKey] = intraday;
+    }).finally(() => _chartPend.delete(sym));
+  },
+};
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function fmtPct(v, dec=2) {
   if (v == null || isNaN(v)) return "—";
@@ -1677,20 +1817,10 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
       height:"100%", color:THEME.text3, fontSize:13 }}>No positions</div>
   );
 
-  // ── Portfolio Dividend Cache — lazy fetch per symbol ──────────────────────
+  // ── Dividend prefetch — uses globalDivCache (shared, sessionStorage-backed) ──
   useEffect(() => {
     const symbols = Object.keys(quotes);
-    if (!symbols.length) return;
-    const missing = symbols.filter(s => portfolioDivCache[s] === undefined);
-    if (!missing.length) return;
-    const batch = missing.slice(0, 6);
-    batch.forEach(sym => {
-      setPortfolioDivCache(prev => ({ ...prev, [sym]: null }));
-      fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
-        .then(r => r.json())
-        .then(d => setPortfolioDivCache(prev => ({ ...prev, [sym]: d })))
-        .catch(() => setPortfolioDivCache(prev => ({ ...prev, [sym]: null })));
-    });
+    if (symbols.length) globalDivCache.prefetch(symbols);
   }, [quotes]); // eslint-disable-line
 
 
@@ -1728,19 +1858,24 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
 // ════════════════════════════════════════════════════════════════════════════
 // TOOLTIP  (same as v2)
 // ════════════════════════════════════════════════════════════════════════════
-function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntraday }) {
+function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntraday, divData: divDataProp }) {
   const rate  = rates[currency] ?? 1;
   const cSym  = CCY_SYM[currency] ?? "$";
-  const [divData, setDivData] = useState(null);
+  // divData: use passed-in prop if available, otherwise fetch lazily via globalDivCache
+  const [divDataLocal, setDivDataLocal] = useState(() => globalDivCache.get(data?.symbol) ?? null);
+  const divData = divDataProp ?? divDataLocal;
 
-  // Fetch dividend data lazily
   useEffect(() => {
     if (!data?.symbol) return;
+    // If already in global cache, use it immediately
+    if (globalDivCache.has(data.symbol)) {
+      setDivDataLocal(globalDivCache.get(data.symbol));
+      return;
+    }
     let cancelled = false;
-    fetch(`/api/quotes/dividend/${encodeURIComponent(data.symbol)}`)
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setDivData(d); })
-      .catch(() => {});
+    globalDivCache.fetch(data.symbol).then(d => {
+      if (!cancelled) setDivDataLocal(d);
+    });
     return () => { cancelled = true; };
   }, [data?.symbol]);
   const perf  = data.perf;
@@ -1999,20 +2134,10 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
       height:"100%", color:THEME.text3, fontSize:13 }}>No transactions</div>
   );
-  // ── Portfolio Dividend Cache — lazy fetch per symbol ──────────────────────
+  // ── Dividend prefetch — uses globalDivCache (shared, sessionStorage-backed) ──
   useEffect(() => {
     const symbols = Object.keys(quotes);
-    if (!symbols.length) return;
-    const missing = symbols.filter(s => portfolioDivCache[s] === undefined);
-    if (!missing.length) return;
-    const batch = missing.slice(0, 6);
-    batch.forEach(sym => {
-      setPortfolioDivCache(prev => ({ ...prev, [sym]: null }));
-      fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
-        .then(r => r.json())
-        .then(d => setPortfolioDivCache(prev => ({ ...prev, [sym]: d })))
-        .catch(() => setPortfolioDivCache(prev => ({ ...prev, [sym]: null })));
-    });
+    if (symbols.length) globalDivCache.prefetch(symbols);
   }, [quotes]); // eslint-disable-line
 
 
@@ -4023,7 +4148,7 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
 }
 
 // ── ETF Holdings Table ────────────────────────────────────────────────────────
-function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
+function EtfHoldingsTable({ holdings, quotes, currency, rates,
                             onRefreshHoldings, refreshing, fetchedAt, period, onPeriod,
                             divCache, onFetchDiv }) {
   const rate = rates[currency] ?? 1;
@@ -4068,20 +4193,10 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
 
   const periodLabel = period === "Intraday" ? "1D" : period;
 
-  // ── Portfolio Dividend Cache — lazy fetch per symbol ──────────────────────
+  // ── Dividend prefetch — uses globalDivCache (shared, sessionStorage-backed) ──
   useEffect(() => {
     const symbols = Object.keys(quotes);
-    if (!symbols.length) return;
-    const missing = symbols.filter(s => portfolioDivCache[s] === undefined);
-    if (!missing.length) return;
-    const batch = missing.slice(0, 6);
-    batch.forEach(sym => {
-      setPortfolioDivCache(prev => ({ ...prev, [sym]: null }));
-      fetch(`/api/quotes/dividend/${encodeURIComponent(sym)}`)
-        .then(r => r.json())
-        .then(d => setPortfolioDivCache(prev => ({ ...prev, [sym]: d })))
-        .catch(() => setPortfolioDivCache(prev => ({ ...prev, [sym]: null })));
-    });
+    if (symbols.length) globalDivCache.prefetch(symbols);
   }, [quotes]); // eslint-disable-line
 
 
@@ -4141,7 +4256,7 @@ function EtfHoldingsTable({ holdings, quotes, chartDataMap, currency, rates,
               const isPos = (h.perf ?? 0) >= 0;
               const pColor = h.perf==null ? THEME.text3
                 : isPos ? THEME.green : THEME.red;
-              const chartData = chartDataMap.current?.[h.symbol] ?? null;
+              const chartData = globalChartCache.get(h.symbol) ?? null;
               return (
                 <tr key={h.symbol}
                   style={{ borderBottom:`1px solid rgba(255,255,255,0.03)`, cursor:"default" }}
@@ -4258,7 +4373,9 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                        displayMode, onToggleDisplayMode }) {
   useGlobalStyles();
 
-  const [divCache,          setDivCache]          = useState({}); // symbol → dividend data
+  // divCache via useDivCache hook — React-reactive, backed by globalDivCache (sessionStorage)
+  const holdingSymbols = React.useMemo(() => holdings.map(h => h.symbol), [holdings]);
+  const divCache = useDivCache(holdingSymbols);
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
     try { return localStorage.getItem(ETF_LS_KEY) || "ARKK"; } catch { return "ARKK"; }
   });
@@ -4276,7 +4393,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   const [quotes,            setQuotes]            = useState({});
   const [rates,             setRates]             = useState({ USD:1 });
   const [fetching,          setFetching]          = useState(false);
-  const chartDataMap = useRef({});
+  // chartDataMap + pendingHover replaced by globalChartCache
   const tooltipTimer = useRef(null);
   const [savedEtfs,   setSavedEtfs]   = useState(initialSavedEtfs || []);
   const [saveModal,   setSaveModal]   = useState(null); // etf object to save, or null
@@ -4305,25 +4422,12 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
     setLoadingHoldings(false);
   }, []);
 
-  // Fetch dividend data for a symbol, cache the result
-  const divFetching = useRef(new Set()); // track in-flight/done fetches
-  const fetchDiv = useCallback(async (symbol) => {
-    if (divFetching.current.has(symbol)) return; // already fetching or done
-    divFetching.current.add(symbol);
-    setDivCache(prev => ({ ...prev, [symbol]: null })); // sentinel
-    try {
-      const d = await fetch(`/api/quotes/dividend/${encodeURIComponent(symbol)}`).then(r=>r.json());
-      setDivCache(prev => ({ ...prev, [symbol]: d }));
-    } catch(e) {
-      setDivCache(prev => ({ ...prev, [symbol]: null }));
-    }
-  }, []); // stable - uses ref for dedup
+  // fetchDiv delegates to globalDivCache — shared across ETF + Portfolio, sessionStorage-backed
+  const fetchDiv = useCallback((symbol) => globalDivCache.fetch(symbol), []);
 
   useEffect(() => {
     if (selectedTicker) {
-      divFetching.current.clear(); // reset so new holdings will be fetched
-      setDivCache({});             // clear stale dividend data from previous ETF
-      setHoldings([]);             // clear old holdings immediately
+        setHoldings([]);             // clear old holdings immediately
       loadHoldings(selectedTicker);
     }
   }, [selectedTicker, loadHoldings]);
@@ -4362,18 +4466,25 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   useEffect(() => {
     if (!holdings.length) return;
     fetchQuotes();
-    // Preload dividend data for all holdings (needed for Calendar tab)
-    holdings.forEach(h => {
-      fetchDiv(h.symbol);
-    });
-    // Preload chart data for all holdings (needed for sparklines in table view)
-    holdings.forEach(h => {
-      if (!chartDataMap.current[h.symbol]) {
-        quotesApi.raw(h.symbol).then(d => {
-          if (d) chartDataMap.current[h.symbol] = d;
-        }).catch(()=>{});
+    // Preload dividend data — useDivCache hook handles this automatically
+    // Preload chart data for holdings — staggered to avoid flooding Yahoo/rate-limit.
+    // Only fetch symbols not already cached. Max 3 concurrent, 300ms between batches.
+    const toFetch = holdings.filter(h => !globalChartCache.has(h.symbol));
+    const CONCURRENCY = 3;
+    const fetchBatch = async (items) => {
+      for (let i = 0; i < items.length; i += CONCURRENCY) {
+        const batch = items.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(h =>
+          quotesApi.raw(h.symbol)
+            .then(d => { if (d) globalChartCache.set(h.symbol, d); })
+            .catch(()=>{})
+        ));
+        if (i + CONCURRENCY < items.length) {
+          await new Promise(r => setTimeout(r, 300)); // 300ms pause between batches
+        }
       }
-    });
+    };
+    fetchBatch(toFetch);
   }, [holdings]); // eslint-disable-line
 
   // Nodes
@@ -4394,16 +4505,9 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   // Tooltip
   const handleCellHover = useCallback((e,cell) => {
     clearTimeout(tooltipTimer.current);
-    // Preload chart data
-    if (!chartDataMap.current[cell.symbol]) {
-      Promise.all([
-        quotesApi.raw(cell.symbol).catch(()=>null),
-        quotesApi.raw(cell.symbol,false,"2d","5m").catch(()=>null),
-      ]).then(([daily,intraday]) => {
-        if (daily)   chartDataMap.current[cell.symbol]         = daily;
-        if (intraday) chartDataMap.current[`${cell.symbol}_1d`] = intraday;
-      });
-    }
+    // globalChartCache + globalDivCache handle dedup and caching
+    globalChartCache.prefetch(cell.symbol);
+    globalDivCache.fetch(cell.symbol);
     tooltipTimer.current = setTimeout(()=>
       setTooltip({x:e.clientX,y:e.clientY,data:cell}), 120);
   }, []);
@@ -4613,15 +4717,12 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 onCellHover={handleCellHover}
                 onCellLeave={handleCellLeave}
                 onRefreshDivs={() => {
-                  divFetching.current.clear();
-                  setDivCache({});
                   holdings.forEach(h => fetchDiv(h.symbol));
                 }}/>
             </div>
           ) : (
             <EtfHoldingsTable
               holdings={holdings} quotes={quotes}
-              chartDataMap={chartDataMap}
               currency={currency} rates={rates}
               fetchedAt={fetchedAt}
               period={period} onPeriod={setPeriod}
@@ -4636,8 +4737,8 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         <Tooltip
           data={tooltip.data} x={tooltip.x} y={tooltip.y}
           currency={currency} rates={rates} period={period}
-          chartData={chartDataMap.current[tooltip.data.symbol]}
-          chartDataIntraday={chartDataMap.current[`${tooltip.data.symbol}_1d`]}/>
+          chartData={globalChartCache.get(tooltip.data.symbol)}
+          chartDataIntraday={globalChartCache.get(`${tooltip.data.symbol}_1d`)}/>
       )}
     {/* Save ETF modal */}
     {saveModal && (
@@ -4681,7 +4782,7 @@ export default function App() {
   const [showAddPort,setShowAddPort]= useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [savedEtfs,       setSavedEtfs]        = useState([]);
-  const [portfolioDivCache, setPortfolioDivCache] = useState({});
+  // portfolioDivCache → replaced by useDivCache hook below (shares globalDivCache with ETF Explorer)
   const [showSettings,setShowSettings]=useState(false);
   const [tooltip,    setTooltip]    = useState(null);
 
@@ -4698,10 +4799,9 @@ export default function App() {
   const [apiStatus,       setApiStatus]       = useState(null);
   const [lastUpdated,     setLastUpdated]     = useState(null);  // Date of last successful quote fetch
   const [initialized,     setInitialized]     = useState(false);
-  const [chartDataMap,    setChartDataMap]    = useState({});
+  // chartDataMap removed — globalChartCache handles this now (shared with ETF)
 
   const tooltipTimer = useRef(null);
-  const pendingFetch = useRef(new Set());
 
   // ── Login handler ─────────────────────────────────────────────────────────
   const handleLogin = useCallback(async (userData) => {
@@ -4735,7 +4835,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null); setPortfolios([]); setInitialized(false);
-    setAllTransactions({}); setQuotes({}); setChartDataMap({});
+    setAllTransactions({}); setQuotes({});
     setActivePortfolioIds([]);
   };
 
@@ -4777,6 +4877,9 @@ export default function App() {
     }
     return [...syms];
   }, [positionsByPortfolio, activePortfolioIds]);
+
+  // portfolioDivCache: React-reactive, shared with ETF Explorer via globalDivCache + sessionStorage
+  const portfolioDivCache = useDivCache(allSymbols);
 
   // ── getPosPerf: period-aware performance for a position ───────────────────
   // All comparisons in the instrument's native price currency (refs are also in that currency).
@@ -4995,23 +5098,11 @@ export default function App() {
   // ── Tooltip hover handlers ────────────────────────────────────────────────
   const handleCellHover = useCallback((e, cell) => {
     clearTimeout(tooltipTimer.current);
-    // Preload chart
-    if (!chartDataMap[cell.symbol]) {
-      pendingFetch.current.add(cell.symbol);
-      Promise.all([
-        quotesApi.raw(cell.symbol).catch(()=>null),
-        quotesApi.raw(cell.symbol, false, "2d", "5m").catch(()=>null),
-      ]).then(([daily, intraday]) => {
-        pendingFetch.current.delete(cell.symbol);
-        setChartDataMap(prev => ({
-          ...prev,
-          ...(daily    ? { [cell.symbol]:           daily    } : {}),
-          ...(intraday ? { [`${cell.symbol}_1d`]:   intraday } : {}),
-        }));
-      });
-    }
+    // Preload chart + div data via global caches (deduped, sessionStorage-backed for divs)
+    globalChartCache.prefetch(cell.symbol);
+    globalDivCache.fetch(cell.symbol);   // warms div cache so Tooltip renders instantly
     tooltipTimer.current = setTimeout(() => setTooltip({ x:e.clientX, y:e.clientY, data:cell }), 120);
-  }, [chartDataMap]);
+  }, []);
 
   const handleCellLeave = useCallback(() => {
     clearTimeout(tooltipTimer.current);
@@ -5363,8 +5454,9 @@ export default function App() {
         {tooltip && (
           <Tooltip data={tooltip.data} x={tooltip.x} y={tooltip.y}
             currency={currency} rates={rates} period={period}
-            chartData={chartDataMap[tooltip.data.symbol]}
-            chartDataIntraday={chartDataMap[`${tooltip.data.symbol}_1d`]}/>
+            chartData={globalChartCache.get(tooltip.data.symbol)}
+            chartDataIntraday={globalChartCache.get(`${tooltip.data.symbol}_1d`)}
+            divData={portfolioDivCache[tooltip.data.symbol] ?? globalDivCache.get(tooltip.data.symbol)}/>
         )}
 
         {/* ── MODALS ───────────────────────────────────────────────────── */}

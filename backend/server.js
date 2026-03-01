@@ -180,15 +180,28 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '1mb' }));
+// Rate limit: protect against abuse but generous enough for a private portfolio app.
+// 50 symbols × (batch + 2 chart fetches on hover) × multiple users = needs headroom.
+// Default 2000/15min = ~133/min which is plenty for personal use.
 app.use('/api/', rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '200', 10),
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '2000', 10),
   standardHeaders: true, legacyHeaders: false,
 }));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const err = (res, status, msg, detail) =>
   res.status(status).json({ error: msg, ...(detail ? { detail } : {}) });
+
+// In-flight dedup: if two requests come in for the same symbol simultaneously,
+// only one fetch goes to Yahoo — the second awaits the first.
+const _inFlight = new Map();
+function dedupFetch(key, fn) {
+  if (_inFlight.has(key)) return _inFlight.get(key);
+  const promise = fn().finally(() => _inFlight.delete(key));
+  _inFlight.set(key, promise);
+  return promise;
+}
 
 let cacheHits = 0, cacheMisses = 0;
 
@@ -535,7 +548,7 @@ app.get('/api/quotes/yahoo/:symbol', async (req, res) => {
       if (cached) { cacheHits++; return res.json({ ...JSON.parse(cached.data), _cached:true }); }
     }
     cacheMisses++;
-    const data = await fetchYahoo(symbol, range, interval);
+    const data = await dedupFetch(`yahoo_${cacheKey}`, () => fetchYahoo(symbol, range, interval));
     if (data.chart?.error) throw new Error(data.chart.error.description ?? 'Yahoo error');
     const result = data.chart?.result?.[0];
     if (!result) throw new Error('No data returned from Yahoo Finance');
@@ -787,9 +800,9 @@ app.post('/api/quotes/batch', async (req, res) => {
           }
         }
 
-        // Cache miss (or force) — fetch from Yahoo
+        // Cache miss (or force) — fetch from Yahoo (deduped: only 1 request per symbol)
         cacheMisses++;
-        const chartData = await fetchYahoo(sym);
+        const chartData = await dedupFetch(`batch_${sym}`, () => fetchYahoo(sym));
         // Store raw chart in quotes_cache (needed by /api/quotes/yahoo/:symbol for sparklines)
         db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo', CURRENT_TIMESTAMP)")
           .run(sym, JSON.stringify(chartData));
@@ -1242,6 +1255,74 @@ app.get('/api/quotes/dividend/:symbol', async (req, res) => {
   }
 });
 
+
+// ── POST /api/quotes/dividend/batch — fetch multiple symbols' dividend data ──
+// Returns { results: {sym: {annualRate, yieldPct, exDate, ...}}, errors: {} }
+// Uses same 7-day cache as individual /dividend/:symbol endpoint.
+app.post('/api/quotes/dividend/batch', async (req, res) => {
+  const { symbols } = req.body ?? {};
+  if (!Array.isArray(symbols) || !symbols.length) return res.json({ results: {}, errors: {} });
+  const TTL_HOURS = 7 * 24;
+  const results = {}, errors = {};
+
+  for (const rawSym of symbols.slice(0, 50)) { // max 50 per request
+    const symbol   = rawSym.toUpperCase();
+    const CACHE_KEY = `div_${symbol}`;
+    try {
+      // Check cache first
+      const cached = db.prepare(
+        `SELECT data FROM quotes_cache WHERE symbol=?
+         AND datetime(updated_at) > datetime('now', '-${TTL_HOURS * 60} minutes')`
+      ).get(CACHE_KEY);
+      if (cached) { results[symbol] = { ...JSON.parse(cached.data), _cached: true }; continue; }
+
+      // Fetch from Yahoo (with dedup)
+      const data = await dedupFetch(`div_${symbol}`, async () => {
+        const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+                    `?interval=1mo&range=2y&events=dividends&includePrePost=false`;
+        const r = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json',
+                     'Referer': 'https://finance.yahoo.com' },
+        });
+        if (!r.ok) throw new Error(`Yahoo HTTP ${r.status}`);
+        return r.json();
+      });
+
+      const result    = data.chart?.result?.[0];
+      const divEvents = result?.events?.dividends ?? {};
+      const allDivs   = Object.values(divEvents).sort((a, b) => b.date - a.date);
+      const last4     = allDivs.slice(0, 4);
+      const annualRate = last4.reduce((s, d) => s + d.amount, 0);
+      const latestDiv = allDivs[0] ?? null;
+      const exDate    = latestDiv ? new Date(latestDiv.date * 1000).toISOString().slice(0, 10) : null;
+      const lastAmt   = latestDiv?.amount ?? null;
+      const price     = result?.meta?.regularMarketPrice ?? 0;
+      const yieldPct  = (price > 0 && annualRate > 0) ? (annualRate / price) * 100 : null;
+
+      let nextExDate = null;
+      if (allDivs.length >= 2) {
+        const gaps = [];
+        for (let i = 0; i < Math.min(allDivs.length - 1, 4); i++)
+          gaps.push((allDivs[i].date - allDivs[i+1].date) / 86400);
+        const avgGap = gaps.reduce((a,b)=>a+b,0) / gaps.length;
+        if (latestDiv && avgGap > 0) {
+          const nextTs = (latestDiv.date + avgGap * 86400) * 1000;
+          const nextD  = new Date(nextTs);
+          if (nextD > new Date()) nextExDate = nextD.toISOString().slice(0, 10);
+        }
+      }
+
+      const payload = { symbol, annualRate, yieldPct, exDate, lastAmt, nextExDate, payments: last4.length };
+      db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo_div', CURRENT_TIMESTAMP)`)
+        .run(CACHE_KEY, JSON.stringify(payload));
+      results[symbol] = payload;
+    } catch(e) {
+      errors[symbol] = e.message;
+      results[symbol] = { symbol, annualRate: null, yieldPct: null, exDate: null, lastAmt: null, nextExDate: null };
+    }
+  }
+  res.json({ results, errors });
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 // USER SAVED ETFs
