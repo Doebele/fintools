@@ -127,6 +127,17 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_pq_updated ON parsed_quotes(updated_at);
 
+  // ── Migrations: add columns to existing DBs that predate them ──────────────
+  const txCols = db.prepare("PRAGMA table_info(transactions)").all().map(c => c.name);
+  if (!txCols.includes('deleted_at')) {
+    db.prepare('ALTER TABLE transactions ADD COLUMN deleted_at DATETIME').run();
+    log.info('Migration: added deleted_at to transactions table');
+  }
+  if (!txCols.includes('notes')) {
+    db.prepare("ALTER TABLE transactions ADD COLUMN notes TEXT").run();
+    log.info('Migration: added notes to transactions table');
+  }
+
   CREATE TABLE IF NOT EXISTS fx_cache (
     pair       TEXT    PRIMARY KEY,
     rate       REAL    NOT NULL,
@@ -183,6 +194,9 @@ app.use(express.json({ limit: '1mb' }));
 // Rate limit: protect against abuse but generous enough for a private portfolio app.
 // 50 symbols × (batch + 2 chart fetches on hover) × multiple users = needs headroom.
 // Default 2000/15min = ~133/min which is plenty for personal use.
+// Trust nginx reverse proxy (required for correct IP detection behind Docker/nginx)
+app.set('trust proxy', 1);
+
 app.use('/api/', rateLimit({
   windowMs: 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '2000', 10),
