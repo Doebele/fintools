@@ -10,6 +10,7 @@ import {
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
+  Gauge, Armchair, Info,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
@@ -100,6 +101,10 @@ function useGlobalStyles() {
       .ccy-btn:hover .ccy-flag { opacity: 1 !important; }
       .ccy-btn:hover .ccy-label { color: #3b82f6 !important; }
       .ccy-btn:hover .ccy-name  { color: #3b82f6 !important; }
+      /* Global smooth transitions for all interactive elements */
+      button { transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease; }
+      /* Tab active indicator slide animation */
+      .tab-pill { transition: background 0.3s ease, color 0.3s ease, font-weight 0.15s; }
     `;
     document.head.appendChild(s);
   }, []);
@@ -1217,6 +1222,34 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 // RAIL NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
 // ─── Delayed tooltip for collapsed sidebar icons ──────────────────────────
+// ─── Inline info tooltip (? icon with popover) ───────────────────────────────
+const InfoTip = ({ text, title, width=220, side="top" }) => {
+  const [vis, setVis] = useState(false);
+  const posStyle = side === "bottom"
+    ? { top:"calc(100% + 6px)", bottom:"auto" }
+    : { bottom:"calc(100% + 6px)", top:"auto" };
+  return (
+    <span style={{ position:"relative", display:"inline-flex", alignItems:"center", marginLeft:3 }}
+      onMouseEnter={() => setVis(true)}
+      onMouseLeave={() => setVis(false)}>
+      <Info size={11} style={{ color:"rgba(255,255,255,0.28)", cursor:"help", flexShrink:0 }}/>
+      {vis && (
+        <div style={{
+          position:"absolute", left:"50%", ...posStyle,
+          transform:"translateX(-50%)", width, zIndex:200,
+          background:"#1a1d2e", border:`1px solid ${THEME.border}`,
+          borderRadius:8, padding:"8px 10px", pointerEvents:"none",
+          boxShadow:"0 6px 24px rgba(0,0,0,0.6)",
+          transition:"opacity 0.15s",
+        }}>
+          {title && <div style={{ fontSize:10, color:THEME.text1, fontWeight:700, marginBottom:4 }}>{title}</div>}
+          <div style={{ fontSize:10, color:THEME.text2, lineHeight:1.55 }}>{text}</div>
+        </div>
+      )}
+    </span>
+  );
+};
+
 const SidebarTip = ({ children, label, open }) => {
   const [tip, setTip]       = useState(false);
   const [pos, setPos]       = useState({ x:0, y:0 });
@@ -1350,23 +1383,13 @@ function Rail({
         gap:6, flexShrink:0,
       }}>
         {open && (
-          <div style={{ flex:1, fontFamily:THEME.serif, fontSize:18, fontWeight:400,
-            letterSpacing:"-0.01em", userSelect:"none" }}>
-            Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+          <div style={{ flex:1, fontFamily:THEME.serif, userSelect:"none" }}>
+            <div style={{ fontSize:18, fontWeight:400, letterSpacing:"-0.01em", lineHeight:1.1 }}>
+              Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+            </div>
+            <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
+              letterSpacing:"0.10em", marginTop:1 }}>Explorer</div>
           </div>
-        )}
-        {/* ETF Explorer quick-switch */}
-        {open && onEtfExplorer && (
-          <button onClick={onEtfExplorer}
-            title="Open ETF Screener"
-            style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 9px",
-              borderRadius:7, border:`1px solid ${THEME.border}`,
-              background:"rgba(255,255,255,0.04)", color:THEME.accent,
-              fontSize:10, fontWeight:600, cursor:"pointer",
-              fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.12s",
-              flexShrink:0 }}>
-            <TrendingUp size={11}/> ETF Screener
-          </button>
         )}
         <button onClick={onToggle}
           style={{ background:"transparent", border:"none", cursor:"pointer",
@@ -1572,10 +1595,7 @@ function Rail({
             }}
             className="rail-btn">
               <span style={{ flexShrink:0, display:"flex" }}><TrendingUp size={16}/></span>
-              <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-start", gap:0 }}>
-                <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>ETF Screener</span>
-                <span style={{ fontSize:9, color:THEME.text3, fontWeight:400, lineHeight:1.2 }}>Screener</span>
-              </div>
+              <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>ETF Screener</span>
             </button>
           ) : (
             <SidebarTip label="ETF Screener" open={open}>
@@ -1603,7 +1623,7 @@ function Rail({
                 <div style={{ display:"flex", gap:2, padding:"2px",
                   borderRadius:6, background:"rgba(0,0,0,0.25)",
                   border:`1px solid ${THEME.border}` }}>
-                  {[["pro","Pro"],["comfort","A11Y"]].map(([m, lbl]) => (
+                  {[["pro",<Gauge size={13}/>, "Pro mode"],["comfort",<Armchair size={13}/>, "Comfort mode"]].map(([m, lbl]) => (
                     <button key={m} onClick={() => onToggleDisplayMode(m)}
                       title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
                       style={{
@@ -1627,7 +1647,7 @@ function Rail({
                   borderRadius:7, display:"flex", justifyContent:"center",
                   alignItems:"center", transition:"all 0.15s",
                 }}>
-                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? "👁" : "🔬"}</span>
+                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
               </button>
             )}
           </div>
@@ -2324,17 +2344,17 @@ const TX_COLS_DEFAULT = [
   { key:"name",         label:"Name",          width:180, sortable:true  },
   { key:"date",         label:"Date",          width:100, sortable:true  },
   { key:"quantity",     label:"Qty",           width:72,  sortable:true  },
-  { key:"price",        label:"Buy Price",     width:90,  sortable:true  },
-  { key:"cost",         label:"Cost",          width:100, sortable:true  },
+  { key:"price",        label:"Buy Price",     width:90,  sortable:true,  tip:"The price per share at the time of purchase, in the original transaction currency." },
+  { key:"cost",         label:"Cost Basis",    width:100, sortable:true,  tip:"Total amount invested (quantity × buy price), converted to USD at the purchase-date exchange rate. This is your baseline for calculating gains and losses." },
   { key:"curPrice",     label:"Cur. Price",    width:90,  sortable:true  },
-  { key:"curValue",     label:"Cur. Value",    width:100, sortable:true  },
-  { key:"glPct",        label:"G/L %",         width:82,  sortable:true  },
-  { key:"glAbs",        label:"G/L",           width:96,  sortable:true  },
-  { key:"prdPct",       label:"Period %",      width:82,  sortable:true  },
-  { key:"prdAbs",       label:"Period",        width:96,  sortable:true  },
-  { key:"pe",           label:"P/E",           width:64,  sortable:true  },
-  { key:"divYield",     label:"Div. Yield",    width:80,  sortable:true  },
-  { key:"exDate",       label:"Ex-Date",       width:90,  sortable:false },
+  { key:"curValue",     label:"Cur. Value",    width:100, sortable:true,  tip:"Current market value of your position (quantity × current price in USD)." },
+  { key:"glPct",        label:"G/L %",         width:82,  sortable:true,  tip:"Net Gain / Loss percentage: (current value − cost basis) ÷ cost basis. Unrealised — reflects what you'd make if you sold today." },
+  { key:"glAbs",        label:"Net G/L",       width:96,  sortable:true,  tip:"Net Gain / Loss in your display currency: current value minus cost basis. Unrealised — no taxes or fees deducted." },
+  { key:"prdPct",       label:"Period %",      width:82,  sortable:true,  tip:"Price change % over the selected period (Intraday, 1W, 1M, 3M, 1Y, 2Y, 5Y). Calculated from the period's reference price, not your cost basis." },
+  { key:"prdAbs",       label:"Period",        width:96,  sortable:true,  tip:"Absolute gain/loss for the selected period, based on the reference price at the start of the period × your quantity." },
+  { key:"pe",           label:"P/E",           width:64,  sortable:true,  tip:"Price-to-Earnings ratio (trailing 12 months). Measures how much investors pay per dollar of earnings. High P/E can indicate growth expectations or overvaluation." },
+  { key:"divYield",     label:"Div. Yield",    width:80,  sortable:true,  tip:"Annual dividend yield: total annual dividends per share ÷ current price. Shows income return as a percentage of your investment." },
+  { key:"exDate",       label:"Ex-Date",       width:90,  sortable:false, tip:"Ex-Dividend Date: you must own the stock before this date to receive the next dividend payment." },
   { key:"links",        label:"Links",         width:68,  sortable:false },
   { key:"actions",      label:"",              width:56,  sortable:false },
 ];
@@ -2538,14 +2558,16 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
         borderBottom:`1px solid ${THEME.border2}`, flexShrink:0,
       }}>
         {[
-          ["Transactions",  allTxFlat.length, null],
-          ["Total Cost",    `$${(totalCost/1000).toFixed(1)}K`, null],
-          ["Current Value", `$${(totalValue/1000).toFixed(1)}K`, null],
-          ["Total G/L",     `${totalGL>=0?"+":"−"}$${(Math.abs(totalGL)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red],
-          ...(hasPrdGL?[[`${period==="Intraday"?"1D":period} G/L`, `${totalPrdGL>=0?"+":"−"}$${(Math.abs(totalPrdGL)/1000).toFixed(1)}K`, totalPrdGL>=0?THEME.green:THEME.red]]:[]),
-        ].map(([l,v,c])=>(
+          ["Transactions",  allTxFlat.length, null, null],
+          ["Total Cost",    `$${(totalCost/1000).toFixed(1)}K`, null, "Total cost basis across all positions in USD at purchase-date FX rates."],
+          ["Current Value", `$${(totalValue/1000).toFixed(1)}K`, null, "Current market value of all positions in USD."],
+          ["Total G/L",     `${totalGL>=0?"+":"−"}$${(Math.abs(totalGL)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss: current value minus total cost basis. Does not account for taxes or transaction fees."],
+          ...(hasPrdGL?[[`${period==="Intraday"?"1D":period} G/L`, `${totalPrdGL>=0?"+":"−"}$${(Math.abs(totalPrdGL)/1000).toFixed(1)}K`, totalPrdGL>=0?THEME.green:THEME.red, `Gain/Loss over the selected ${period} period, based on period-start reference prices.`]]:[]),
+        ].map(([l,v,c,tip])=>(
           <div key={l}>
-            <div style={{fontSize:9,color:THEME.text3,textTransform:"uppercase",letterSpacing:".07em",marginBottom:2}}>{l}</div>
+            <div style={{fontSize:9,color:THEME.text3,textTransform:"uppercase",letterSpacing:".07em",marginBottom:2,display:"flex",alignItems:"center",gap:2}}>
+              {l}{tip && <InfoTip text={tip} side="bottom" width={220}/>}
+            </div>
             <div style={{fontFamily:THEME.mono,fontSize:12,fontWeight:700,color:c||THEME.text1}}>{v}</div>
           </div>
         ))}
@@ -2566,9 +2588,13 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
             <tr style={{ height:34, background:THEME.surface, position:"sticky", top:0, zIndex:10 }}>
               {TX_COLS_DEFAULT.map(col=>(
                 <th key={col.key} style={thStyle(col)} onClick={()=>col.sortable&&handleSort(col.key)}>
-                  {col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
-                   : col.key==="prdAbs" ? `${period==="Intraday"?"1D":period} $`
-                   : col.label}<SortIcon col={col}/>
+                  <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
+                    {col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
+                     : col.key==="prdAbs" ? `${period==="Intraday"?"1D":period} $`
+                     : col.label}
+                    {col.tip && <InfoTip text={col.tip} side="bottom" width={240}/>}
+                  </span>
+                  <SortIcon col={col}/>
                   {/* Resize handle */}
                   <div onMouseDown={e=>startResize(e,col.key)}
                     style={{ position:"absolute", right:0, top:0, bottom:0, width:5,
@@ -2618,7 +2644,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                         color:isBuy?THEME.green:THEME.red,
                         border:`1px solid ${isBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
                         cursor:"pointer", fontFamily:THEME.font,
-                        transition:"all 0.12s",
+                        transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s",
                         display:"flex", alignItems:"center", gap:4,
                       }}
                       onMouseEnter={e=>{
@@ -3793,18 +3819,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               letterSpacing:"0.10em", marginTop:-2 }}>Explorer</div>
           </div>
         )}
-        {/* Mode switcher — only shown when logged in */}
-        {open && user && onSwitchToPortfolio && (
-          <button onClick={onSwitchToPortfolio}
-            title="Switch to Portfolio Explorer"
-            style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 8px",
-              borderRadius:7, border:`1px solid ${THEME.border}`,
-              background:"rgba(255,255,255,0.04)", color:THEME.text3,
-              fontSize:10, fontWeight:600, cursor:"pointer",
-              fontFamily:"inherit", whiteSpace:"nowrap", transition:"all 0.12s" }}>
-            <LayoutDashboard size={11}/> Portfolio
-          </button>
-        )}
+        {/* Mode switcher — removed, navigation via sidebar bottom */}
         <button onClick={onToggle} style={{
           background:"none", border:"none", cursor:"pointer",
           color:THEME.text3, display:"flex", padding:4, borderRadius:7,
@@ -4171,10 +4186,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                   transition:"background 0.12s",
                 }} className="rail-btn">
                   <span style={{ flexShrink:0, display:"flex" }}><LayoutDashboard size={16}/></span>
-                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-start", gap:0 }}>
-                    <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>Portfolio Explorer</span>
-                    <span style={{ fontSize:9, color:THEME.text3, fontWeight:400, lineHeight:1.2 }}>Explorer</span>
-                  </div>
+                  <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>Portfolio Explorer</span>
                 </button>
               ) : (
                 <SidebarTip label="Portfolio Explorer" open={open}>
@@ -4189,10 +4201,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 </SidebarTip>
               )
             )}
-            {onSignOut && (
-              <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out"
-                onClick={onSignOut} color={THEME.text3}/>
-            )}
+            {/* Sign Out removed here — rendered once at bottom after View Mode */}
           </>
         ) : (
           onBack && (
@@ -4213,7 +4222,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 <div style={{ display:"flex", gap:2, padding:"2px",
                   borderRadius:6, background:"rgba(0,0,0,0.25)",
                   border:`1px solid ${THEME.border}` }}>
-                  {[["pro","Pro"],["comfort","A11Y"]].map(([m, lbl]) => (
+                  {[["pro",<Gauge size={13}/>, "Pro mode"],["comfort",<Armchair size={13}/>, "Comfort mode"]].map(([m, lbl]) => (
                     <button key={m} onClick={() => onToggleDisplayMode(m)}
                       title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
                       style={{
@@ -4237,7 +4246,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                   borderRadius:7, display:"flex", justifyContent:"center",
                   alignItems:"center", transition:"all 0.15s",
                 }}>
-                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? "👁" : "🔬"}</span>
+                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
               </button>
             )}
           </div>
@@ -4815,7 +4824,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 color:activeTab===t.key?THEME.accent:THEME.text3,
                 borderRadius:9, fontSize:12,
                 fontWeight:activeTab===t.key?700:500,
-                fontFamily:"inherit", transition:"all 0.12s" }}>
+                fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
               {t.icon}{t.label}
             </button>
           ))}
@@ -5466,7 +5475,7 @@ export default function App() {
                   color: activeTab===t.key ? THEME.accent : THEME.text3,
                   borderRadius:9, fontSize:12,
                   fontWeight: activeTab===t.key ? 700 : 500,
-                  fontFamily:"inherit", transition:"all 0.12s" }}>
+                  fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
                 {t.icon}{t.label}
               </button>
             ))}
@@ -5488,7 +5497,7 @@ export default function App() {
                   color: activeTab===t.key ? THEME.accent : THEME.text3,
                   borderRadius:9, fontSize:12,
                   fontWeight: activeTab===t.key ? 700 : 500,
-                  fontFamily:"inherit", transition:"all 0.12s" }}>
+                  fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
                 {t.icon}{t.label}
               </button>
             ))}

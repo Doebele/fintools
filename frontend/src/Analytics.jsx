@@ -2,7 +2,7 @@
  * Portfolio Analytics — Correlation · Monte Carlo · Rebalancing · Dividend Calendar
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { PieChart, ArrowLeftRight } from "lucide-react";
+import { PieChart, ArrowLeftRight, Info } from "lucide-react";
 import * as d3 from "d3";
 
 // Persistent UI settings store (survives ETF switches within session)
@@ -18,6 +18,33 @@ const THEME = {
 const C = THEME;
 
 const fmt$ = (v, dec=0) => v==null?"—":`$${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:dec,maximumFractionDigits:dec})}`;
+
+// ─── Inline info tooltip ──────────────────────────────────────────────────────
+const InfoTip = ({ text, title, width=220, side="top" }) => {
+  const [vis, setVis] = useState(false);
+  const posStyle = side === "bottom"
+    ? { top:"calc(100% + 6px)", bottom:"auto" }
+    : { bottom:"calc(100% + 6px)", top:"auto" };
+  return (
+    <span style={{ position:"relative", display:"inline-flex", alignItems:"center", marginLeft:3 }}
+      onMouseEnter={() => setVis(true)}
+      onMouseLeave={() => setVis(false)}>
+      <Info size={11} style={{ color:"rgba(255,255,255,0.28)", cursor:"help", flexShrink:0 }}/>
+      {vis && (
+        <div style={{
+          position:"absolute", left:"50%", ...posStyle,
+          transform:"translateX(-50%)", width, zIndex:200,
+          background:"#1a1d2e", border:`1px solid ${C.border}`,
+          borderRadius:8, padding:"8px 10px", pointerEvents:"none",
+          boxShadow:"0 6px 24px rgba(0,0,0,0.6)",
+        }}>
+          {title && <div style={{ fontSize:10, color:C.text1, fontWeight:700, marginBottom:4 }}>{title}</div>}
+          <div style={{ fontSize:10, color:C.text2, lineHeight:1.55 }}>{text}</div>
+        </div>
+      )}
+    </span>
+  );
+};
 const fmtPct = (v, dec=1) => v==null?"—":`${v>=0?"+":""}${v.toFixed(dec)}%`;
 const BASE = "/api";
 
@@ -260,8 +287,10 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
           </div>
         ))}
         {avgCorr != null && (
-          <div style={{ marginLeft:"auto", fontSize:11, color:C.text2 }}>
-            Avg. correlation: <strong style={{ color:avgCorr > 0.5 ? C.red : avgCorr > 0.3 ? C.yellow : C.green }}>
+          <div style={{ marginLeft:"auto", fontSize:11, color:C.text2, display:"flex", alignItems:"center", gap:4 }}>
+            Avg. correlation
+            <InfoTip title="Average Correlation" text="Pearson correlation of daily returns between all position pairs, averaged. Values near 0 = well diversified (positions move independently). Values near 1 = high correlation (positions move together, less diversification benefit). Above 0.7 is flagged as a risk." width={240}/>
+            : <strong style={{ color:avgCorr > 0.5 ? C.red : avgCorr > 0.3 ? C.yellow : C.green }}>
               {avgCorr.toFixed(2)}
             </strong>
           </div>
@@ -591,6 +620,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
   const [nSims,      setNSims]      = useState(500);
   const [result,     setResult]     = useState(null);
   const [running,    setRunning]    = useState(false);
+  const [hoverData,  setHoverData]  = useState(null);   // { month, x, y, values }
   const svgRef    = useRef(null);
   const svgWrapRef = useRef(null);
 
@@ -598,6 +628,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
   useEffect(() => {
     if (!svgWrapRef.current) return;
     const ro = new ResizeObserver(() => {
+      setHoverData(null);
       if (result) setResult(r => r ? {...r} : r);
     });
     ro.observe(svgWrapRef.current);
@@ -757,6 +788,49 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
     g.selectAll(".domain").attr("stroke","rgba(255,255,255,0.1)");
     g.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
 
+    // ── Interactive crosshair overlay ─────────────────────────────────────
+    const crosshair = g.append("line")
+      .attr("class","crosshair")
+      .attr("y1",0).attr("y2",H)
+      .attr("stroke","rgba(255,255,255,0.25)").attr("stroke-width",1)
+      .attr("stroke-dasharray","4,3").attr("opacity",0).attr("pointer-events","none");
+
+    const overlay = svg.append("rect")
+      .attr("x",m.left).attr("y",m.top).attr("width",W).attr("height",H)
+      .attr("fill","transparent").attr("cursor","crosshair");
+
+    const lineData = [
+      { key:"p10", path:result.p10Path, color:"rgba(248,113,113,0.9)",  label:"Bear P10" },
+      { key:"p25", path:result.p25Path, color:"rgba(251,191,36,0.9)",   label:"Low P25"  },
+      { key:"p50", path:result.p50Path, color:"rgba(74,222,128,1)",     label:"Median P50"},
+      { key:"p75", path:result.p75Path, color:"rgba(96,165,250,0.9)",   label:"Good P75" },
+      { key:"p90", path:result.p90Path, color:"rgba(167,139,250,0.9)",  label:"Bull P90" },
+    ];
+
+    overlay.on("mousemove", function(event) {
+      const [mx] = d3.pointer(event, this);
+      const step = Math.max(0, Math.min(result.steps, Math.round(xScale.invert(mx))));
+      const px = xScale(step);
+      crosshair.attr("x1",px).attr("x2",px).attr("opacity",1);
+      const year = Math.floor(step/12);
+      const month = step % 12;
+      const values = Object.fromEntries(lineData.map(l => [l.key, l.path[step] ?? null]));
+      const svgRect = svgRef.current?.getBoundingClientRect();
+      if (svgRect) {
+        setHoverData({
+          step, year, month, values, lineData,
+          svgLeft: svgRect.left + m.left + px,
+          svgTop: svgRect.top + m.top,
+          H,
+        });
+      }
+    });
+
+    overlay.on("mouseleave", () => {
+      crosshair.attr("opacity",0);
+      setHoverData(null);
+    });
+
   }, [result, totalValueUSD, years]);
 
   const inp = {
@@ -787,15 +861,21 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
               <div style={{ fontFamily:C.mono, fontSize:14, fontWeight:700, color:C.text1, marginTop:2 }}>
                 {fmtC(totalValueUSD)}
               </div>
-              <div style={{ fontSize:10, color:C.text3, marginTop:8 }}>Est. Annual Return (μ)</div>
+              <div style={{ fontSize:10, color:C.text3, marginTop:8, display:"flex", alignItems:"center" }}>
+                Est. Annual Return (μ)<InfoTip title="Est. Annual Return (μ)" text="Estimated annualised return derived from each position's 2-year price history, weighted by portfolio allocation. Used as the drift parameter in the Monte Carlo simulation." side="bottom" width={230}/>
+              </div>
               <div style={{ fontFamily:C.mono, fontSize:12, color:C.accent, marginTop:1 }}>
                 {fmtPct(portfolioStats.mu*100)}
               </div>
-              <div style={{ fontSize:10, color:C.text3, marginTop:6 }}>Volatility (σ)</div>
+              <div style={{ fontSize:10, color:C.text3, marginTop:6, display:"flex", alignItems:"center" }}>
+                Volatility (σ)<InfoTip title="Volatility (σ)" text="Annualised standard deviation estimated from daily price changes. A higher value produces a wider spread of simulation outcomes." side="bottom" width={210}/>
+              </div>
               <div style={{ fontFamily:C.mono, fontSize:12, color:C.yellow, marginTop:1 }}>
                 {(portfolioStats.sigma*100).toFixed(1)}%
               </div>
-              <div style={{ fontSize:10, color:C.text3, marginTop:6 }}>Avg Div. Yield</div>
+              <div style={{ fontSize:10, color:C.text3, marginTop:6, display:"flex", alignItems:"center" }}>
+                Avg Div. Yield<InfoTip title="Average Dividend Yield" text="Weighted average dividend yield across all positions. Used to simulate dividend income — either reinvested (DRIP) or paid out as cash." side="bottom" width={210}/>
+              </div>
               <div style={{ fontFamily:C.mono, fontSize:12, color:"#fbbf24", marginTop:1 }}>
                 {(divYield*100).toFixed(2)}%
               </div>
@@ -897,8 +977,47 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
           ) : (
             <>
               {/* Chart */}
-              <div ref={svgWrapRef} style={{ flex:1, minHeight:0, padding:"8px 12px 0" }}>
+              <div ref={svgWrapRef} style={{ flex:1, minHeight:0, padding:"8px 12px 0", position:"relative" }}>
                 <svg ref={svgRef} width="100%" height="100%"/>
+                {/* Hover popover */}
+                {hoverData && (
+                  <div style={{
+                    position:"fixed",
+                    left: hoverData.svgLeft + 12,
+                    top: hoverData.svgTop + 8,
+                    background:"rgba(18,20,32,0.97)",
+                    border:`1px solid ${C.border}`,
+                    borderRadius:10, padding:"10px 14px",
+                    pointerEvents:"none", zIndex:300,
+                    boxShadow:"0 8px 32px rgba(0,0,0,0.6)",
+                    minWidth:160,
+                  }}>
+                    <div style={{ fontSize:10, color:C.text3, fontWeight:700, marginBottom:7,
+                      textTransform:"uppercase", letterSpacing:"0.07em" }}>
+                      {hoverData.year > 0
+                        ? `Year ${hoverData.year}${hoverData.month > 0 ? `, Month ${hoverData.month}` : ""}`
+                        : `Month ${hoverData.step}`}
+                      {" "}· Month {hoverData.step}
+                    </div>
+                    {hoverData.lineData.map(l => {
+                      const v = hoverData.values[l.key];
+                      if (v == null) return null;
+                      const rate = 1; // already in USD
+                      const display = v >= 1e6 ? `$${(v/1e6).toFixed(2)}M`
+                                    : v >= 1e3 ? `$${(v/1e3).toFixed(1)}K`
+                                    : `$${Math.round(v).toLocaleString()}`;
+                      const mult = totalValueUSD > 0 ? (v/totalValueUSD).toFixed(1) : "—";
+                      return (
+                        <div key={l.key} style={{ display:"flex", justifyContent:"space-between",
+                          alignItems:"center", gap:12, marginBottom:4 }}>
+                          <span style={{ fontSize:10, color:l.color, fontWeight:700, minWidth:70 }}>{l.label}</span>
+                          <span style={{ fontFamily:C.mono, fontSize:11, color:C.text1, fontWeight:700 }}>{display}</span>
+                          <span style={{ fontSize:9, color:C.text3 }}>×{mult}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Percentile table */}
@@ -1442,7 +1561,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
 
             {/* Row 1: Mode toggles */}
             <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap", minWidth:38 }}>Mode:</span>
+              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap", minWidth:38, display:"flex", alignItems:"center" }}>
+                Mode:<InfoTip title="Rebalancing Mode" text="Weight-Based: rebalances purely by target allocation percentages. Risk-Based: adjusts target weights by each position's historical volatility — less volatile positions get proportionally more weight." width={240}/>
+              </span>
               {/* Weight / Risk toggle */}
               <div style={{ display:"flex", gap:3 }}>
                 {[
@@ -1455,7 +1576,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                     background:rebalMode===key?"rgba(59,130,246,0.15)":"transparent",
                     color:rebalMode===key?C.accent:C.text3,
                     fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-                    transition:"background 0.15s, color 0.15s, border-color 0.15s",
+                    transition:"background 0.3s ease, color 0.3s ease, border-color 0.3s ease",
                   }}>{label}</button>
                 ))}
                 {rebalMode==="risk" && !histLoading && Object.keys(histData).length > 0 && (
@@ -1616,7 +1737,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
 
             {/* Row 6: Smart Cash toggle */}
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Smart Cash:</span>
+              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap", display:"flex", alignItems:"center" }}>
+                Smart Cash:<InfoTip title="Smart Cash" text="When enabled, available cash is first used to fund BUY orders before any SELL orders are executed. This minimises unnecessary selling and transaction costs. Disable for classic rebalancing where buys and sells are independent." width={240}/>
+              </span>
               <button onClick={()=>setSmartCash(v=>!v)} style={{
                 padding:"3px 10px", borderRadius:6,
                 border:`1px solid ${smartCash?C.green:C.border}`,
