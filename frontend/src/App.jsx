@@ -5522,7 +5522,7 @@ export default function App() {
               </div>
             )}
             {activeTab === "rebalance" && (
-              <div style={{ flex:1, height:"100%", overflow:"hidden" }}>
+              <div style={{ flex:1, overflowY:"auto", minHeight:0 }}>
                 <RebalancingAssistant
                   allNodes={allNodes}
                   quotes={quotes}

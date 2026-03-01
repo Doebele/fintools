@@ -1318,13 +1318,8 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                 onChange={e=>{ setCashAdd(+e.target.value); if(+e.target.value>0) setCashExpanded(true); }}
                 style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
                   borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, width:80, outline:"none" }}/>
-              <select value={currency} onChange={e => {}}
-                style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.text1, padding:"4px 6px", fontSize:11,
-                  fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
-                {["USD","EUR","CHF","GBP"].map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+                  fontFamily:C.mono, width:90, outline:"none" }}/>
+              <span style={{ fontSize:11, color:C.text3, fontWeight:600 }}>{currency}</span>
             </div>
             {(() => {
               // Cash simulation breakdown
@@ -1548,9 +1543,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                       value={t.tickerPct||""}
                       placeholder="0"
                       onChange={e=>setTarget(pos.symbol, +e.target.value)}
-                      style={{ width:38, background:"rgba(255,255,255,0.05)",
+                      style={{ width:56, background:"rgba(255,255,255,0.05)",
                         border:`1px solid ${C.border}`, borderRadius:5, color:C.text1,
-                        padding:"2px 5px", fontSize:11, fontFamily:C.mono, outline:"none",
+                        padding:"3px 6px", fontSize:12, fontFamily:C.mono, outline:"none",
                         textAlign:"right" }}/>
                     <span style={{ fontSize:10, color:C.text3, width:14 }}>%</span>
                   </div>
