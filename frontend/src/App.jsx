@@ -760,7 +760,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       const data = await txApi.importSelective(effectivePort, rows, user?.id);
       setResult(data);
       setPreviewData(null);
-      if (data.imported > 0) onImportDone();
+      if (data.imported > 0) onImportDone(effectivePort);
     } catch(e) { setImportErr(e.message || "Import failed"); }
     setImporting(false);
   };
@@ -800,7 +800,8 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     setCreatingPort(false);
   };
 
-  const PortSelect = () => (
+  // PortSelect rendered as JSX variable (NOT a sub-component) to avoid focus loss on re-render
+  const portSelectJsx = (
     <div style={{ marginBottom:16 }}>
       <label style={{ fontSize:11, color:THEME.text3, display:"block", marginBottom:5 }}>Portfolio</label>
       <select value={selPort} onChange={e => { setSelPort(e.target.value); setPreviewData(null); setResult(null); setNewPortName(""); }}
@@ -812,6 +813,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       {isNewPort && (
         <div style={{ display:"flex", gap:8, marginTop:8 }}>
           <input
+            autoFocus
             value={newPortName} onChange={e => setNewPortName(e.target.value)}
             placeholder="Name des neuen Portfolios"
             onKeyDown={e => e.key === "Enter" && handleCreatePort()}
@@ -902,7 +904,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
           {/* ── EXPORT TAB ─────────────────────────────────────────────────── */}
           {tab === "export" && (
             <div>
-              <PortSelect/>
+              {portSelectJsx}
               <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 16px", lineHeight:1.5 }}>
                 Downloads alle Transaktionen des gewählten Portfolios als Excel-Datei. Kann in ein anderes Portfolio re-importiert werden.
               </p>
@@ -926,8 +928,8 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
           {/* ── IMPORT TAB ─────────────────────────────────────────────────── */}
           {tab === "import" && !previewData && !result && (
             <div>
-              <PortSelect/>
-              {/* Template */}
+              {portSelectJsx}
+              {/* Template */}}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                 padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
                 border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
@@ -5159,6 +5161,15 @@ export default function App() {
 
   const handleRefresh = useCallback(() => fetchQuotes(allSymbols, true), [allSymbols, fetchQuotes]);
 
+  const reloadTransactions = useCallback(async (portList) => {
+    const updated = {};
+    await Promise.all((portList ?? portfolios).map(async p => {
+      try { updated[p.id] = await txApi.list(p.id); }
+      catch { updated[p.id] = []; }
+    }));
+    setAllTransactions(prev => ({ ...prev, ...updated }));
+  }, [portfolios]);
+
   const handleRecalcFX = useCallback(async () => {
     if (!confirm("This will recalculate price_usd for all non-USD transactions using historical FX rates. Continue?")) return;
     try {
@@ -5576,8 +5587,16 @@ export default function App() {
             activePortfolioIds={activePortfolioIds}
             user={user}
             onClose={() => setShowImportExport(false)}
-            onImportDone={() => {
+            onImportDone={async (newPortId) => {
               setShowImportExport(false);
+              // Reload transactions for all portfolios (new data was imported)
+              const allPorts = portfolios;
+              const updated = {};
+              await Promise.all(allPorts.map(async p => {
+                try { updated[p.id] = await txApi.list(p.id); }
+                catch { updated[p.id] = []; }
+              }));
+              setAllTransactions(prev => ({ ...prev, ...updated }));
               handleRefresh();
             }}
           onCreatePortfolio={(port) => {
