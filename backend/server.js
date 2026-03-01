@@ -127,17 +127,6 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_pq_updated ON parsed_quotes(updated_at);
 
-  // ── Migrations: add columns to existing DBs that predate them ──────────────
-  const txCols = db.prepare("PRAGMA table_info(transactions)").all().map(c => c.name);
-  if (!txCols.includes('deleted_at')) {
-    db.prepare('ALTER TABLE transactions ADD COLUMN deleted_at DATETIME').run();
-    log.info('Migration: added deleted_at to transactions table');
-  }
-  if (!txCols.includes('notes')) {
-    db.prepare("ALTER TABLE transactions ADD COLUMN notes TEXT").run();
-    log.info('Migration: added notes to transactions table');
-  }
-
   CREATE TABLE IF NOT EXISTS fx_cache (
     pair       TEXT    PRIMARY KEY,
     rate       REAL    NOT NULL,
@@ -173,6 +162,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tx_date      ON transactions(date);
   CREATE INDEX IF NOT EXISTS idx_portfolios_user ON portfolios(user_id);
 `);
+
+// ── Migrations: add columns to existing DBs that predate schema version ────────
+try {
+  const txCols = db.prepare('PRAGMA table_info(transactions)').all().map(c => c.name);
+  if (!txCols.includes('deleted_at')) {
+    db.prepare('ALTER TABLE transactions ADD COLUMN deleted_at DATETIME').run();
+    log.info('Migration: added deleted_at to transactions table');
+  }
+  if (!txCols.includes('notes')) {
+    db.prepare('ALTER TABLE transactions ADD COLUMN notes TEXT').run();
+    log.info('Migration: added notes to transactions table');
+  }
+} catch(e) { log.warn('Migration check failed:', e.message); }
 
 // ── Migrations from v2 ───────────────────────────────────────────────────────
 // Add user_id to portfolios if upgrading from v2
