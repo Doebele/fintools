@@ -1112,7 +1112,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
   const [mode,        setMode]      = useState("both");
   const [activeView,  setActiveView] = useState("allocations");  // 'allocations' | 'plan'
   const [cashExpanded,setCashExpanded] = useState(false); // Cash simulation detail
-  const [roundMode,   setRoundMode] = useState("precise"); // precise|hundreds|thousands|shares
+  const [roundMode,   setRoundMode] = useState("shares"); // precise|hundreds|thousands|shares
   const [rebalMode,   setRebalMode] = useState("weight");  // weight | risk
   const [histData,    setHistData]  = useState({});        // { symbol: [[date,price],...] }
   const [histLoading, setHistLoading] = useState(false);
@@ -1329,7 +1329,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
   const sectorColorMap = Object.fromEntries(sectorDonut.map(d=>[d.label,d.color]));
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", minHeight:"100%", overflowY:"auto" }}>
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       <SectionHeader
         title="Rebalancing Assistant"
         subtitle="Target weights, drift zones, and sector distribution"
@@ -1634,44 +1634,60 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
           }
 
           return (
-            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0",
+            <div style={{ display:"flex", alignItems:"center", gap:0, padding:"6px 0",
               borderBottom:`1px solid ${C.border2}` }}>
-              {/* Action badge */}
-              <div style={{ width:36, textAlign:"center", flexShrink:0 }}>
+              {/* 1. Action badge */}
+              <div style={{ width:40, flexShrink:0, textAlign:"center" }}>
                 <span style={{ fontSize:9, fontWeight:800, color:aColor,
-                  padding:"2px 6px", borderRadius:4,
+                  padding:"2px 5px", borderRadius:4,
                   background:`${aColor}15`, border:`1px solid ${aColor}25`,
                   textTransform:"uppercase" }}>{type}</span>
               </div>
-              {/* Symbol */}
-              <div style={{ width:70, flexShrink:0 }}>
-                <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent }}>
+              {/* 2. Amount + Shares — shares large when roundMode=shares */}
+              <div style={{ width:88, flexShrink:0, textAlign:"right", paddingRight:10 }}>
+                {roundMode === "shares" ? (
+                  <>
+                    <div style={{ fontFamily:C.mono, fontSize:15, fontWeight:800, color:aColor, lineHeight:1.1 }}>
+                      {displayShares != null ? displayShares : "—"}
+                      <span style={{ fontSize:9, fontWeight:600, marginLeft:2, color:`${aColor}bb` }}>sh</span>
+                    </div>
+                    {displayShares != null && a.priceUSD && (
+                      <div style={{ fontSize:9, color:C.text3, fontFamily:C.mono }}>
+                        {fmtSym(displayAmt, 0)}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:aColor }}>
+                      {fmtSym(displayAmt, 0)}
+                    </div>
+                    {displayShares != null && a.priceUSD && (
+                      <div style={{ fontSize:8, color:C.text3, fontFamily:C.mono }}>
+                        ≈{displayShares} sh @ {fmtSym(a.priceUSD*cashRate,2)}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* 3. Ticker + sector */}
+              <div style={{ width:72, flexShrink:0 }}>
+                <div style={{ fontFamily:C.mono, fontSize:11, fontWeight:700, color:C.accent,
+                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                   {a.symbol}
                 </div>
                 <div style={{ fontSize:8, color:C.text3 }}>{a.sector}</div>
               </div>
-              {/* Amount bar */}
-              <div style={{ flex:1, minWidth:0 }}>
+              {/* 4. Bar graph */}
+              <div style={{ flex:1, minWidth:0, paddingRight:4 }}>
                 <div style={{ height:5, borderRadius:3,
                   background:"rgba(255,255,255,0.06)", overflow:"hidden" }}>
-                  <div style={{ height:"100%", borderRadius:3, background:aColor, opacity:0.7,
+                  <div style={{ height:"100%", borderRadius:3, background:aColor, opacity:0.75,
                     width:`${type==="BUY"
                       ? (totalBuy>0?Math.abs(a.diffUSD)/totalBuy*100:0)
                       : (totalSell>0?Math.abs(a.diffUSD)/totalSell*100:0)}%`,
                     transition:"width 0.4s" }}/>
                 </div>
-              </div>
-              {/* Amount */}
-              <div style={{ textAlign:"right", flexShrink:0, width:90 }}>
-                <div style={{ fontFamily:C.mono, fontSize:12, fontWeight:700, color:aColor }}>
-                  {fmtSym(displayAmt, roundMode==="precise" ? 0 : 0)}
-                </div>
-                {displayShares != null && a.priceUSD && (
-                  <div style={{ fontSize:8, color:C.text3 }}>
-                    {roundMode==="shares" ? `${displayShares} sh.` : `≈${displayShares} sh.`}
-                    {" @ "}{fmtSym(a.priceUSD*cashRate,2)}
-                  </div>
-                )}
               </div>
             </div>
           );
@@ -1792,7 +1808,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         {activeView === "allocations" && (
           <div>
         {/* ── Unified scrollable rows: one row per position (slider LEFT + bar+action RIGHT) ── */}
-        <div style={{ flex:1, overflowY:"auto" }}>
+        <div>
           {/* Column headers */}
           <div style={{ display:"flex", alignItems:"center",
             padding:"6px 16px", borderBottom:`1px solid ${C.border2}`,
