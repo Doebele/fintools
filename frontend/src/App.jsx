@@ -289,7 +289,7 @@ const globalDivCache = {
 // ─── useDivCache hook — React-reactive wrapper around globalDivCache ────────────
 // Returns a {symbol: data} object that triggers re-renders as div data arrives.
 function useDivCache(symbols) {
-  const [cache, setCache] = React.useState(() => {
+  const [cache, setCache] = useState(() => {
     // Initialize from already-loaded globalDivCache entries
     const init = {};
     for (const s of (symbols ?? [])) {
@@ -298,7 +298,7 @@ function useDivCache(symbols) {
     return init;
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!symbols?.length) return;
     let cancelled = false;
     const missing = symbols.filter(s => !globalDivCache.has(s));
@@ -4374,7 +4374,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   useGlobalStyles();
 
   // divCache via useDivCache hook — React-reactive, backed by globalDivCache (sessionStorage)
-  const holdingSymbols = React.useMemo(() => holdings.map(h => h.symbol), [holdings]);
+  const holdingSymbols = useMemo(() => holdings.map(h => h.symbol), [holdings]);
   const divCache = useDivCache(holdingSymbols);
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
     try { return localStorage.getItem(ETF_LS_KEY) || "ARKK"; } catch { return "ARKK"; }
@@ -5266,7 +5266,7 @@ export default function App() {
               )}
               {/* Refresh button — icon only, shows label on hover */}
               {(() => {
-                const [hovRef, setHovRef] = React.useState(false);
+                const [hovRef, setHovRef] = useState(false);
                 return (
                   <button
                     onClick={handleRefresh}
