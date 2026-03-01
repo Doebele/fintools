@@ -1346,14 +1346,10 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                 <button key={key} onClick={()=>setActiveView(key)} style={{
                   padding:"4px 14px", borderRadius:6,
                   border:"none",
-                  background:activeView===key
-                    ? (key==="plan" ? "rgba(251,191,36,0.18)" : "rgba(59,130,246,0.18)")
-                    : "transparent",
-                  color:activeView===key
-                    ? (key==="plan" ? "#fbbf24" : C.accent)
-                    : C.text3,
+                  background:activeView===key ? "rgba(59,130,246,0.18)" : "transparent",
+                  color:activeView===key ? C.accent : C.text3,
                   fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-                  transition:"all 0.12s",
+                  transition:"background 0.2s, color 0.2s",
                 }}>{label}</button>
               ))}
             </div>
@@ -1430,62 +1426,121 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
         <div style={{ width:320, flexShrink:0, padding:"8px 16px 12px" }}>
           <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
             letterSpacing:"0.08em", marginBottom:8 }}>Settings</div>
-<div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
-              letterSpacing:"0.08em", marginBottom:8 }}>Settings</div>
 
-            {/* Rebalancing Mode */}
+            {/* Row 1: Mode toggles */}
             <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Mode:</span>
-              {[
-                { key:"weight", label:"Weight-Based" },
-                { key:"risk",   label:"Risk-Based" + (histLoading?" ⟳":"") },
-              ].map(({key,label}) => (
-                <button key={key} onClick={()=>setRebalMode(key)} style={{
-                  padding:"3px 10px", borderRadius:6,
-                  border:`1px solid ${rebalMode===key?C.accent:C.border}`,
-                  background:rebalMode===key?"rgba(59,130,246,0.15)":"transparent",
-                  color:rebalMode===key?C.accent:C.text3,
-                  fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-                }}>{label}</button>
-              ))}
-              {rebalMode==="risk" && !histLoading && Object.keys(histData).length > 0 && (
-                <span style={{ fontSize:9, color:C.green }}>✓ vol loaded</span>
-              )}
+              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap", minWidth:38 }}>Mode:</span>
+              {/* Weight / Risk toggle */}
+              <div style={{ display:"flex", gap:3 }}>
+                {[
+                  { key:"weight", label:"Weight-Based" },
+                  { key:"risk",   label:"Risk-Based" + (histLoading?" ⟳":"") },
+                ].map(({key,label}) => (
+                  <button key={key} onClick={()=>setRebalMode(key)} style={{
+                    padding:"3px 8px", borderRadius:6,
+                    border:`1px solid ${rebalMode===key?C.accent:C.border}`,
+                    background:rebalMode===key?"rgba(59,130,246,0.15)":"transparent",
+                    color:rebalMode===key?C.accent:C.text3,
+                    fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                    transition:"background 0.15s, color 0.15s, border-color 0.15s",
+                  }}>{label}</button>
+                ))}
+                {rebalMode==="risk" && !histLoading && Object.keys(histData).length > 0 && (
+                  <span style={{ fontSize:9, color:C.green, alignSelf:"center" }}>✓</span>
+                )}
+              </div>
+              {/* Separator */}
+              <div style={{ width:1, height:16, background:C.border, flexShrink:0 }}/>
+              {/* Buy / Both / Sell toggle */}
+              <div style={{ display:"flex", gap:3 }}>
+                {["buy","both","sell"].map(m => (
+                  <button key={m} onClick={()=>setMode(m)} style={{
+                    padding:"3px 7px", borderRadius:5,
+                    border:`1px solid ${mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.border}`,
+                    background:mode===m?"rgba(255,255,255,0.08)":"transparent",
+                    color:mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.text3,
+                    fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                    textTransform:"uppercase",
+                    transition:"background 0.15s, color 0.15s, border-color 0.15s",
+                  }}>{m}</button>
+                ))}
+              </div>
             </div>
 
-            {/* Smart Cash toggle */}
+            {/* Row 2: Drift threshold + tooltip */}
             <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Smart Cash:</span>
-              <button onClick={()=>setSmartCash(v=>!v)} style={{
-                padding:"3px 10px", borderRadius:6,
-                border:`1px solid ${smartCash?C.green:C.border}`,
-                background:smartCash?"rgba(74,222,128,0.12)":"transparent",
-                color:smartCash?C.green:C.text3,
-                fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-              }}>{smartCash?"ON":"OFF"}</button>
-              <span style={{ fontSize:9, color:C.text3 }}>
-                {smartCash ? "Cash covers buys before selling" : "Classic mode"}
-              </span>
-            </div>
-
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:cashAdd>0?4:8 }}>
-              <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Cash to invest:</label>
-              <input type="number" value={cashAdd} min={0} step={100}
-                onChange={e=>{ setCashAdd(+e.target.value); if(+e.target.value>0) setCashExpanded(true); }}
+              {/* Label with tooltip */}
+              <div style={{ position:"relative", display:"inline-flex", alignItems:"center", gap:4 }}>
+                <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Drift threshold:</label>
+                <span style={{ position:"relative", display:"inline-flex", alignItems:"center" }}
+                  onMouseEnter={e=>{const t=e.currentTarget.querySelector(".tt");if(t)t.style.display="block";}}
+                  onMouseLeave={e=>{const t=e.currentTarget.querySelector(".tt");if(t)t.style.display="none";}}>
+                  <svg width={13} height={13} viewBox="0 0 16 16" fill="none" style={{ cursor:"help", flexShrink:0 }}>
+                    <circle cx="8" cy="8" r="7.5" stroke="rgba(255,255,255,0.25)" strokeWidth="1"/>
+                    <text x="8" y="11.5" textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.4)" fontFamily="sans-serif" fontWeight="700">?</text>
+                  </svg>
+                  <div className="tt" style={{
+                    display:"none", position:"absolute", left:"50%", bottom:"calc(100% + 6px)",
+                    transform:"translateX(-50%)", width:220, zIndex:100,
+                    background:"#1e2030", border:`1px solid ${C.border}`,
+                    borderRadius:8, padding:"8px 10px", pointerEvents:"none",
+                    boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
+                  }}>
+                    <div style={{ fontSize:10, color:C.text1, fontWeight:700, marginBottom:4 }}>
+                      Drift Threshold
+                    </div>
+                    <div style={{ fontSize:10, color:C.text2, lineHeight:1.5 }}>
+                      Defines how far a position&apos;s current weight can deviate from its target before a rebalance action is flagged.
+                    </div>
+                    <div style={{ fontSize:9, color:C.text3, marginTop:5, lineHeight:1.4 }}>
+                      Example: target 20%, threshold 5% → flagged if below 15% or above 25%.
+                    </div>
+                  </div>
+                </span>
+              </div>
+              <input type="number" value={threshold} min={1} max={30} step={1}
+                onChange={e=>setThreshold(+e.target.value)}
                 style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
                   borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, width:90, outline:"none" }}/>
-              <span style={{ fontSize:11, color:C.text3, fontWeight:600 }}>{currency}</span>
+                  fontFamily:C.mono, width:52, outline:"none" }}/>
+              <span style={{ fontSize:11, color:C.text3 }}>%</span>
             </div>
+
+            {/* Row 3: Rounding */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+              <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Rounding:</label>
+              <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
+                style={{ flex:1, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
+                  borderRadius:6, color:C.text2, padding:"4px 7px", fontSize:11,
+                  fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
+                <option value="precise">Precise</option>
+                <option value="hundreds">± 100</option>
+                <option value="thousands">± 1000</option>
+                <option value="shares">Whole shares</option>
+              </select>
+            </div>
+
+            {/* Row 4: Cash to invest */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:cashAdd>0?4:8 }}>
+              <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>
+                Cash to invest ({currency}):
+              </label>
+              <input type="number" value={cashAdd} min={0} step={100}
+                onChange={e=>{ setCashAdd(+e.target.value); if(+e.target.value>0) setCashExpanded(true); }}
+                style={{ flex:1, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
+                  borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
+                  fontFamily:C.mono, outline:"none" }}/>
+            </div>
+
+            {/* Row 5: Cash Allocation expandable */}
             {(() => {
-              // Cash simulation breakdown
               if (cashAdd <= 0) return null;
               const buyActions = actions.filter(a => a.action==="BUY" && a.tgtPct>0);
               const totalBuy   = buyActions.reduce((s,a)=>s+a.diffUSD,0);
               if (!cashAdd || !totalBuy) return null;
               const cashRate   = rates[currency] ?? 1;
               return (
-                <div>
+                <div style={{ marginBottom:8 }}>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
                     <span style={{ fontSize:10, color:C.green, fontWeight:700 }}>
                       Cash Allocation — {fmtSym(cashAdd)} {currency}
@@ -1545,44 +1600,27 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                 </div>
               );
             })()}
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Drift threshold:</label>
-              <input type="number" value={threshold} min={1} max={30} step={1}
-                onChange={e=>setThreshold(+e.target.value)}
-                style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, width:52, outline:"none" }}/>
-              <span style={{ fontSize:11, color:C.text3 }}>%</span>
-              <div style={{ marginLeft:"auto", display:"flex", gap:4 }}>
-                {["buy","both","sell"].map(m => (
-                  <button key={m} onClick={()=>setMode(m)} style={{
-                    padding:"3px 8px", borderRadius:5,
-                    border:`1px solid ${mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.border}`,
-                    background:mode===m?"rgba(255,255,255,0.08)":"transparent",
-                    color:mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.text3,
-                    fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-                    textTransform:"uppercase",
-                  }}>{m}</button>
-                ))}
-              </div>
+
+            {/* Row 6: Smart Cash toggle */}
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <span style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Smart Cash:</span>
+              <button onClick={()=>setSmartCash(v=>!v)} style={{
+                padding:"3px 10px", borderRadius:6,
+                border:`1px solid ${smartCash?C.green:C.border}`,
+                background:smartCash?"rgba(74,222,128,0.12)":"transparent",
+                color:smartCash?C.green:C.text3,
+                fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                transition:"background 0.15s, color 0.15s, border-color 0.15s",
+              }}>{smartCash?"ON":"OFF"}</button>
+              <span style={{ fontSize:9, color:C.text3 }}>
+                {smartCash ? "Cash covers buys before selling" : "Classic mode"}
+              </span>
             </div>
-            <div style={{ marginTop:6, fontSize:10,
+
+            <div style={{ marginTop:8, fontSize:10,
               color:Math.abs(totalTarget-100)>0.5?C.red:C.green }}>
               Total target: {totalTarget.toFixed(1)}%
               {Math.abs(totalTarget-100)>0.5 && " — should sum to 100%"}
-            </div>
-            {/* Rounding mode */}
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:6 }}>
-              <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Rounding:</label>
-              <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
-                style={{ flex:1, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.text2, padding:"4px 7px", fontSize:11,
-                  fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
-                <option value="precise">Precise</option>
-                <option value="hundreds">± 100</option>
-                <option value="thousands">± 1000</option>
-                <option value="shares">Whole shares</option>
-              </select>
             </div>
         </div>
       </div>
