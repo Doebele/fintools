@@ -11,6 +11,7 @@ RUN npm install --omit=dev && npm cache clean --force
 
 # Copy source
 COPY server.js .
+COPY static/ ./static/
 
 # Create data dir with correct ownership
 RUN mkdir -p /app/data && chown -R appuser:appgroup /app

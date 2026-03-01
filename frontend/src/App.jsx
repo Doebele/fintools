@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as d3 from "d3";
 import {
   PanelLeft, LayoutDashboard, BarChart2, List, Layers, GitMerge,
-  RefreshCw, Settings, LogOut, Plus, CheckSquare, Square,
+  RefreshCw, Settings, LogOut, Plus, CheckSquare, Square, Pencil,
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target,
@@ -133,10 +133,10 @@ function useDisplayMode() {
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 const BASE = "/api";
 async function apiFetch(path, opts = {}) {
-  const { isForm, ...fetchOpts } = opts;
+  const { isForm, headers: extraHeaders, ...fetchOpts } = opts;
   const headers = isForm
-    ? (opts.headers || {})  // let browser set multipart boundary
-    : { "Content-Type": "application/json", ...(opts.headers || {}) };
+    ? (extraHeaders || {})  // let browser set multipart boundary
+    : { "Content-Type": "application/json", ...(extraHeaders || {}) };
   const res = await fetch(BASE + path, { headers, ...fetchOpts });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -161,6 +161,7 @@ const userApi = {
   login:    (username, pin)   => apiFetch("/users/login",       { method:"POST", body: JSON.stringify({ username, pin }) }),
   portfolios: (uid)           => apiFetch(`/users/${uid}/portfolios`),
   createPortfolio: (uid, name, color) => apiFetch(`/users/${uid}/portfolios`, { method:"POST", body: JSON.stringify({ name, color }) }),
+  renamePortfolio: (pid, name) => apiFetch(`/portfolios/${pid}`, { method:"PUT", body: JSON.stringify({ name }) }),
   settings: (uid)             => apiFetch(`/users/${uid}/settings`),
   saveSettings: (uid, s)      => apiFetch(`/users/${uid}/settings`, { method:"PUT", body: JSON.stringify(s) }),
 };
@@ -626,6 +627,64 @@ function LoginScreen({ onLogin, onEtfMode }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// RENAME PORTFOLIO MODAL
+// ════════════════════════════════════════════════════════════════════════════
+function RenamePortfolioModal({ portfolio, onClose, onRename }) {
+  const [name, setName] = useState(portfolio.name);
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState(null);
+
+  const handleSave = async () => {
+    if (!name.trim() || name.trim() === portfolio.name) { onClose(); return; }
+    setBusy(true); setErr(null);
+    try {
+      await onRename(portfolio.id, name.trim());
+      onClose();
+    } catch(e) { setErr(e.message || "Fehler beim Umbenennen"); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000,
+      display:"flex", alignItems:"center", justifyContent:"center" }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`,
+        borderRadius:16, padding:24, width:340, fontFamily:THEME.font }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+          <span style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>Portfolio umbenennen</span>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:THEME.text3, cursor:"pointer" }}>
+            <X size={18}/>
+          </button>
+        </div>
+        <input
+          value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSave()}
+          autoFocus
+          style={{ width:"100%", padding:"9px 12px", borderRadius:9,
+            border:`1px solid ${THEME.accent}66`, background:THEME.bg,
+            color:THEME.text1, fontSize:13, fontFamily:THEME.font, outline:"none",
+            boxSizing:"border-box" }}/>
+        {err && <div style={{ color:THEME.red, fontSize:12, marginTop:8 }}>{err}</div>}
+        <div style={{ display:"flex", gap:8, marginTop:16 }}>
+          <button onClick={onClose}
+            style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1px solid ${THEME.border}`,
+              background:"transparent", color:THEME.text2, fontSize:13, fontFamily:THEME.font, cursor:"pointer" }}>
+            Abbrechen
+          </button>
+          <button onClick={handleSave} disabled={!name.trim() || busy}
+            style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
+              background:THEME.accent, color:"#fff", fontSize:13, fontWeight:600,
+              fontFamily:THEME.font, cursor: name.trim() ? "pointer" : "not-allowed",
+              opacity: name.trim() ? 1 : 0.5 }}>
+            {busy ? "…" : "Speichern"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // IMPORT / EXPORT MODAL  — with conflict resolution preview
 // ════════════════════════════════════════════════════════════════════════════
 const RESOLUTION_LABELS = {
@@ -635,7 +694,7 @@ const RESOLUTION_LABELS = {
   add_new:       { label:"Als Neu",         color:"#4ade80", desc:"Add alongside existing (both kept)" },
 };
 
-function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone }) {
+function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone, onCreatePortfolio }) {
   const [tab,         setTab]         = useState("export");
   const [selPort,     setSelPort]     = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
   const [file,        setFile]        = useState(null);
@@ -646,8 +705,13 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
   const [previewData, setPreviewData] = useState(null);  // { preview, skipped, conflictCount, newCount }
   const [resolutions, setResolutions] = useState({});    // { rowIndex: resolution }
   const [filterMode,  setFilterMode]  = useState("all"); // all|conflicts|new
+  const [newPortName, setNewPortName] = useState("");     // for "new portfolio" option
+  const [creatingPort, setCreatingPort] = useState(false);
   const fileRef = useRef(null);
 
+  // Resolve selPort: could be an id (number) or "new" sentinel
+  const isNewPort = selPort === "new";
+  const effectivePort = isNewPort ? null : selPort;
   const selectedPort = portfolios.find(p => p.id === Number(selPort) || p.id === selPort);
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -670,10 +734,10 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 
   // ── Preview / Import flow ─────────────────────────────────────────────────
   const handlePreview = async () => {
-    if (!file || !selPort) return;
+    if (!file || !effectivePort) return;
     setPreviewing(true); setPreviewData(null); setImportErr(null); setResult(null);
     try {
-      const data = await txApi.importPreview(selPort, file, user?.id);
+      const data = await txApi.importPreview(effectivePort, file, user?.id);
       setPreviewData(data);
       // Set default resolutions
       const defaults = {};
@@ -686,14 +750,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
   };
 
   const handleConfirmImport = async () => {
-    if (!previewData || !selPort) return;
+    if (!previewData || !effectivePort) return;
     setImporting(true); setImportErr(null);
     try {
       const rows = previewData.preview.map((row, i) => ({
         ...row,
         resolution: resolutions[i] ?? (row.conflict ? "keep_existing" : "import"),
       }));
-      const data = await txApi.importSelective(selPort, rows, user?.id);
+      const data = await txApi.importSelective(effectivePort, rows, user?.id);
       setResult(data);
       setPreviewData(null);
       if (data.imported > 0) onImportDone();
@@ -724,14 +788,44 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     color: active ? "#fff" : THEME.text3, transition:"all 0.15s",
   });
 
+  const handleCreatePort = async () => {
+    if (!newPortName.trim() || !user) return;
+    setCreatingPort(true);
+    try {
+      const port = await userApi.createPortfolio(user.id, newPortName.trim(), '#3b82f6');
+      if (onCreatePortfolio) onCreatePortfolio(port);
+      setSelPort(port.id);
+      setNewPortName("");
+    } catch(e) { setImportErr(e.message || "Portfolio konnte nicht erstellt werden"); }
+    setCreatingPort(false);
+  };
+
   const PortSelect = () => (
     <div style={{ marginBottom:16 }}>
       <label style={{ fontSize:11, color:THEME.text3, display:"block", marginBottom:5 }}>Portfolio</label>
-      <select value={selPort} onChange={e => { setSelPort(e.target.value); setPreviewData(null); setResult(null); }}
+      <select value={selPort} onChange={e => { setSelPort(e.target.value); setPreviewData(null); setResult(null); setNewPortName(""); }}
         style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
           background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
         {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        <option value="new">＋ Neues Portfolio anlegen…</option>
       </select>
+      {isNewPort && (
+        <div style={{ display:"flex", gap:8, marginTop:8 }}>
+          <input
+            value={newPortName} onChange={e => setNewPortName(e.target.value)}
+            placeholder="Name des neuen Portfolios"
+            onKeyDown={e => e.key === "Enter" && handleCreatePort()}
+            style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1px solid ${THEME.accent}66`,
+              background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}/>
+          <button onClick={handleCreatePort} disabled={!newPortName.trim() || creatingPort}
+            style={{ padding:"7px 14px", borderRadius:8, border:"none",
+              background:THEME.accent, color:"#fff", fontSize:12, fontWeight:600,
+              cursor: newPortName.trim() ? "pointer" : "not-allowed", fontFamily:"inherit",
+              opacity: newPortName.trim() ? 1 : 0.5 }}>
+            {creatingPort ? "…" : "Anlegen"}
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -1162,7 +1256,7 @@ function Rail({
   activeTab, onTab,
   period, onPeriod,
   onRefresh, fetching,
-  onAddPortfolio, onSettings, onLogout,
+  onAddPortfolio, onRenamePortfolio, onSettings, onLogout,
   dataSource,
   currency, onCurrency,
   onRecalcFX,
@@ -1253,6 +1347,16 @@ function Rail({
                   <span style={{ flex:1, textAlign:"left", whiteSpace:"nowrap",
                     overflow:"hidden", textOverflow:"ellipsis", fontWeight: isActive?600:400 }}>
                     {p.name}
+                  </span>
+                  <span
+                    title="Umbenennen"
+                    onClick={e => { e.stopPropagation(); onRenamePortfolio(p); }}
+                    style={{ color:THEME.text3, flexShrink:0, display:"flex", opacity:0.5,
+                      padding:"2px 3px", borderRadius:4,
+                      cursor:"pointer", transition:"opacity 0.15s" }}
+                    onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                    onMouseLeave={e=>e.currentTarget.style.opacity=0.5}>
+                    <Pencil size={11}/>
                   </span>
                   <span style={{ color: isActive ? THEME.accent : THEME.text3, flexShrink:0, display:"flex" }}>
                     {isActive ? <CheckSquare size={13}/> : <Square size={13}/>}
@@ -4802,6 +4906,7 @@ export default function App() {
   const [savedEtfs,       setSavedEtfs]        = useState([]);
   // portfolioDivCache → replaced by useDivCache hook below (shares globalDivCache with ETF Explorer)
   const [showSettings,setShowSettings]=useState(false);
+  const [renamePort, setRenamePort] = useState(null); // portfolio object to rename
   const [tooltip,    setTooltip]    = useState(null);
 
   // ── Data state ────────────────────────────────────────────────────────────
@@ -5094,6 +5199,11 @@ export default function App() {
     }));
   }, []);
 
+  const handleRenamePortfolio = useCallback(async (pid, name) => {
+    await userApi.renamePortfolio(pid, name);
+    setPortfolios(prev => prev.map(p => p.id === pid ? { ...p, name } : p));
+  }, []);
+
   const handleAddPortfolio = useCallback(async (name, color) => {
     const newPort = await userApi.createPortfolio(user.id, name, color);
     setPortfolios(prev => [...prev, newPort]);
@@ -5190,6 +5300,7 @@ export default function App() {
           period={period} onPeriod={setPeriod}
           onRefresh={handleRefresh} fetching={!!fetchStatus}
           onAddPortfolio={() => setShowAddPort(true)}
+          onRenamePortfolio={(p) => setRenamePort(p)}
           onSettings={() => setShowSettings(true)}
           onLogout={handleLogout}
           dataSource={dataSource}
@@ -5468,10 +5579,21 @@ export default function App() {
             onImportDone={() => {
               setShowImportExport(false);
               handleRefresh();
-            }}/>
+            }}
+          onCreatePortfolio={(port) => {
+            setPortfolios(prev => [...prev, port]);
+            setActivePortfolioIds(prev => [...prev, port.id]);
+            setAllTransactions(prev => ({ ...prev, [port.id]: [] }));
+          }}/>
         )}
         {showAddPort && (
           <AddPortfolioModal onClose={() => setShowAddPort(false)} onAdd={handleAddPortfolio}/>
+        )}
+        {renamePort && (
+          <RenamePortfolioModal
+            portfolio={renamePort}
+            onClose={() => setRenamePort(null)}
+            onRename={handleRenamePortfolio}/>
         )}
         {showSettings && (
           <SettingsModal onClose={() => setShowSettings(false)}
