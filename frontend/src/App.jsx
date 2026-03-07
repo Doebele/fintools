@@ -501,15 +501,21 @@ function Modal({ title, onClose, children, width=460 }) {
 // ════════════════════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, onEtfMode }) {
   useGlobalStyles();
-  const [mode,     setMode]     = useState("login"); // "login" | "register"
-  const [username, setUsername] = useState("");
-  const [pin,      setPin]      = useState("");
-  const [showPin,  setShowPin]  = useState(false);
-  const [busy,     setBusy]     = useState(false);
-  const [error,    setError]    = useState("");
+  const [mode,        setMode]        = useState("login"); // "login" | "register"
+  const [username,    setUsername]    = useState("");
+  const [pin,         setPin]         = useState("");
+  const [showPin,     setShowPin]     = useState(false);
+  const [busy,        setBusy]        = useState(false);
+  const [error,       setError]       = useState("");
+  const [disclaimerOk, setDisclaimerOk] = useState(false);
+
+  // Reset disclaimer when switching modes
+  const switchMode = (m) => { setMode(m); setDisclaimerOk(false); setError(""); };
+
+  const canSubmit = username.trim() && pin && !busy && (mode === "login" || disclaimerOk);
 
   const handle = async () => {
-    if (!username.trim() || !pin) return;
+    if (!canSubmit) return;
     setBusy(true); setError("");
     try {
       if (mode === "register") {
@@ -579,14 +585,44 @@ function LoginScreen({ onLogin, onEtfMode }) {
           </div>
         )}
 
-        <button onClick={handle} disabled={!username.trim()||!pin||busy}
+        {/* Disclaimer — only in register mode */}
+        {mode === "register" && (
+          <div onClick={() => setDisclaimerOk(v => !v)}
+            style={{
+              marginTop:16, display:"flex", alignItems:"flex-start", gap:10,
+              padding:"10px 12px", borderRadius:10, cursor:"pointer",
+              background: disclaimerOk ? "rgba(74,222,128,0.07)" : "rgba(255,255,255,0.03)",
+              border:`1px solid ${disclaimerOk ? "rgba(74,222,128,0.3)" : THEME.border}`,
+              transition:"background 0.3s ease, border-color 0.3s ease",
+            }}>
+            <div style={{
+              flexShrink:0, width:16, height:16, borderRadius:4, marginTop:1,
+              border:`2px solid ${disclaimerOk ? THEME.green : "rgba(255,255,255,0.25)"}`,
+              background: disclaimerOk ? THEME.green : "transparent",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"all 0.2s ease",
+            }}>
+              {disclaimerOk && (
+                <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                  <path d="M1 3.5L3.5 6L8 1" stroke="#0d0e12" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </div>
+            <span style={{ fontSize:11, color: disclaimerOk ? THEME.text2 : THEME.text3, lineHeight:1.5, userSelect:"none" }}>
+              For demonstration purposes only. Please do not enter personal or private data!
+            </span>
+          </div>
+        )}
+
+        <button onClick={handle} disabled={!canSubmit}
           style={{
-            width:"100%", marginTop:22, padding:"13px 0", borderRadius:12,
+            width:"100%", marginTop:16, padding:"13px 0", borderRadius:12,
             border:"none", background:THEME.accent, color:"#fff",
-            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-            opacity:(!username.trim()||!pin||busy)?0.5:1,
-            boxShadow:"0 4px 20px rgba(59,130,246,0.35)",
-            transition:"opacity 0.15s",
+            fontSize:13, fontWeight:700, cursor:canSubmit ? "pointer" : "not-allowed",
+            fontFamily:"inherit",
+            opacity: canSubmit ? 1 : 0.4,
+            boxShadow: canSubmit ? "0 4px 20px rgba(59,130,246,0.35)" : "none",
+            transition:"opacity 0.3s ease, box-shadow 0.3s ease",
           }}>
           {busy ? <span className="spin">⟳</span> : mode === "login" ? "Sign In" : "Create Account & Sign In"}
         </button>
@@ -608,19 +644,19 @@ function LoginScreen({ onLogin, onEtfMode }) {
             display:"flex", alignItems:"center", justifyContent:"center", gap:8,
           }}>
           <span style={{ fontSize:16 }}>📊</span>
-          ETF Explorer <span style={{ fontSize:10, opacity:0.7 }}>— no login</span>
+          ETF Screener <span style={{ fontSize:10, opacity:0.7 }}>— no login</span>
         </button>
 
         <div style={{ textAlign:"center", marginTop:16, fontSize:12, color:THEME.text3 }}>
           {mode === "login" ? (
             <>No account?{" "}
-              <button onClick={() => { setMode("register"); setError(""); }}
+              <button onClick={() => switchMode("register")}
                 style={{ background:"none", border:"none", color:THEME.accent, cursor:"pointer",
                   fontSize:12, fontFamily:"inherit", fontWeight:600 }}>Create one</button>
             </>
           ) : (
             <>Already have an account?{" "}
-              <button onClick={() => { setMode("login"); setError(""); }}
+              <button onClick={() => switchMode("login")}
                 style={{ background:"none", border:"none", color:THEME.accent, cursor:"pointer",
                   fontSize:12, fontFamily:"inherit", fontWeight:600 }}>Sign in</button>
             </>
@@ -1646,8 +1682,9 @@ function Rail({
                   background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
                   borderRadius:7, display:"flex", justifyContent:"center",
                   alignItems:"center", transition:"all 0.15s",
+                  color: THEME.text3,
                 }}>
-                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
+                <span style={{ lineHeight:1, color:"inherit" }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
               </button>
             )}
           </div>
@@ -3262,16 +3299,18 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
     <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
       background:THEME.surface, display:"flex", alignItems:"center", gap:24, flexShrink:0 }}>
       {[
-        ["Total Value",   fmtVal(totalValueUSD, currency, rates)],
-        ["Total Cost",    fmtVal(totalCostUSD,  currency, rates)],
+        ["Total Value",   fmtVal(totalValueUSD, currency, rates), null, "Current market value of all positions across all portfolios."],
+        ["Total Cost",    fmtVal(totalCostUSD,  currency, rates), null, "Total cost basis: sum of all purchases at their original prices converted to USD."],
         ["Net G/L",       `${totalNetGain>=0?"+":""}${fmtVal(Math.abs(totalNetGain),currency,rates)} (${fmtPct(totalCostUSD>0?(totalNetGain/totalCostUSD)*100:null)})`,
-                          totalNetGain>=0?THEME.green:THEME.red],
+                          totalNetGain>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss across all portfolios. No taxes or fees deducted."],
         [`${period==="Intraday"?"1D":period} Return`, fmtPct(portfolioPerf),
-                          portfolioPerf!=null?(portfolioPerf>=0?THEME.green:THEME.red):THEME.text3],
-      ].map(([lbl,val,color]) => (
+                          portfolioPerf!=null?(portfolioPerf>=0?THEME.green:THEME.red):THEME.text3, `Weighted price change over the selected period (${period}).`],
+      ].map(([lbl,val,color,tip]) => (
         <div key={lbl}>
           <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:2 }}>{lbl}</div>
+            letterSpacing:"0.08em", marginBottom:2, display:"flex", alignItems:"center", gap:2 }}>
+            {lbl}{tip && <InfoTip text={tip} width={210} side="bottom"/>}
+          </div>
           <div className="mono" style={{ fontSize:13, fontWeight:700, color:color??THEME.text1 }}>{val}</div>
         </div>
       ))}
@@ -3816,7 +3855,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               ETF<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
             </div>
             <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.10em", marginTop:-2 }}>Explorer</div>
+              letterSpacing:"0.10em", marginTop:-2 }}>Screener</div>
           </div>
         )}
         {/* Mode switcher — removed, navigation via sidebar bottom */}
@@ -4245,8 +4284,9 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                   background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
                   borderRadius:7, display:"flex", justifyContent:"center",
                   alignItems:"center", transition:"all 0.15s",
+                  color: THEME.text3,
                 }}>
-                <span style={{ fontSize:14, lineHeight:1 }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
+                <span style={{ lineHeight:1, color:"inherit" }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
               </button>
             )}
           </div>
@@ -4622,7 +4662,8 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
 // ── ETF Explorer main component ───────────────────────────────────────────────
 function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut,
-                       displayMode, onToggleDisplayMode }) {
+                       displayMode, onToggleDisplayMode,
+                       railOpen, onToggleRail }) {
   useGlobalStyles();
 
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
@@ -4635,7 +4676,6 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   const [fetchedAt,         setFetchedAt]         = useState(null);
   const [loadingHoldings,   setLoadingHoldings]   = useState(false);
   const [holdingsError,     setHoldingsError]     = useState(null);
-  const [railOpen,          setRailOpen]          = useState(true);
   const [activeTab,         setActiveTab]         = useState("holdings");
   const [period,            setPeriod]            = useState("Intraday");
   const [barSubView,        setBarSubView]        = useState("perf");
@@ -4772,7 +4812,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
       fontFamily:THEME.font, overflow:"hidden" }}>
 
       <EtfRail
-        open={railOpen} onToggle={()=>setRailOpen(v=>!v)}
+        open={railOpen} onToggle={onToggleRail}
         selectedTicker={selectedTicker} onSelect={setSelectedTicker}
         currency={currency} onCurrency={setCurrency}
         fetching={fetching} onRefreshQuotes={fetchQuotes}
@@ -5410,6 +5450,8 @@ export default function App() {
       onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
       displayMode={displayMode}
       onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
+      railOpen={railOpen}
+      onToggleRail={() => setRailOpen(v => !v)}
     />
   );
   if (!user) return <LoginScreen onLogin={handleLogin} onEtfMode={() => setEtfMode(true)}/>;

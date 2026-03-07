@@ -517,8 +517,12 @@ function runMonteCarlo({
     // Inflation-adjust
     const real = Vnet / Math.pow(1 + inflation, years);
 
+    // Retroactively inflation-adjust the whole path so chart matches cards
+    // Each step t is at time t months; adjust by (1+inflation)^(t/12)
+    const realPath = path.map((v, t) => v / Math.pow(1 + inflation, t / 12));
+
     finalVals.push(real);
-    allPaths.push(path);
+    allPaths.push(realPath);
   }
 
   // Sort for percentiles

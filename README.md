@@ -1,4 +1,4 @@
-# 📊 Portfolio & ETF Screener
+# 📊 Portfolio Tracker — Synology NAS Edition v2.0
 
 Self-hosted portfolio tracker with a Node.js/Express backend, SQLite database, Yahoo Finance proxy, and a React treemap frontend. Runs entirely on your Synology NAS via Docker.
 
