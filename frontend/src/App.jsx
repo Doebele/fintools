@@ -2089,9 +2089,9 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
 
   // ── Dividend prefetch — uses globalDivCache (shared, sessionStorage-backed) ──
   useEffect(() => {
-    const symbols = Object.keys(quotes);
+    const symbols = entries.flatMap(e => e.nodes.map(n => n.symbol));
     if (symbols.length) globalDivCache.prefetch(symbols);
-  }, [quotes]); // eslint-disable-line
+  }, [entries]); // eslint-disable-line
 
 
   return (
