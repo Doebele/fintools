@@ -407,14 +407,26 @@ function useSize(ref) {
 }
 
 const PERIODS = [
-  { key:"Intraday", label:"1D" },
-  { key:"1W",       label:"1W" },
-  { key:"1M",       label:"1M" },
+  { key:"Intraday", label:"1D"  },
+  { key:"1W",       label:"1W"  },
+  { key:"1M",       label:"1M"  },
+  { key:"6M",       label:"6M"  },
   { key:"YTD",      label:"YTD" },
-  { key:"1Y",       label:"1Y" },
-  { key:"2Y",       label:"2Y" },
+  { key:"1Y",       label:"1Y"  },
+  { key:"2Y",       label:"2Y"  },
   { key:"Max",      label:"Max" },
 ];
+// Map PERIODS keys → Yahoo Finance range strings used by history-multi / dividends-multi
+const PERIOD_TO_RANGE = {
+  "Intraday": "5d",
+  "1W":       "5d",
+  "1M":       "1mo",
+  "6M":       "6mo",
+  "YTD":      "ytd",
+  "1Y":       "1y",
+  "2Y":       "2y",
+  "Max":      "max",
+};
 
 // ─── Small UI Helpers ─────────────────────────────────────────────────────────
 function RefreshIconButton({ onClick, loading }) {
@@ -2464,17 +2476,10 @@ function niceStep(rough) {
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
 }
 
-function PerformanceView({ portfolios, allTransactions, currency, rates, quotes }) {
-  // ── Constants ──────────────────────────────────────────────────────────────
-  const RANGES = [
-    { label:"1M",  value:"1mo"  },
-    { label:"3M",  value:"3mo"  },
-    { label:"6M",  value:"6mo"  },
-    { label:"YTD", value:"ytd"  },
-    { label:"1Y",  value:"1y"   },
-    { label:"2Y",  value:"2y"   },
-    { label:"Max", value:"max"  },
-  ];
+function PerformanceView({ portfolios, allTransactions, currency, rates, quotes, period = "1Y" }) {
+  // ── Range derived from the global period toolbar (no local state needed) ──
+  const range = PERIOD_TO_RANGE[period] ?? "1y";
+  const periodLabel = period === "Intraday" ? "1D" : period;
   const RESOLUTIONS = [
     { label:"Tag",     value:"day"     },
     { label:"Woche",   value:"week"    },
@@ -2502,7 +2507,6 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
   const PAD = { top:24, right:20, bottom:96, left:72 };
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [range,        setRange]        = useState("1y");
   const [resolution,   setResolution]   = useState("day");
   const [viewMode,     setViewMode]     = useState("total");
   const [hiddenKeys,   setHiddenKeys]   = useState(new Set());
@@ -2801,7 +2805,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
 
   // ── Chart geometry ──────────────────────────────────────────────────────────
   const CW = Math.max(1, w - PAD.left - PAD.right);
-  const CH = Math.max(1, h - 168 - PAD.top - PAD.bottom); // 168 = 3 control rows + stats
+  const CH = Math.max(1, h - 148 - PAD.top - PAD.bottom); // 148 = 2 control rows + stats
 
   const { minV, maxV, yTicks } = useMemo(() => {
     const vals = [];
@@ -2916,26 +2920,9 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
       background:THEME.bg, fontFamily:THEME.font }}>
 
       {/* ── Controls ─────────────────────────────────────────────────────── */}
-      <div style={{ padding:"10px 20px 6px", flexShrink:0 }}>
+      <div style={{ padding:"6px 20px 6px", flexShrink:0 }}>
 
-        {/* Row 1 – Zeitraum */}
-        <div style={{ display:"flex", gap:2, alignItems:"center", marginBottom:6 }}>
-          <span style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.07em",
-            textTransform:"uppercase", marginRight:6, minWidth:52 }}>Zeitraum</span>
-          {RANGES.map(r => (
-            <button key={r.value} onClick={() => setRange(r.value)}
-              style={{ padding:"4px 11px", borderRadius:7, border:"none", cursor:"pointer",
-                background: range===r.value ? "rgba(59,130,246,0.18)" : "transparent",
-                color: range===r.value ? THEME.accent : THEME.text3,
-                fontSize:12, fontWeight: range===r.value ? 700 : 500,
-                fontFamily:THEME.font, transition:"background 0.15s" }}>
-              {r.label}
-            </button>
-          ))}
-          {loading && <span style={{ fontSize:10, color:THEME.text3, marginLeft:8 }}>⟳ Laden…</span>}
-        </div>
-
-        {/* Row 2 – Periodizität */}
+        {/* Row 1 – Auflösung */}
         <div style={{ display:"flex", gap:2, alignItems:"center", marginBottom:6 }}>
           <span style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.07em",
             textTransform:"uppercase", marginRight:6, minWidth:52 }}>Auflösung</span>
@@ -2949,6 +2936,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
               {r.label}
             </button>
           ))}
+          {loading && <span style={{ fontSize:10, color:THEME.text3, marginLeft:8 }}>⟳ Laden…</span>}
         </div>
 
         {/* Row 3 – Ansicht (4 modes clearly labelled) */}
@@ -2981,7 +2969,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
               ...(stats.glAbs != null ? [{ label:"G/L gesamt",
                 val:`${fmtV(stats.glAbs)} (${fmtPct(stats.glPct)})`,
                 color: stats.glAbs >= 0 ? THEME.green : THEME.red }] : []),
-              { label:`Periode (${RANGES.find(r => r.value === range)?.label ?? ""})`,
+              { label:`Periode (${periodLabel})`,
                 val: stats.periodChangePct != null
                   ? `${fmtV(stats.periodChange)} (${fmtPct(stats.periodChangePct)})`
                   : fmtV(stats.periodChange),
@@ -3015,7 +3003,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
         )}
 
         {w > 0 && h > 0 && visibleSeries.length > 0 && nPts >= 2 && (
-          <svg ref={svgRef} width={w} height={h - 168}
+          <svg ref={svgRef} width={w} height={h - 148}
             style={{ overflow:"visible", cursor:"crosshair", userSelect:"none" }}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => { setHoverIdx(null); setTxPopover(null); setDivPopover(null); }}>
@@ -7431,7 +7419,8 @@ export default function App() {
                   allTransactions={allTransactions}
                   currency={currency}
                   rates={rates}
-                  quotes={quotes}/>
+                  quotes={quotes}
+                  period={period}/>
               </div>
             )}
             {activeTab === "transactions" && viewMode !== "split" && (
