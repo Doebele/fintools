@@ -157,10 +157,27 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS savings_plans (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    portfolio_id      INTEGER NOT NULL,
+    symbol            TEXT    NOT NULL,
+    name              TEXT,
+    currency          TEXT    DEFAULT 'USD',
+    start_date        TEXT    NOT NULL,
+    end_date          TEXT    NOT NULL,
+    periodicity       TEXT    NOT NULL,
+    budget_per_period REAL    NOT NULL,
+    last_booked_date  TEXT,
+    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_tx_portfolio ON transactions(portfolio_id);
   CREATE INDEX IF NOT EXISTS idx_tx_symbol    ON transactions(symbol);
   CREATE INDEX IF NOT EXISTS idx_tx_date      ON transactions(date);
   CREATE INDEX IF NOT EXISTS idx_portfolios_user ON portfolios(user_id);
+  CREATE INDEX IF NOT EXISTS idx_plans_portfolio ON savings_plans(portfolio_id);
 `);
 
 // ── Migrations: add columns to existing DBs that predate schema version ────────
@@ -427,6 +444,46 @@ app.put('/api/transactions/:id', async (req, res) => {
 
 app.delete('/api/transactions/:id', (req, res) => {
   db.prepare('DELETE FROM transactions WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ── Savings Plans ────────────────────────────────────────────────────────────
+app.get('/api/portfolios/:id/plans', (req, res) => {
+  const plans = db.prepare(
+    'SELECT * FROM savings_plans WHERE portfolio_id = ? ORDER BY created_at DESC'
+  ).all(req.params.id);
+  res.json(plans);
+});
+
+app.post('/api/portfolios/:id/plans', (req, res) => {
+  const { symbol, name, currency, start_date, end_date, periodicity, budget_per_period, last_booked_date } = req.body;
+  if (!symbol || !start_date || !end_date || !periodicity || !budget_per_period)
+    return err(res, 400, 'symbol, start_date, end_date, periodicity and budget_per_period are required');
+  const result = db.prepare(`
+    INSERT INTO savings_plans (portfolio_id, symbol, name, currency, start_date, end_date, periodicity, budget_per_period, last_booked_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.params.id, symbol, name ?? symbol, currency ?? 'USD', start_date, end_date, periodicity, budget_per_period, last_booked_date ?? null);
+  const plan = db.prepare('SELECT * FROM savings_plans WHERE id = ?').get(result.lastInsertRowid);
+  res.json(plan);
+});
+
+app.put('/api/plans/:id', (req, res) => {
+  const { end_date, periodicity, budget_per_period, last_booked_date } = req.body;
+  db.prepare(`
+    UPDATE savings_plans
+    SET end_date          = COALESCE(?, end_date),
+        periodicity       = COALESCE(?, periodicity),
+        budget_per_period = COALESCE(?, budget_per_period),
+        last_booked_date  = COALESCE(?, last_booked_date),
+        updated_at        = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(end_date ?? null, periodicity ?? null, budget_per_period ?? null, last_booked_date ?? null, req.params.id);
+  const plan = db.prepare('SELECT * FROM savings_plans WHERE id = ?').get(req.params.id);
+  res.json(plan);
+});
+
+app.delete('/api/plans/:id', (req, res) => {
+  db.prepare('DELETE FROM savings_plans WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 

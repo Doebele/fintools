@@ -204,6 +204,12 @@ const txApi = {
     apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }),
       headers:{ "x-user-id": String(userId) } }),
 };
+const plansApi = {
+  list:   (pid)          => apiFetch(`/portfolios/${pid}/plans`),
+  create: (pid, data)    => apiFetch(`/portfolios/${pid}/plans`,  { method:"POST",   body: JSON.stringify(data) }),
+  update: (planId, data) => apiFetch(`/plans/${planId}`,          { method:"PUT",    body: JSON.stringify(data) }),
+  delete: (planId)       => apiFetch(`/plans/${planId}`,          { method:"DELETE" }),
+};
 const quotesApi = {
   batch: (symbols, source, apiKey, force=false) => apiFetch("/quotes/batch", {
     method: "POST",
@@ -2449,6 +2455,380 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
   );
 }
 
+// ── EditPlanModal ─────────────────────────────────────────────────────────────
+function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }) {
+  const portfolio = portfolios.find(p => p.id === plan.portfolio_id);
+  const [endDate,      setEndDate]      = useState(plan.end_date);
+  const [periodicity,  setPeriodicity]  = useState(plan.periodicity);
+  const [budget,       setBudget]       = useState(String(plan.budget_per_period));
+  const [price,        setPrice]        = useState("");
+  const [currency,     setCurrency]     = useState(plan.currency || "USD");
+  const [busy,         setBusy]         = useState(false);
+  const [lookupBusy,   setLookupBusy]   = useState(false);
+  const [error,        setError]        = useState("");
+
+  const todayStr    = useMemo(() => new Date().toISOString().slice(0,10), []);
+
+  // All dates from plan.start_date → endDate using selected periodicity
+  const allDates    = useMemo(() => generatePeriodDates(plan.start_date, endDate, periodicity), [plan.start_date, endDate, periodicity]);
+  // New bookable: past dates that come AFTER last_booked_date
+  const newPastDates = useMemo(() =>
+    allDates.filter(d => d <= todayStr && (!plan.last_booked_date || d > plan.last_booked_date)),
+  [allDates, todayStr, plan.last_booked_date]);
+  const futureDates = useMemo(() => allDates.filter(d => d > todayStr), [allDates, todayStr]);
+
+  const fracQty = useMemo(() => {
+    const b = parseFloat(budget), p = parseFloat(price);
+    return (!isNaN(b) && b > 0 && !isNaN(p) && p > 0) ? b / p : null;
+  }, [budget, price]);
+
+  // Auto-lookup current price
+  const priceEditedRef = useRef(false);
+  const currencyRef    = useRef(currency);
+  useEffect(() => { currencyRef.current = currency; }, [currency]);
+
+  useEffect(() => {
+    if (!plan.symbol || priceEditedRef.current) return;
+    setLookupBusy(true);
+    quotesApi.lookup(plan.symbol, todayStr)
+      .then(res => {
+        if (res.price != null && !priceEditedRef.current) {
+          setPrice(res.price.toFixed(2));
+          if (res.currency && res.currency !== currencyRef.current) setCurrency(res.currency);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLookupBusy(false));
+  }, [plan.symbol, todayStr]);
+
+  const handleSave = async () => {
+    const priceN  = parseFloat(price);
+    const budgetN = parseFloat(budget);
+    if (!endDate) { setError("Enddatum erforderlich"); return; }
+    if (isNaN(budgetN) || budgetN <= 0) { setError("Budget muss eine positive Zahl sein"); return; }
+    if (newPastDates.length > 0 && (isNaN(priceN) || priceN <= 0)) {
+      setError("Preis für neue Käufe erforderlich"); return;
+    }
+    setBusy(true);
+    try {
+      // Book any new past dates
+      if (newPastDates.length > 0) {
+        let price_usd = priceN;
+        if (currency !== "USD") {
+          try { const hist = await fxApi.historical(newPastDates[0], currency, "USD"); price_usd = priceN * (hist?.rate ?? (1/(rates[currency]??1))); }
+          catch { price_usd = priceN / (rates[currency]??1); }
+        }
+        const qtyN = budgetN / priceN;
+        for (const d of newPastDates) {
+          await onAdd(plan.portfolio_id, { symbol:plan.symbol, name:plan.name||plan.symbol, quantity:qtyN, price:priceN, price_usd, date:d, type:"BUY", currency });
+        }
+      }
+      // Update plan in DB
+      const newLastBooked = newPastDates.length > 0
+        ? newPastDates[newPastDates.length - 1]
+        : plan.last_booked_date;
+      await onUpdatePlan(plan.portfolio_id, plan.id, {
+        end_date: endDate, periodicity, budget_per_period: budgetN,
+        last_booked_date: newLastBooked,
+      });
+      onClose();
+    } catch(e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const CCY_SYM = { USD:"$", EUR:"€", GBP:"£", CHF:"Fr", JPY:"¥" };
+  const cSym = CCY_SYM[currency] ?? (currency + " ");
+
+  return (
+    <Modal title="Sparplan bearbeiten" onClose={onClose}>
+      {/* Plan summary */}
+      <div style={{ display:"flex", gap:8, marginBottom:16, padding:"10px 12px",
+        background:"rgba(59,130,246,0.07)", borderRadius:10, border:"1px solid rgba(59,130,246,0.18)",
+        alignItems:"center", flexWrap:"wrap" }}>
+        <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:13, color:THEME.accent }}>{plan.symbol}</span>
+        <span style={{ fontSize:11, color:THEME.text2 }}>{plan.name}</span>
+        {portfolio && (
+          <span style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:5, fontSize:11, color:THEME.text3 }}>
+            <span style={{ width:7, height:7, borderRadius:"50%", background:portfolio.color, display:"inline-block" }}/>
+            {portfolio.name}
+          </span>
+        )}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+        <div>
+          <div style={{ fontSize:10, color:THEME.text3, marginBottom:4 }}>START DATUM</div>
+          <div style={{ fontFamily:THEME.mono, fontSize:12, color:THEME.text2 }}>{plan.start_date}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, color:THEME.text3, marginBottom:4 }}>ZULETZT GEBUCHT</div>
+          <div style={{ fontFamily:THEME.mono, fontSize:12, color:plan.last_booked_date ? THEME.text2 : THEME.text3 }}>
+            {plan.last_booked_date || "—"}
+          </div>
+        </div>
+      </div>
+      {/* Editable fields */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+        <div>
+          <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>ENDDATUM</label>
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+              background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
+        </div>
+        <div>
+          <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>RHYTHMUS</label>
+          <select value={periodicity} onChange={e => setPeriodicity(e.target.value)}
+            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+              background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
+            {PERIODICITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label} — {o.description}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+        <div>
+          <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>
+            BUDGET / PERIODE ({currency})
+          </label>
+          <input type="number" min="0.01" step="0.01" value={budget}
+            onChange={e => setBudget(e.target.value)}
+            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+              background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
+        </div>
+        <div>
+          <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>
+            KURS {lookupBusy && <span style={{ opacity:0.5 }}>⟳</span>}
+          </label>
+          <div style={{ display:"flex", gap:6 }}>
+            <input type="number" min="0" step="0.01" value={price}
+              onChange={e => { priceEditedRef.current = true; setPrice(e.target.value); }}
+              placeholder="aktueller Kurs"
+              style={{ flex:1, padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+                background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
+            <select value={currency} onChange={e => setCurrency(e.target.value)}
+              style={{ width:70, padding:"8px 6px", borderRadius:8, border:`1px solid ${THEME.border}`,
+                background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
+              {["USD","EUR","GBP","CHF","JPY","CAD","AUD","SEK","NOK","DKK"].map(c =>
+                <option key={c} value={c}>{c}</option>
+              )}
+            </select>
+          </div>
+          {fracQty != null && (
+            <div style={{ fontSize:9, color:THEME.text3, marginTop:3, fontFamily:THEME.mono }}>
+              = {fracQty.toFixed(6)} Anteile/Periode
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Preview card */}
+      {(newPastDates.length > 0 || futureDates.length > 0) && (
+        <div style={{ borderRadius:10, border:`1px solid ${THEME.border}`, overflow:"hidden", marginBottom:12 }}>
+          <div style={{ padding:"8px 12px", background:"rgba(255,255,255,0.04)",
+            borderBottom:`1px solid ${THEME.border}`, display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:11, color:THEME.text2, fontWeight:700 }}>Sparplan-Vorschau</span>
+            <span style={{ marginLeft:"auto", fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
+              {allDates.length} Termine gesamt
+            </span>
+          </div>
+
+          {newPastDates.length > 0 && (
+            <div style={{ padding:"10px 12px", borderBottom: futureDates.length > 0 ? `1px solid ${THEME.border}` : "none" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                <span style={{ fontSize:10, fontWeight:700, color:THEME.green }}>✓ NEU ZU BUCHEN ({newPastDates.length})</span>
+                <span style={{ marginLeft:"auto", fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
+                  {cSym}{(parseFloat(budget||0) * newPastDates.length).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                </span>
+              </div>
+              {fracQty != null && (
+                <div style={{ fontSize:9, color:THEME.text3, marginBottom:5, fontFamily:THEME.mono }}>
+                  {fracQty.toFixed(6)} Anteile × {newPastDates.length} = {(fracQty * newPastDates.length).toFixed(4)} Anteile
+                </div>
+              )}
+              <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                {newPastDates.slice(0,8).map(d => (
+                  <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, padding:"2px 6px",
+                    background:"rgba(74,222,128,0.1)", color:THEME.green,
+                    borderRadius:4, border:"1px solid rgba(74,222,128,0.2)" }}>{d}</span>
+                ))}
+                {newPastDates.length > 8 && (
+                  <span style={{ fontSize:9, color:THEME.text3 }}>+{newPastDates.length-8} weitere</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {futureDates.length > 0 && (
+            <div style={{ padding:"10px 12px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                <span style={{ fontSize:10, fontWeight:700, color:THEME.text3 }}>↻ GEPLANT ({futureDates.length})</span>
+                <span style={{ marginLeft:"auto", fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
+                  {cSym}{(parseFloat(budget||0) * futureDates.length).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                </span>
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                {futureDates.slice(0,5).map(d => (
+                  <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, padding:"2px 6px",
+                    background:"rgba(148,163,184,0.08)", color:THEME.text3,
+                    borderRadius:4, border:`1px solid ${THEME.border}` }}>{d}</span>
+                ))}
+                {futureDates.length > 5 && (
+                  <span style={{ fontSize:9, color:THEME.text3 }}>+{futureDates.length-5} weitere</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <div style={{ color:THEME.red, fontSize:11, marginBottom:10 }}>{error}</div>}
+      <div style={{ display:"flex", gap:8 }}>
+        <button onClick={onClose}
+          style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
+            background:"transparent", color:THEME.text2, cursor:"pointer", fontSize:12 }}>
+          Abbrechen
+        </button>
+        <button onClick={handleSave}
+          disabled={busy || !endDate || !budget}
+          style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
+            background: newPastDates.length > 0 ? THEME.accent : "rgba(59,130,246,0.4)",
+            color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700,
+            opacity: (busy || !endDate || !budget) ? 0.5 : 1 }}>
+          {busy ? "Speichern…"
+            : newPastDates.length > 0
+              ? `✓ ${newPastDates.length} Kauf${newPastDates.length!==1?"käufe":""} + Plan speichern`
+              : "Plan speichern"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── SavingsPlansSection ───────────────────────────────────────────────────────
+function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const todayStr = useMemo(() => new Date().toISOString().slice(0,10), []);
+
+  if (!plans || plans.length === 0) return null;
+
+  const PERIOD_SHORT = { daily:"tägl.", weekly:"wöch.", monthly:"mtl.", quarterly:"viertelj.", "semi-annually":"halbj.", annually:"jährl." };
+
+  const getNextDate = (plan) => {
+    const all  = generatePeriodDates(plan.start_date, plan.end_date, plan.periodicity);
+    const future = all.filter(d => d > todayStr);
+    return future[0] ?? null;
+  };
+
+  const getPendingCount = (plan) => {
+    const all = generatePeriodDates(plan.start_date, plan.end_date, plan.periodicity);
+    return all.filter(d => d <= todayStr && (!plan.last_booked_date || d > plan.last_booked_date)).length;
+  };
+
+  const isExpired = (plan) => plan.end_date < todayStr;
+
+  const CCY_SYM = { USD:"$", EUR:"€", GBP:"£", CHF:"Fr", JPY:"¥" };
+
+  return (
+    <div style={{ borderRadius:12, border:`1px solid ${THEME.border}`, overflow:"hidden",
+      background:"rgba(255,255,255,0.02)", marginBottom:12 }}>
+      {/* Header */}
+      <div style={{ padding:"8px 14px", borderBottom: collapsed ? "none" : `1px solid ${THEME.border2}`,
+        display:"flex", alignItems:"center", gap:8, cursor:"pointer", userSelect:"none" }}
+        onClick={() => setCollapsed(c => !c)}>
+        <span style={{ fontSize:11, fontWeight:700, color:THEME.text2 }}>
+          ↻ Sparpläne
+        </span>
+        <span style={{ fontSize:10, color:THEME.text3, fontFamily:THEME.mono }}>
+          {plans.length} aktiv
+        </span>
+        <span style={{ marginLeft:"auto", fontSize:11, color:THEME.text3 }}>
+          {collapsed ? "▶" : "▼"}
+        </span>
+      </div>
+      {!collapsed && (
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+            <thead>
+              <tr style={{ borderBottom:`1px solid ${THEME.border2}` }}>
+                {["Symbol","Name","Rhythmus","Budget/Periode","Zeitraum","Nächstes Datum","Status",""].map((h, i) => (
+                  <th key={i} style={{ padding:"6px 10px", textAlign:"left", fontSize:9,
+                    color:THEME.text3, fontWeight:600, letterSpacing:"0.05em",
+                    whiteSpace:"nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {plans.map(plan => {
+                const port     = portfolios.find(p => p.id === plan.portfolio_id);
+                const nextDate = getNextDate(plan);
+                const pending  = getPendingCount(plan);
+                const expired  = isExpired(plan);
+                const cSym     = CCY_SYM[plan.currency] ?? (plan.currency + " ");
+                return (
+                  <tr key={plan.id}
+                    style={{ borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.1s" }}
+                    onMouseEnter={e => e.currentTarget.style.background="rgba(59,130,246,0.05)"}
+                    onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+                    <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        {port && <span style={{ width:6, height:6, borderRadius:"50%", background:port.color, display:"inline-block", flexShrink:0 }}/>}
+                        <span style={{ fontFamily:THEME.mono, fontWeight:700, color:THEME.accent }}>{plan.symbol}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding:"7px 10px", color:THEME.text2, maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {plan.name}
+                    </td>
+                    <td style={{ padding:"7px 10px", color:THEME.text3, whiteSpace:"nowrap" }}>
+                      {PERIOD_SHORT[plan.periodicity] ?? plan.periodicity}
+                    </td>
+                    <td style={{ padding:"7px 10px", fontFamily:THEME.mono, color:THEME.text1, whiteSpace:"nowrap" }}>
+                      {cSym}{parseFloat(plan.budget_per_period).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    </td>
+                    <td style={{ padding:"7px 10px", fontFamily:THEME.mono, fontSize:10, color:THEME.text3, whiteSpace:"nowrap" }}>
+                      {plan.start_date} → {plan.end_date}
+                    </td>
+                    <td style={{ padding:"7px 10px", fontFamily:THEME.mono, fontSize:10, whiteSpace:"nowrap",
+                      color: expired ? THEME.text3 : THEME.text2 }}>
+                      {expired ? <span style={{ color:THEME.text3 }}>abgelaufen</span> : (nextDate ?? "—")}
+                    </td>
+                    <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>
+                      {pending > 0 ? (
+                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:5,
+                          background:"rgba(251,191,36,0.15)", color:"#f59e0b",
+                          border:"1px solid rgba(251,191,36,0.3)" }}>
+                          {pending} offen
+                        </span>
+                      ) : expired ? (
+                        <span style={{ fontSize:9, color:THEME.text3 }}>—</span>
+                      ) : (
+                        <span style={{ fontSize:9, padding:"2px 6px", borderRadius:5,
+                          background:"rgba(74,222,128,0.1)", color:THEME.green,
+                          border:"1px solid rgba(74,222,128,0.2)" }}>aktiv</span>
+                      )}
+                    </td>
+                    <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>
+                      <div style={{ display:"flex", gap:4 }}>
+                        <button onClick={() => onEdit(plan)}
+                          style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${THEME.border}`,
+                            background:"transparent", color:THEME.accent, cursor:"pointer", fontSize:10, fontWeight:700 }}>
+                          ✎ Edit
+                        </button>
+                        <button onClick={() => onDelete(plan.portfolio_id, plan.id)}
+                          style={{ padding:"3px 8px", borderRadius:6, border:"1px solid rgba(248,113,113,0.3)",
+                            background:"transparent", color:THEME.red, cursor:"pointer", fontSize:10 }}>
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, compact=false, period="Intraday", divCache={}, currency="USD" }) {
   const [sortKey,    setSortKey]    = useState("date");
   const [sortDir,    setSortDir]    = useState("desc");
@@ -3219,7 +3599,7 @@ function generatePeriodDates(startDate, endDate, periodicity) {
   return dates;
 }
 
-function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, initialTx, editMode }) {
+function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, initialTx, editMode, onSavePlan }) {
   const [portfolioId, setPortfolioId] = useState(initialTx?.portfolio_id ?? defaultPortfolioId ?? portfolios[0]?.id);
   const [type,        setType]        = useState(initialTx?.type?.toLowerCase() || "buy");
   const [symbol,      setSymbol]      = useState(initialTx?.symbol || "");
@@ -3301,6 +3681,16 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         const qtyN = budgetN / priceN;
         for (const d of pastRecurDates) {
           await onAdd(portfolioId, { symbol:sym, name:name||sym, quantity:qtyN, price:priceN, price_usd, date:d, type, currency });
+        }
+        // Persist the savings plan (rule) if we have a callback
+        if (onSavePlan) {
+          const lastBooked = pastRecurDates.length > 0 ? pastRecurDates[pastRecurDates.length - 1] : null;
+          await onSavePlan(portfolioId, {
+            symbol: sym, name: name||sym, currency,
+            start_date: date, end_date: endDate,
+            periodicity, budget_per_period: budgetN,
+            last_booked_date: lastBooked,
+          });
         }
         onClose();
       } catch(e) { setError(e.message); }
@@ -5566,6 +5956,7 @@ export default function App() {
   const [colorMode,  setColorMode]  = useState("market");
   const [showAddTx,  setShowAddTx]  = useState(false);
   const [editTx,     setEditTx]     = useState(null); // {portfolioId, tx}
+  const [editPlan,   setEditPlan]   = useState(null); // plan object
   const [showAddPort,setShowAddPort]= useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [savedEtfs,       setSavedEtfs]        = useState([]);
@@ -5575,7 +5966,8 @@ export default function App() {
   const [tooltip,    setTooltip]    = useState(null);
 
   // ── Data state ────────────────────────────────────────────────────────────
-  const [allTransactions, setAllTransactions] = useState({});  // { [portfolioId]: tx[] }
+  const [allTransactions,  setAllTransactions]  = useState({});  // { [portfolioId]: tx[] }
+  const [allSavingsPlans,  setAllSavingsPlans]  = useState({});  // { [portfolioId]: plan[] }
   const [quotes,          setQuotes]          = useState({});
   const [rates,           setRates]           = useState({ USD:1 });
   const [ratesSource,     setRatesSource]     = useState("live");
@@ -5609,13 +6001,14 @@ export default function App() {
       setRates(fx);
       setRatesSource(fx._fallback ? "fallback" : "live");
     } catch { setRatesSource("fallback"); }
-    // Load transactions for all portfolios
-    const txMap = {};
+    // Load transactions + savings plans for all portfolios
+    const txMap = {}, plansMap = {};
     await Promise.all(ports.map(async p => {
-      try { txMap[p.id] = await txApi.list(p.id); }
-      catch { txMap[p.id] = []; }
+      try { txMap[p.id]    = await txApi.list(p.id);    } catch { txMap[p.id]    = []; }
+      try { plansMap[p.id] = await plansApi.list(p.id); } catch { plansMap[p.id] = []; }
     }));
     setAllTransactions(txMap);
+    setAllSavingsPlans(plansMap);
     setInitialized(true);
     // AV usage
     avApi.usage().then(setAvUsage).catch(() => {});
@@ -5623,7 +6016,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null); setPortfolios([]); setInitialized(false);
-    setAllTransactions({}); setQuotes({});
+    setAllTransactions({}); setAllSavingsPlans({}); setQuotes({});
     setActivePortfolioIds([]);
   };
 
@@ -5870,6 +6263,27 @@ export default function App() {
     const updated = await txApi.update(txId, data);
     setAllTransactions(prev => ({
       ...prev, [portfolioId]: (prev[portfolioId]??[]).map(t => t.id===txId ? updated : t),
+    }));
+  }, []);
+
+  const handleSavePlan = useCallback(async (portfolioId, planData) => {
+    const saved = await plansApi.create(portfolioId, planData);
+    setAllSavingsPlans(prev => ({
+      ...prev, [portfolioId]: [saved, ...(prev[portfolioId] ?? [])],
+    }));
+  }, []);
+
+  const handleUpdatePlan = useCallback(async (portfolioId, planId, data) => {
+    const updated = await plansApi.update(planId, data);
+    setAllSavingsPlans(prev => ({
+      ...prev, [portfolioId]: (prev[portfolioId] ?? []).map(p => p.id === planId ? updated : p),
+    }));
+  }, []);
+
+  const handleDeletePlan = useCallback(async (portfolioId, planId) => {
+    await plansApi.delete(planId);
+    setAllSavingsPlans(prev => ({
+      ...prev, [portfolioId]: (prev[portfolioId] ?? []).filter(p => p.id !== planId),
     }));
   }, []);
 
@@ -6143,6 +6557,21 @@ export default function App() {
             )}
             {activeTab === "transactions" && viewMode !== "split" && (
               <div style={{ height:"100%", display:"flex", flexDirection:"column", overflow:"hidden", padding:"12px 0 0" }}>
+                {/* Savings plans banner — shown above holdings table */}
+                {(() => {
+                  const allPlans = activePortfolioIds.flatMap(pid => allSavingsPlans[pid] ?? []);
+                  if (allPlans.length === 0) return null;
+                  return (
+                    <div style={{ paddingLeft:16, paddingRight:16, flexShrink:0 }}>
+                      <SavingsPlansSection
+                        plans={allPlans}
+                        portfolios={activePortfolios}
+                        rates={rates}
+                        onEdit={plan => setEditPlan(plan)}
+                        onDelete={handleDeletePlan}/>
+                    </div>
+                  );
+                })()}
                 <TransactionList
                   portfolios={activePortfolios}
                   allTransactions={allTransactions}
@@ -6236,7 +6665,8 @@ export default function App() {
         {showAddTx && (
           <AddTxModal onClose={() => setShowAddTx(false)} onAdd={handleAddTx}
             rates={rates} portfolios={activePortfolios}
-            defaultPortfolioId={activePortfolioIds[0]}/>
+            defaultPortfolioId={activePortfolioIds[0]}
+            onSavePlan={handleSavePlan}/>
         )}
         {editTx && (
           <AddTxModal onClose={() => setEditTx(null)}
@@ -6245,6 +6675,15 @@ export default function App() {
             defaultPortfolioId={editTx.portfolioId}
             initialTx={{ ...editTx.tx, portfolio_id:editTx.portfolioId }}
             editMode/>
+        )}
+        {editPlan && (
+          <EditPlanModal
+            plan={editPlan}
+            portfolios={activePortfolios}
+            rates={rates}
+            onClose={() => setEditPlan(null)}
+            onAdd={handleAddTx}
+            onUpdatePlan={handleUpdatePlan}/>
         )}
         {showImportExport && (
           <ImportExportModal
