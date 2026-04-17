@@ -2115,6 +2115,53 @@ app.post('/api/quotes/history-multi', async (req, res) => {
   res.json({ results });
 });
 
+// POST /api/quotes/dividends-multi  — historical dividend events per symbol
+// Body: { symbols: ["AAPL","VT",...], range: "2y"|"1y"|... }
+// Returns: { results: { SYM: [{date, amount}, ...], ... } }
+app.post('/api/quotes/dividends-multi', async (req, res) => {
+  const { symbols = [], range = '2y' } = req.body;
+  if (!Array.isArray(symbols) || !symbols.length) return err(res, 400, 'symbols required');
+  const uniq = [...new Set(symbols.map(s => s.toUpperCase()))].slice(0, 40);
+  const CACHE_TTL_H = 24; // 24 hours — dividends change rarely
+  const results = {};
+
+  await Promise.allSettled(uniq.map(async sym => {
+    const cacheKey = `divhist_${range}_${sym}`;
+    try {
+      const cached = db.prepare(
+        `SELECT data, updated_at FROM quotes_cache WHERE symbol=?
+         AND datetime(updated_at) > datetime('now', '-${CACHE_TTL_H * 60} minutes')`
+      ).get(cacheKey);
+      if (cached) { results[sym] = JSON.parse(cached.data); return; }
+
+      const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}` +
+                  `?interval=1d&range=${range}&events=dividends&includePrePost=false`;
+      const r = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                   'Accept': 'application/json', 'Referer': 'https://finance.yahoo.com' },
+      });
+      if (!r.ok) { results[sym] = []; return; }
+      const data       = await r.json();
+      const result     = data.chart?.result?.[0];
+      const divEvents  = result?.events?.dividends ?? {};
+      const divs = Object.values(divEvents)
+        .map(d => ({
+          date:   new Date(d.date * 1000).toISOString().slice(0, 10),
+          amount: d.amount,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'divhist', CURRENT_TIMESTAMP)")
+        .run(cacheKey, JSON.stringify(divs));
+      results[sym] = divs;
+    } catch(e) {
+      results[sym] = [];
+    }
+  }));
+
+  res.json({ results });
+});
+
 // GET/PUT /api/users/:id/rebalance-targets  — store per-user rebalance targets
 app.get('/api/users/:id/rebalance-targets', (req, res) => {
   const userId = parseInt(req.params.id);
