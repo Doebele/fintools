@@ -467,17 +467,23 @@ function runMonteCarlo({
   const taxDiv = taxRate;
   const taxCG  = taxRate;
 
-  // Box-Muller normal random
+  // Seeded PRNG (mulberry32) für reproduzierbare Ergebnisse
+  let _seed = (0x9E3779B9 ^ (nSims * 2654435761)) | 0;
+  const _rand = () => {
+    _seed = (_seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(_seed ^ (_seed >>> 15), 1 | _seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  // Box-Muller mit seeded PRNG
   const randn = () => {
-    let u=0, v=0;
-    while (!u) u = Math.random();
-    while (!v) v = Math.random();
-    return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
+    let u, v;
+    do { u = _rand(); } while (u === 0);
+    do { v = _rand(); } while (v === 0);
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   };
 
   const percentiles = [5, 10, 25, 50, 75, 90, 95];
-  // Store final values per sim for percentile calc, and track paths for p10/50/90
-  const paths = { p10:[], p25:[], p50:[], p75:[], p90:[] };
   const finalVals = [];
   const allPaths  = [];
 
@@ -525,17 +531,18 @@ function runMonteCarlo({
     allPaths.push(realPath);
   }
 
-  // Sort for percentiles
+  // Sort für Summenkarten
   finalVals.sort((a,b) => a-b);
   const pctVal = (p) => finalVals[Math.floor((p/100) * nSims)] ?? finalVals[finalVals.length-1];
 
-  // Extract representative paths
-  const sortedIdx = allPaths.map((_,i)=>i).sort((a,b)=>finalVals[a]-finalVals[b]);
-
-  const getPath = (pct) => {
-    const idx = sortedIdx[Math.floor((pct/100) * nSims)];
-    return allPaths[idx] ?? [];
-  };
+  // Querschnittsperzentil: an jedem Zeitschritt t das p-te Perzentil
+  // über ALLE Simulationspfade berechnen → glatte, stabile Bänder
+  const crossPct = (p) => Array.from({length: steps + 1}, (_, t) => {
+    const vals = allPaths.map(path => path[t]).sort((a, b) => a - b);
+    const idx  = (p / 100) * (vals.length - 1);
+    const lo   = Math.floor(idx), hi = Math.ceil(idx);
+    return vals[lo] + (vals[hi] - vals[lo]) * (idx - lo);
+  });
 
   // Monthly labels for X axis
   const labels = Array.from({length:steps+1}, (_,i) => {
@@ -547,11 +554,13 @@ function runMonteCarlo({
   return {
     finalVals,
     percentileValues: Object.fromEntries(percentiles.map(p => [p, pctVal(p)])),
-    p10Path: getPath(10),
-    p25Path: getPath(25),
-    p50Path: getPath(50),
-    p75Path: getPath(75),
-    p90Path: getPath(90),
+    p10Path: crossPct(10),
+    p25Path: crossPct(25),
+    p40Path: crossPct(40),
+    p50Path: crossPct(50),
+    p60Path: crossPct(60),
+    p75Path: crossPct(75),
+    p90Path: crossPct(90),
     labels,
     nSims,
     steps,
@@ -690,8 +699,8 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
     const g = svg.append("g").attr("transform", `translate(${m.left},${m.top})`);
 
     const allVals = [
-      ...result.p10Path, ...result.p25Path,
-      ...result.p50Path, ...result.p75Path, ...result.p90Path,
+      ...result.p10Path, ...result.p25Path, ...result.p40Path,
+      ...result.p50Path, ...result.p60Path, ...result.p75Path, ...result.p90Path,
     ].filter(v => v != null && isFinite(v));
 
     const xScale = d3.scaleLinear([0, result.steps], [0, W]);
@@ -710,33 +719,33 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
       .selectAll("line").attr("stroke","rgba(255,255,255,0.05)");
     g.select(".grid .domain").remove();
 
-    // Shaded confidence band (p25–p75)
-    const area2575 = d3.area()
+    // ── Fan Chart: 3 konzentrische Bänder (von außen nach innen) ─────────────
+    const mkArea = (hiPath, loPath) => d3.area()
       .x((_,i) => xScale(i))
-      .y0(d => yScale(result.p25Path[d] ?? 0))
-      .y1(d => yScale(result.p75Path[d] ?? 0))
-      .defined((_,i) => result.p25Path[i] != null && result.p75Path[i] != null)
+      .y0(d => yScale(loPath[d] ?? 0))
+      .y1(d => yScale(hiPath[d] ?? 0))
+      .defined((_,i) => hiPath[i] != null && loPath[i] != null)
       .curve(d3.curveBasis);
 
+    // Äußerste Schicht: P10–P90
     g.append("path")
       .datum(d3.range(result.steps+1))
-      .attr("d", area2575)
-      .attr("fill", "rgba(59,130,246,0.12)");
+      .attr("d", mkArea(result.p90Path, result.p10Path))
+      .attr("fill", "rgba(59,130,246,0.07)");
 
-    // Shaded p10–p90
-    const area1090 = d3.area()
-      .x((_,i) => xScale(i))
-      .y0(d => yScale(result.p10Path[d] ?? 0))
-      .y1(d => yScale(result.p90Path[d] ?? 0))
-      .defined((_,i) => result.p10Path[i] != null && result.p90Path[i] != null)
-      .curve(d3.curveBasis);
-
+    // Mittlere Schicht: P25–P75
     g.append("path")
       .datum(d3.range(result.steps+1))
-      .attr("d", area1090)
-      .attr("fill", "rgba(59,130,246,0.06)");
+      .attr("d", mkArea(result.p75Path, result.p25Path))
+      .attr("fill", "rgba(59,130,246,0.13)");
 
-    // Lines
+    // Innere Schicht: P40–P60
+    g.append("path")
+      .datum(d3.range(result.steps+1))
+      .attr("d", mkArea(result.p60Path, result.p40Path))
+      .attr("fill", "rgba(59,130,246,0.20)");
+
+    // ── Percentillinien über den Bändern ──────────────────────────────────
     const lineFn = d3.line()
       .x((_,i) => xScale(i))
       .y(d => yScale(d ?? 0))
@@ -744,30 +753,32 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
       .curve(d3.curveBasis);
 
     const lineConfigs = [
-      { path:result.p10Path, color:"rgba(248,113,113,0.5)", dash:"4,3", label:"P10" },
-      { path:result.p25Path, color:"rgba(251,191,36,0.6)",  dash:"",    label:"P25" },
-      { path:result.p50Path, color:"rgba(74,222,128,0.9)",  dash:"",    label:"P50" },
-      { path:result.p75Path, color:"rgba(96,165,250,0.6)",  dash:"",    label:"P75" },
-      { path:result.p90Path, color:"rgba(167,139,250,0.5)", dash:"4,3", label:"P90" },
+      { path:result.p10Path, color:"rgba(248,113,113,0.45)", dash:"4,3", label:"P10", width:1.2 },
+      { path:result.p25Path, color:"rgba(96,165,250,0.45)",  dash:"",    label:"P25", width:1.2 },
+      { path:result.p50Path, color:"rgba(74,222,128,0.95)",  dash:"",    label:"P50", width:2.5 },
+      { path:result.p75Path, color:"rgba(96,165,250,0.45)",  dash:"",    label:"P75", width:1.2 },
+      { path:result.p90Path, color:"rgba(167,139,250,0.45)", dash:"4,3", label:"P90", width:1.2 },
     ];
 
-    lineConfigs.forEach(({path,color,dash,label}) => {
+    lineConfigs.forEach(({path,color,dash,label,width}) => {
       g.append("path")
         .datum(path)
         .attr("d", lineFn)
         .attr("fill","none")
         .attr("stroke", color)
-        .attr("stroke-width", label==="P50" ? 2.5 : 1.5)
+        .attr("stroke-width", width)
         .attr("stroke-dasharray", dash);
 
-      // End label
-      const lastVal = path[path.length-1];
-      if (lastVal != null) {
-        g.append("text")
-          .attr("x", W+6).attr("y", yScale(lastVal)+4)
-          .attr("fill", color).attr("font-size", 9)
-          .attr("font-family", "'JetBrains Mono',monospace")
-          .text(label);
+      // End label — nur P10, P50, P90 beschriften (weniger Clutter)
+      if (["P10","P50","P90"].includes(label)) {
+        const lastVal = path[path.length-1];
+        if (lastVal != null) {
+          g.append("text")
+            .attr("x", W+6).attr("y", yScale(lastVal)+4)
+            .attr("fill", color).attr("font-size", 9)
+            .attr("font-family", "'JetBrains Mono',monospace")
+            .text(label);
+        }
       }
     });
 

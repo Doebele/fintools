@@ -2155,18 +2155,23 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const bg    = getPerfColor(perf);
 
   // Smart tooltip positioning — constrain to viewport
-  const TW = 290;
-  const MARGIN = 14;
-  const viewW = window.innerWidth;
-  const viewH = window.innerHeight;
+  // In Comfort Mode the body has CSS zoom:1.18, which shrinks the effective
+  // coordinate space. Divide window dimensions by the body zoom factor so
+  // edge-detection works correctly at any zoom level.
+  const TW = 320;
+  const MARGIN = 16;
+  const bodyZoom    = parseFloat(getComputedStyle(document.body).zoom) || 1;
+  const viewW       = window.innerWidth  / bodyZoom;
+  const viewH       = window.innerHeight / bodyZoom;
+  const cx          = x / bodyZoom;
+  const cy          = y / bodyZoom;
   // Prefer right of cursor, flip left when too close to right edge
-  const left = (x + 20 + TW + MARGIN > viewW)
-    ? Math.max(MARGIN, x - TW - 16)
-    : x + 20;
-  // Place below cursor by default; ensure it starts far enough from bottom
-  // We'll cap height in CSS so it never overflows vertically
+  const left = (cx + 20 + TW + MARGIN > viewW)
+    ? Math.max(MARGIN, cx - TW - 16)
+    : cx + 20;
+  // Anchor near cursor; prevent running off the bottom
   const MAX_TIP_H = viewH - MARGIN * 2;
-  const top = Math.min(Math.max(MARGIN, y - 20), viewH - Math.min(460, MAX_TIP_H) - MARGIN);
+  const top = Math.min(Math.max(MARGIN, cy - 20), viewH - Math.min(480, MAX_TIP_H) - MARGIN);
 
   // Pick chart data
   const chartSrc = (period === "Intraday" && chartDataIntraday) ? chartDataIntraday : chartData;
@@ -2208,7 +2213,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
       background:THEME.surface, borderRadius:16,
       border:`1px solid ${THEME.border}`,
       boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
-      maxHeight:`calc(100vh - ${MARGIN*2}px)`, overflowY:"auto",
+      maxHeight:`calc(${viewH - MARGIN * 2}px)`, overflowY:"auto", overflowX:"hidden",
       pointerEvents:"none",
     }}>
       <div style={{ background:bg, padding:"10px 14px 12px" }}>
@@ -2251,6 +2256,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
             ["Market Value",`${cSym}${value.toLocaleString("en-US",{maximumFractionDigits:0})}`],
             ["Cost Basis",  `${cSym}${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`],
             ["Avg Cost/Share", data.qty > 0 ? `${cSym}${(cost/data.qty).toFixed(2)}` : "—"],
+            ["Shares",         data.qty > 0 ? data.qty.toLocaleString("en-US",{maximumFractionDigits:4}) : "—"],
             [null],
             ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
             ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
@@ -2278,9 +2284,10 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
           if (!row[0]) return <div key={i} style={{ height:1, background:THEME.border2, margin:"5px 0" }}/>;
           return (
             <div key={i} style={{ display:"flex", justifyContent:"space-between",
-              alignItems:"center", padding:"2px 0" }}>
-              <span style={{ fontSize:11, color:THEME.text3 }}>{row[0]}</span>
-              <span style={{ fontFamily:THEME.mono, fontSize:12, fontWeight:600, color:row[2]||THEME.text1 }}>{row[1]}</span>
+              alignItems:"baseline", gap:8, padding:"2px 0" }}>
+              <span style={{ fontSize:11, color:THEME.text3, flexShrink:0 }}>{row[0]}</span>
+              <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
+                color:row[2]||THEME.text1, textAlign:"right", wordBreak:"break-all" }}>{row[1]}</span>
             </div>
           );
         })}
@@ -2448,6 +2455,15 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
   const [colWidths,  setColWidths]  = useState(() => Object.fromEntries(TX_COLS_DEFAULT.map(c=>[c.key,c.width])));
   const [deletePending, setDeletePending] = useState(null); // { portfolioId, tx, portfolio }
   const dragging = useRef(null);
+  const [groupingMode,   setGroupingMode]   = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const toggleGroup = useCallback(key => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }, []);
 
   // Flatten all transactions with portfolio info
   const allTxFlat = useMemo(() => {
@@ -2493,8 +2509,56 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     return rows;
   }, [portfolios, allTransactions, quotes, rates, period, divCache]);
 
+  const groupedData = useMemo(() => {
+    const map = {};
+    for (const tx of allTxFlat) {
+      const key    = `${tx.symbol}||${tx.name ?? ""}`;
+      const isSell = tx.type === "SELL";
+      if (map[key]) {
+        const g = map[key];
+        g._txs.push(tx);
+        if (!isSell) {
+          // BUY: accumulate buy cost and qty for avg-cost basis
+          g._buyCost += tx._cost;
+          g._buyQty  += tx.quantity;
+        } else {
+          // SELL: reduces net position; do not add to cost basis
+          g._sellQty += tx.quantity;
+        }
+        // Period absolute: subtract sold shares' contribution
+        if (tx._prdAbs != null) g._prdAbs = (g._prdAbs ?? 0) + (isSell ? -tx._prdAbs : tx._prdAbs);
+        if (tx.date > g.date) g.date = tx.date;
+        if (g.type !== tx.type) g.type = "MIX";
+      } else {
+        const isSellFirst = tx.type === "SELL";
+        map[key] = {
+          ...tx, _isGroup:true, _key:key, _txs:[tx],
+          _buyCost: isSellFirst ? 0        : tx._cost,
+          _buyQty:  isSellFirst ? 0        : tx.quantity,
+          _sellQty: isSellFirst ? tx.quantity : 0,
+          _prdAbs:  isSellFirst ? (tx._prdAbs != null ? -tx._prdAbs : null) : tx._prdAbs,
+        };
+      }
+    }
+    return Object.values(map).map(g => {
+      const netQty         = g._buyQty - g._sellQty;
+      const avgBuyPriceUSD = g._buyQty > 0 ? g._buyCost / g._buyQty : null;
+      // Cost basis of remaining shares only
+      const _cost          = avgBuyPriceUSD != null ? avgBuyPriceUSD * netQty : 0;
+      // Current value of remaining shares only
+      const _curValue      = g._curPriceUSD != null ? netQty * g._curPriceUSD : null;
+      const _glAbs         = _curValue != null ? _curValue - _cost : null;
+      const _glPct         = _cost > 0 && _glAbs != null ? (_glAbs / _cost) * 100 : null;
+      const _refVal        = _curValue != null && g._prdAbs != null ? _curValue - g._prdAbs : null;
+      const _prdPct        = g._prdAbs != null && _refVal != null && _refVal > 0
+                             ? (g._prdAbs / _refVal) * 100 : null;
+      return { ...g, quantity: netQty, _cost, _curValue, _glAbs, _glPct, _prdPct, _avgBuyPriceUSD: avgBuyPriceUSD };
+    }).filter(g => g.quantity > 0.0001); // hide fully-closed positions
+  }, [allTxFlat]);
+
   const sorted = useMemo(() => {
-    return [...allTxFlat].sort((a,b) => {
+    const data = (groupingMode && !compact) ? groupedData : allTxFlat;
+    return [...data].sort((a,b) => {
       let va, vb;
       switch(sortKey) {
         case "type":     va=a.type;     vb=b.type;     break;
@@ -2502,14 +2566,15 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
         case "name":     va=a.name||""; vb=b.name||""; break;
         case "date":     va=a.date;     vb=b.date;     break;
         case "quantity": va=a.quantity; vb=b.quantity; break;
-        case "price":    va=a.price;    vb=b.price;    break;
+        case "price":    va=(a._isGroup?a._avgBuyPriceUSD:a.price)??-Infinity;
+                         vb=(b._isGroup?b._avgBuyPriceUSD:b.price)??-Infinity; break;
         case "cost":     va=a._cost;    vb=b._cost;    break;
-        case "curPrice": va=a._curPrice??-Infinity; vb=b._curPrice??-Infinity; break;
-        case "curValue": va=a._curValue??-Infinity; vb=b._curValue??-Infinity; break;
-        case "glPct":    va=a._glPct??-Infinity;   vb=b._glPct??-Infinity;    break;
-        case "glAbs":    va=a._glAbs??-Infinity;   vb=b._glAbs??-Infinity;    break;
-        case "prdPct":   va=a._prdPct??-Infinity;  vb=b._prdPct??-Infinity;   break;
-        case "prdAbs":   va=a._prdAbs??-Infinity;  vb=b._prdAbs??-Infinity;   break;
+        case "curPrice": va=a._curPriceUSD??-Infinity; vb=b._curPriceUSD??-Infinity; break;
+        case "curValue": va=a._curValue??-Infinity;    vb=b._curValue??-Infinity;    break;
+        case "glPct":    va=a._glPct??-Infinity;       vb=b._glPct??-Infinity;       break;
+        case "glAbs":    va=a._glAbs??-Infinity;       vb=b._glAbs??-Infinity;       break;
+        case "prdPct":   va=a._prdPct??-Infinity;      vb=b._prdPct??-Infinity;      break;
+        case "prdAbs":   va=a._prdAbs??-Infinity;      vb=b._prdAbs??-Infinity;      break;
         case "divYield": va=a._div?.yieldPct??-Infinity; vb=b._div?.yieldPct??-Infinity; break;
         default: va=a.date; vb=b.date;
       }
@@ -2517,12 +2582,25 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
       if (va > vb) return sortDir==="asc"?1:-1;
       return 0;
     });
-  }, [allTxFlat, sortKey, sortDir]);
+  }, [allTxFlat, groupedData, groupingMode, compact, sortKey, sortDir]);
 
   const handleSort = key => {
     if (sortKey===key) setSortDir(d=>d==="asc"?"desc":"asc");
     else { setSortKey(key); setSortDir("asc"); }
   };
+
+  const displayRows = useMemo(() => {
+    if (!groupingMode || compact) return sorted.map(r => ({ ...r, _rowType:"flat" }));
+    const out = [];
+    for (const group of sorted) {
+      out.push({ ...group, _rowType:"group" });
+      if (expandedGroups.has(group._key)) {
+        const subs = [...group._txs].sort((a,b) => b.date.localeCompare(a.date));
+        for (const tx of subs) out.push({ ...tx, _rowType:"subrow", _groupKey:group._key });
+      }
+    }
+    return out;
+  }, [sorted, groupingMode, compact, expandedGroups]);
 
   // Column resize drag
   const startResize = (e, key) => {
@@ -2537,11 +2615,12 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     window.addEventListener("mouseup", onUp);
   };
 
-  const totalCost    = allTxFlat.reduce((s,r)=>s+r._cost,0);
-  const totalValue   = allTxFlat.reduce((s,r)=>s+(r._curValue??0),0);
-  const totalGL      = allTxFlat.reduce((s,r)=>s+(r._glAbs??0),0);
-  const totalPrdGL   = allTxFlat.reduce((s,r)=>s+(r._prdAbs??0),0);
-  const hasPrdGL     = allTxFlat.some(r=>r._prdAbs!=null);
+  // Totals always based on net positions (groupedData) to avoid double-counting SELLs
+  const totalCost    = groupedData.reduce((s,r)=>s+r._cost,0);
+  const totalValue   = groupedData.reduce((s,r)=>s+(r._curValue??0),0);
+  const totalGL      = groupedData.reduce((s,r)=>s+(r._glAbs??0),0);
+  const totalPrdGL   = groupedData.reduce((s,r)=>s+(r._prdAbs??0),0);
+  const hasPrdGL     = groupedData.some(r=>r._prdAbs!=null);
 
   const SortIcon = ({ col }) => {
     if (!col.sortable) return null;
@@ -2595,7 +2674,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
         borderBottom:`1px solid ${THEME.border2}`, flexShrink:0,
       }}>
         {[
-          ["Transactions",  allTxFlat.length, null, null],
+          [groupingMode ? "Positions" : "Transactions", groupingMode ? groupedData.length : allTxFlat.length, null, null],
           ["Total Cost",    `$${(totalCost/1000).toFixed(1)}K`, null, "Total cost basis across all positions in USD at purchase-date FX rates."],
           ["Current Value", `$${(totalValue/1000).toFixed(1)}K`, null, "Current market value of all positions in USD."],
           ["Total G/L",     `${totalGL>=0?"+":"−"}$${(Math.abs(totalGL)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss: current value minus total cost basis. Does not account for taxes or transaction fees."],
@@ -2608,8 +2687,19 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
             <div style={{fontFamily:THEME.mono,fontSize:12,fontWeight:700,color:c||THEME.text1}}>{v}</div>
           </div>
         ))}
-        <div style={{marginLeft:"auto",fontSize:10,color:THEME.text3}}>
-          Drag column edges to resize · Click headers to sort
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+          <button
+            onClick={() => setGroupingMode(m => !m)}
+            style={{
+              display:"flex", alignItems:"center", gap:5,
+              padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
+              background: groupingMode ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${groupingMode ? "rgba(59,130,246,0.35)" : THEME.border2}`,
+              color: groupingMode ? THEME.accent : THEME.text3,
+              cursor:"pointer", fontFamily:THEME.font, transition:"all 0.15s",
+            }}
+          >{groupingMode ? "⊕ Grouped" : "≡ Flat"}</button>
+          <span style={{fontSize:10,color:THEME.text3}}>Drag column edges to resize · Click headers to sort</span>
         </div>
       </div>
       )}
@@ -2647,11 +2737,177 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
           </thead>
           {/* Body */}
           <tbody>
-            {sorted.map((tx, i) => {
+            {displayRows.map((row, i) => {
+              const isGroup  = row._rowType === "group";
+              const isSubrow = row._rowType === "subrow";
+
+              // ── GROUP ROW ──────────────────────────────────────────────────
+              if (isGroup) {
+                const grp = row;
+                const isExpanded = expandedGroups.has(grp._key);
+                const isBuy = grp.type === "BUY";
+                const rowBg = i%2===0?"transparent":"rgba(255,255,255,0.015)";
+                return (
+                  <tr key={grp._key}
+                    style={{ height:36, background:rowBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
+                    onMouseLeave={e=>e.currentTarget.style.background=rowBg}
+                  >
+                    <td style={tdStyle(TX_COLS_DEFAULT[0])}>
+                      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                        <button onClick={()=>toggleGroup(grp._key)}
+                          style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
+                            padding:"1px 3px", display:"flex", borderRadius:3, transition:"color 0.12s",
+                            fontSize:9, lineHeight:1 }}
+                          onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
+                          onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
+                          title={isExpanded ? "Collapse" : "Expand transactions"}
+                        >{isExpanded ? "▼" : "▶"}</button>
+                        <span style={{
+                          padding:"2px 5px", borderRadius:4, fontSize:9, fontWeight:700,
+                          background: grp.type==="MIX" ? "rgba(148,163,184,0.12)"
+                                     : isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
+                          color: grp.type==="MIX" ? THEME.text3 : isBuy ? THEME.green : THEME.red,
+                          border:`1px solid ${grp.type==="MIX" ? "rgba(148,163,184,0.2)"
+                                           : isBuy ? "rgba(74,222,128,0.2)" : "rgba(248,113,113,0.2)"}`,
+                        }}>{grp.type==="MIX" ? "MIX" : grp.type}</span>
+                      </div>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[1])}>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <div style={{ width:6, height:6, borderRadius:"50%", background:grp.portfolioColor, flexShrink:0 }}/>
+                        <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{grp.symbol}</span>
+                      </div>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[2])}>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <span style={{ fontSize:11, color:THEME.text2 }}>{grp.name || ""}</span>
+                        {grp._txs.length > 1 && (
+                          <span style={{ fontSize:9, color:THEME.text3, background:"rgba(255,255,255,0.06)",
+                            border:`1px solid ${THEME.border2}`, borderRadius:3, padding:"1px 4px", fontFamily:THEME.mono }}>
+                            ×{grp._txs.length}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[3])}>
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{grp.date}</span>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[4])}>
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{grp.quantity}</span>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[5])}>
+                      {grp._avgBuyPriceUSD != null ? (
+                        <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
+                          <span style={{ fontSize:9, color:THEME.text3, marginRight:2 }}>avg</span>
+                          ${grp._avgBuyPriceUSD.toFixed(2)}
+                        </span>
+                      ) : <span style={{color:THEME.text3}}>—</span>}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[6])}>
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._cost)}</span>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[7])}>
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(grp._curPriceUSD)}</span>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[8])}>
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._curValue)}</span>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[9])}>
+                      {grp._glPct != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glPct>=0?THEME.green:THEME.red }}>
+                            {grp._glPct>=0?"+":""}{grp._glPct.toFixed(1)}%
+                          </span>
+                        : <span style={{color:THEME.text3}}>—</span>}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[10])}>
+                      {grp._glAbs != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glAbs>=0?THEME.green:THEME.red }}>
+                            {grp._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._glAbs))}
+                          </span>
+                        : <span style={{color:THEME.text3}}>—</span>}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[11])}>
+                      {grp._prdPct != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdPct>=0?THEME.green:THEME.red }}>
+                            {grp._prdPct>=0?"+":""}{grp._prdPct.toFixed(1)}%
+                          </span>
+                        : <span style={{color:THEME.text3}}>—</span>}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[12])}>
+                      {grp._prdAbs != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdAbs>=0?THEME.green:THEME.red }}>
+                            {grp._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._prdAbs))}
+                          </span>
+                        : <span style={{color:THEME.text3}}>—</span>}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[13])}>
+                      {(() => {
+                        const q = quotes[grp.symbol];
+                        const pe = q?.trailingPE ?? q?.forwardPE ?? null;
+                        return pe != null
+                          ? <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.accent }}>{pe.toFixed(1)}</span>
+                          : <span style={{color:THEME.text3}}>—</span>;
+                      })()}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[14])}>
+                      {grp._div === undefined
+                        ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                        : grp._div?.yieldPct != null
+                          ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:"#fbbf24" }}>{grp._div.yieldPct.toFixed(2)}%</span>
+                          : <span style={{color:THEME.text3}}>—</span>}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[15])}>
+                      {grp._div === undefined ? (
+                        <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                      ) : grp._div?.exDate ? (
+                        <div>
+                          <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>{grp._div.exDate}</span>
+                          {grp._div.nextExDate && (
+                            <div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>→ {grp._div.nextExDate}</div>
+                          )}
+                        </div>
+                      ) : <span style={{color:THEME.text3}}>—</span>}
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <a href={`https://finance.yahoo.com/quote/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
+                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                            background:"rgba(100,160,255,0.08)",border:`1px solid rgba(100,160,255,0.18)`,
+                            color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
+                          onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
+                          onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
+                        >Y!</a>
+                        <a href={`https://www.perplexity.ai/finance/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
+                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                            background:"rgba(168,120,255,0.08)",border:`1px solid rgba(168,120,255,0.18)`,
+                            color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
+                          onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
+                          onMouseLeave={e=>e.currentTarget.style.background="rgba(168,120,255,0.08)"}
+                        >Px</a>
+                      </div>
+                    </td>
+                    <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                      <button onClick={()=>onRefreshSymbol && onRefreshSymbol(grp.symbol)}
+                        title={`Refresh ${grp.symbol}`}
+                        style={{ background:"none",border:"none",cursor:"pointer",color:THEME.text3,
+                          padding:4,display:"flex",borderRadius:5,transition:"color 0.12s" }}
+                        onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
+                        onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
+                      ><RefreshCw size={12}/></button>
+                    </td>
+                  </tr>
+                );
+              }
+
+              // ── FLAT or SUB-ROW ────────────────────────────────────────────
+              const tx = row;
               const isBuy = tx.type === "BUY";
-              const rowBg = i%2===0?"transparent":"rgba(255,255,255,0.015)";
+              const rowBg = isSubrow
+                ? "rgba(59,130,246,0.04)"
+                : i%2===0?"transparent":"rgba(255,255,255,0.015)";
               return (
-                <tr key={tx.id}
+                <tr key={isSubrow ? `sub-${tx.id}` : tx.id}
                   style={{ height:36, background:rowBg, borderBottom:`1px solid ${THEME.border2}`,
                     transition:"background 0.08s" }}
                   onMouseEnter={e=>{
@@ -2671,7 +2927,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   }}
                 >
                   {/* Type — click to refresh this symbol's quote */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[0])}>
+                  <td style={{ ...tdStyle(TX_COLS_DEFAULT[0]), ...(isSubrow ? { borderLeft:`2px solid rgba(59,130,246,0.3)`, paddingLeft:8, opacity:0.85 } : {}) }}>
                     <button
                       onClick={() => onRefreshSymbol && onRefreshSymbol(tx.symbol)}
                       title={`Refresh ${tx.symbol} quote`}
@@ -2927,6 +3183,42 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 // ════════════════════════════════════════════════════════════════════════════
 // ADD TRANSACTION MODAL  (with auto-lookup)
 // ════════════════════════════════════════════════════════════════════════════
+
+const PERIODICITY_OPTIONS = [
+  { value: "daily",         label: "Täglich",         description: "Jeden Tag"      },
+  { value: "weekly",        label: "Wöchentlich",     description: "Alle 7 Tage"    },
+  { value: "monthly",       label: "Monatlich",       description: "Jeden Monat"    },
+  { value: "quarterly",     label: "Vierteljährlich", description: "Alle 3 Monate"  },
+  { value: "semi-annually", label: "Halbjährlich",    description: "Alle 6 Monate"  },
+  { value: "annually",      label: "Jährlich",        description: "Einmal pro Jahr" },
+];
+
+function generatePeriodDates(startDate, endDate, periodicity) {
+  if (!startDate || !endDate) return [];
+  const [sy, sm, sd] = startDate.split("-").map(Number);
+  const [ey, em, ed] = endDate.split("-").map(Number);
+  const endMs = Date.UTC(ey, em - 1, ed);
+  const dates = [];
+  let y = sy, mo = sm - 1, d = sd;
+  for (let i = 0; i < 1000; i++) { // safety cap
+    const cur = Date.UTC(y, mo, d);
+    if (cur > endMs) break;
+    dates.push(`${y}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
+    switch (periodicity) {
+      case "daily":         d  += 1;  break;
+      case "weekly":        d  += 7;  break;
+      case "monthly":       mo += 1;  break;
+      case "quarterly":     mo += 3;  break;
+      case "semi-annually": mo += 6;  break;
+      case "annually":      y  += 1;  break;
+    }
+    // Normalize overflow (e.g. Jan 31 + 1 month → Feb 28)
+    const norm = new Date(Date.UTC(y, mo, d));
+    y = norm.getUTCFullYear(); mo = norm.getUTCMonth(); d = norm.getUTCDate();
+  }
+  return dates;
+}
+
 function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, initialTx, editMode }) {
   const [portfolioId, setPortfolioId] = useState(initialTx?.portfolio_id ?? defaultPortfolioId ?? portfolios[0]?.id);
   const [type,        setType]        = useState(initialTx?.type?.toLowerCase() || "buy");
@@ -2942,6 +3234,12 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   const [priceEdited, setPriceEdited] = useState(!!initialTx?.price);
   const [error,       setError]       = useState("");
   const lookupTimer = useRef(null);
+
+  // Recurring purchase state
+  const [purchaseMode, setPurchaseMode] = useState("single"); // "single" | "recurring"
+  const [budget,       setBudget]       = useState("");
+  const [periodicity,  setPeriodicity]  = useState("monthly");
+  const [endDate,      setEndDate]      = useState(() => new Date().toISOString().slice(0,10));
 
   // Use refs so the async callback always sees the latest values without stale closures
   const priceEditedRef = useRef(priceEdited);
@@ -2982,21 +3280,47 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   }, [symbol, date, doLookup]);
 
   const handleAdd = async () => {
-    const sym = symbol.trim().toUpperCase();
-    if (!sym||!qty||!price||!portfolioId) return;
-    const qtyN = parseFloat(qty), priceN = parseFloat(price);
-    if (isNaN(qtyN)||qtyN<=0||isNaN(priceN)||priceN<=0) { setError("Quantity and price must be positive"); return; }
-    setBusy(true);
-    try {
-      let price_usd = priceN;
-      if (currency !== "USD") {
-        try { const hist = await fxApi.historical(date, currency, "USD"); price_usd = priceN * (hist?.rate ?? (1/(rates[currency]??1))); }
-        catch { price_usd = priceN / (rates[currency]??1); }
-      }
-      await onAdd(portfolioId, { symbol:sym, name:name||sym, quantity:qtyN, price:priceN, price_usd, date, type, currency });
-      onClose();
-    } catch(e) { setError(e.message); }
-    setBusy(false);
+    const sym    = symbol.trim().toUpperCase();
+    const priceN = parseFloat(price);
+    if (!sym || !portfolioId || isNaN(priceN) || priceN <= 0) {
+      setError("Symbol and a valid price are required"); return;
+    }
+
+    if (purchaseMode === "recurring") {
+      const budgetN = parseFloat(budget);
+      if (isNaN(budgetN) || budgetN <= 0) { setError("Budget must be a positive number"); return; }
+      if (pastRecurDates.length === 0) { setError("Keine vergangenen Kauftermine — Start Date in der Vergangenheit setzen"); return; }
+      setBusy(true);
+      try {
+        // Use start-date FX rate for all transactions (one API call instead of N)
+        let price_usd = priceN;
+        if (currency !== "USD") {
+          try { const hist = await fxApi.historical(date, currency, "USD"); price_usd = priceN * (hist?.rate ?? (1/(rates[currency]??1))); }
+          catch { price_usd = priceN / (rates[currency]??1); }
+        }
+        const qtyN = budgetN / priceN;
+        for (const d of pastRecurDates) {
+          await onAdd(portfolioId, { symbol:sym, name:name||sym, quantity:qtyN, price:priceN, price_usd, date:d, type, currency });
+        }
+        onClose();
+      } catch(e) { setError(e.message); }
+      setBusy(false);
+    } else {
+      if (!qty) return;
+      const qtyN = parseFloat(qty);
+      if (isNaN(qtyN) || qtyN <= 0) { setError("Quantity and price must be positive"); return; }
+      setBusy(true);
+      try {
+        let price_usd = priceN;
+        if (currency !== "USD") {
+          try { const hist = await fxApi.historical(date, currency, "USD"); price_usd = priceN * (hist?.rate ?? (1/(rates[currency]??1))); }
+          catch { price_usd = priceN / (rates[currency]??1); }
+        }
+        await onAdd(portfolioId, { symbol:sym, name:name||sym, quantity:qtyN, price:priceN, price_usd, date, type, currency });
+        onClose();
+      } catch(e) { setError(e.message); }
+      setBusy(false);
+    }
   };
 
   const lookupOk  = lookupMsg.startsWith("ok:");
@@ -3005,6 +3329,23 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   const lookupDate       = lookupParts ? lookupParts[0] : null;
   const lookupHistorical = lookupParts ? lookupParts[1] === "1" : false;
   const lookupDaysOff    = lookupParts ? parseInt(lookupParts[2] ?? "0") : 0;
+
+  // Recurring computed
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const recurDates = useMemo(() => {
+    if (purchaseMode !== "recurring") return [];
+    return generatePeriodDates(date, endDate, periodicity);
+  }, [purchaseMode, date, endDate, periodicity]);
+
+  // Only past dates get booked as actual transactions
+  const pastRecurDates   = useMemo(() => recurDates.filter(d => d <= todayStr), [recurDates, todayStr]);
+  const futureRecurDates = useMemo(() => recurDates.filter(d => d >  todayStr), [recurDates, todayStr]);
+
+  const fracQty = useMemo(() => {
+    const b = parseFloat(budget), p = parseFloat(price);
+    return (!isNaN(b) && b > 0 && !isNaN(p) && p > 0) ? b / p : null;
+  }, [budget, price]);
 
   return (
     <Modal title={editMode?"Edit Transaction":"Add Transaction"} onClose={onClose}>
@@ -3030,7 +3371,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
       )}
 
       {/* Buy/Sell toggle */}
-      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
         {["buy","sell"].map(t => (
           <button key={t} onClick={() => setType(t)} style={{
             flex:1, padding:"9px 0", borderRadius:10, fontSize:12, fontWeight:700,
@@ -3042,11 +3383,27 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         ))}
       </div>
 
+      {/* Purchase mode toggle — only in add mode */}
+      {!editMode && (
+        <div style={{ display:"flex", marginBottom:16, borderRadius:9, overflow:"hidden",
+          border:`1px solid ${THEME.border}`, background:THEME.surface }}>
+          {[["single","☐ Einmaliger Kauf"],["recurring","↻ Wiederkehrend"]].map(([m, label]) => (
+            <button key={m} onClick={() => setPurchaseMode(m)} style={{
+              flex:1, padding:"7px 0", fontSize:11, fontWeight:700, border:"none",
+              cursor:"pointer", transition:"all 0.15s", fontFamily:THEME.font,
+              background: purchaseMode===m ? "rgba(59,130,246,0.18)" : "transparent",
+              color:       purchaseMode===m ? THEME.accent : THEME.text3,
+              letterSpacing:"0.03em",
+            }}>{label}</button>
+          ))}
+        </div>
+      )}
+
       <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
         {/* Row 1: Date | Symbol  — date first so lookup fires with correct date */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div>
-            <FLabel>Purchase Date</FLabel>
+            <FLabel>{purchaseMode==="recurring" ? "Start Date" : "Purchase Date"}</FLabel>
             <FInput type="date" value={date}
               onChange={e => { setDate(e.target.value); setLookupMsg(""); setPriceEdited(false); }}/>
           </div>
@@ -3057,6 +3414,24 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               onChange={e => { setSymbol(e.target.value.toUpperCase()); setError(""); setLookupMsg(""); }}/>
           </div>
         </div>
+
+        {/* Row 1b: End Date + Periodicity — recurring only */}
+        {purchaseMode === "recurring" && (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div>
+              <FLabel>End Date</FLabel>
+              <FInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)}/>
+            </div>
+            <div>
+              <FLabel>Periodicity</FLabel>
+              <FSelect value={periodicity} onChange={e => setPeriodicity(e.target.value)}>
+                {PERIODICITY_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label} — {o.description}</option>
+                ))}
+              </FSelect>
+            </div>
+          </div>
+        )}
         {/* Row 2: Company name + lookup status */}
         <div>
           <FLabel>
@@ -3080,24 +3455,52 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           </FLabel>
           <FInput placeholder="Auto-filled from symbol…" value={name} onChange={e => setName(e.target.value)}/>
         </div>
-        {/* Row 3: Quantity | Get Price */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"flex-end" }}>
-          <div>
-            <FLabel>Quantity</FLabel>
-            <FInput type="number" min="0" step="any" placeholder="0" value={qty} onChange={e => setQty(e.target.value)}/>
+        {/* Row 3: Quantity (single) OR Budget per period (recurring) */}
+        {purchaseMode === "single" ? (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"flex-end" }}>
+            <div>
+              <FLabel>Quantity</FLabel>
+              <FInput type="number" min="0" step="any" placeholder="0" value={qty} onChange={e => setQty(e.target.value)}/>
+            </div>
+            <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
+              disabled={!symbol||!date||lookupBusy}
+              style={{
+                height:42, padding:"0 16px", borderRadius:10, cursor:"pointer",
+                border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
+                color:lookupBusy?THEME.text3:THEME.accent, fontSize:11, fontWeight:700,
+                fontFamily:"inherit", whiteSpace:"nowrap",
+                opacity:(!symbol||!date)?0.45:1,
+              }}>
+              {lookupBusy ? <span className="spin">⟳</span> : "⬇ Get Price"}
+            </button>
           </div>
-          <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
-            disabled={!symbol||!date||lookupBusy}
-            style={{
-              height:42, padding:"0 16px", borderRadius:10, cursor:"pointer",
-              border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
-              color:lookupBusy?THEME.text3:THEME.accent, fontSize:11, fontWeight:700,
-              fontFamily:"inherit", whiteSpace:"nowrap",
-              opacity:(!symbol||!date)?0.45:1,
-            }}>
-            {lookupBusy ? <span className="spin">⟳</span> : "⬇ Get Price"}
-          </button>
-        </div>
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"flex-end" }}>
+            <div>
+              <FLabel>Budget per Period</FLabel>
+              <FInput type="number" min="0" step="any" placeholder="100.00"
+                value={budget} onChange={e => setBudget(e.target.value)}/>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, paddingBottom:2 }}>
+              <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
+                disabled={!symbol||!date||lookupBusy}
+                style={{
+                  height:42, padding:"0 14px", borderRadius:10, cursor:"pointer",
+                  border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
+                  color:lookupBusy?THEME.text3:THEME.accent, fontSize:11, fontWeight:700,
+                  fontFamily:"inherit", whiteSpace:"nowrap",
+                  opacity:(!symbol||!date)?0.45:1,
+                }}>
+                {lookupBusy ? <span className="spin">⟳</span> : "⬇ Get Price"}
+              </button>
+              {fracQty != null && (
+                <span style={{ fontSize:10, fontFamily:THEME.mono, color:THEME.text3, whiteSpace:"nowrap" }}>
+                  ≈ {fracQty.toFixed(6)} shares
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         {/* Row 4: Price | Currency */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div style={{ position:"relative" }}>
@@ -3121,17 +3524,109 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         </div>
       </div>
 
+      {/* Recurring preview card */}
+      {purchaseMode === "recurring" && recurDates.length > 0 && budget && price && (
+        <div style={{ marginTop:14, border:`1px solid ${THEME.border}`, borderRadius:10, overflow:"hidden" }}>
+          {/* Header */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+            padding:"9px 14px", background:THEME.surface }}>
+            <span style={{ fontSize:11, fontWeight:700, color:THEME.text2 }}>
+              Sparplan-Vorschau
+            </span>
+            <span style={{ fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
+              {recurDates.length} Termin{recurDates.length!==1?"e":""}
+            </span>
+          </div>
+          {/* Past — will be booked */}
+          {pastRecurDates.length > 0 && (
+            <div style={{ padding:"8px 14px", borderTop:`1px solid ${THEME.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                <span style={{ fontSize:10, fontWeight:700, color:THEME.green, letterSpacing:"0.05em" }}>
+                  ✓ WIRD GEBUCHT ({pastRecurDates.length})
+                </span>
+                <span style={{ fontSize:10, fontFamily:THEME.mono, color:THEME.green }}>
+                  {((parseFloat(budget)||0) * pastRecurDates.length).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})} {currency}
+                </span>
+              </div>
+              {fracQty != null && (
+                <div style={{ fontSize:10, color:THEME.text3, marginBottom:6, fontFamily:THEME.mono }}>
+                  {fracQty.toFixed(6)} Anteile × {pastRecurDates.length} = {(fracQty * pastRecurDates.length).toFixed(4)} Anteile
+                </div>
+              )}
+              <div style={{ display:"flex", flexWrap:"wrap", gap:3 }}>
+                {pastRecurDates.slice(0,8).map(d => (
+                  <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, color:THEME.green,
+                    background:"rgba(74,222,128,0.08)", border:`1px solid rgba(74,222,128,0.2)`,
+                    borderRadius:4, padding:"2px 5px" }}>{d}</span>
+                ))}
+                {pastRecurDates.length > 8 && (
+                  <span style={{ fontSize:9, color:THEME.text3, padding:"2px 4px" }}>
+                    +{pastRecurDates.length - 8} weitere
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {/* Future — planned rule, not booked */}
+          {futureRecurDates.length > 0 && (
+            <div style={{ padding:"8px 14px", borderTop:`1px solid ${THEME.border}`,
+              background:"rgba(255,255,255,0.02)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                <span style={{ fontSize:10, fontWeight:700, color:THEME.text3, letterSpacing:"0.05em" }}>
+                  ↻ GEPLANT, NOCH NICHT FÄLLIG ({futureRecurDates.length})
+                </span>
+                <span style={{ fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
+                  {((parseFloat(budget)||0) * futureRecurDates.length).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})} {currency}
+                </span>
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:3 }}>
+                {futureRecurDates.slice(0,5).map(d => (
+                  <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, color:THEME.text3,
+                    background:THEME.surface2, border:`1px solid ${THEME.border2}`,
+                    borderRadius:4, padding:"2px 5px", opacity:0.7 }}>{d}</span>
+                ))}
+                {futureRecurDates.length > 5 && (
+                  <span style={{ fontSize:9, color:THEME.text3, padding:"2px 4px", opacity:0.6 }}>
+                    +{futureRecurDates.length - 5} weitere…
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {purchaseMode === "recurring" && date && endDate && date > endDate && (
+        <div style={{ fontSize:11, color:THEME.red, marginTop:10 }}>
+          ⚠ Start Date muss vor End Date liegen
+        </div>
+      )}
+      {purchaseMode === "recurring" && recurDates.length > 0 && pastRecurDates.length === 0 && (
+        <div style={{ fontSize:11, color:"#f59e0b", marginTop:10 }}>
+          ⚠ Alle Termine liegen in der Zukunft — noch keine Käufe zum Buchen
+        </div>
+      )}
+
       {error && <div style={{ fontSize:12, color:THEME.red, marginTop:10 }}>{error}</div>}
       <div style={{ display:"flex", gap:10, marginTop:20 }}>
         <button onClick={onClose} style={{ flex:1, padding:"11px 0", borderRadius:10,
           border:`1px solid ${THEME.border}`, background:"transparent",
           color:THEME.text3, cursor:"pointer", fontSize:13, fontWeight:600 }}>Cancel</button>
-        <button onClick={handleAdd} disabled={!symbol||!qty||!price||busy}
+        <button onClick={handleAdd}
+          disabled={purchaseMode==="single"
+            ? (!symbol||!qty||!price||busy)
+            : (!symbol||!budget||!price||pastRecurDates.length===0||busy)}
           style={{ flex:2, padding:"11px 0", borderRadius:10, border:"none",
             background:type==="buy"?THEME.accent:THEME.red, color:"#fff",
             cursor:"pointer", fontSize:13, fontWeight:700,
-            opacity:(!symbol||!qty||!price||busy)?0.5:1 }}>
-          {busy?"Saving…":editMode?"Save Changes":`Add ${type==="buy"?"Buy":"Sell"}`}
+            opacity:(purchaseMode==="single"
+              ? (!symbol||!qty||!price||busy)
+              : (!symbol||!budget||!price||pastRecurDates.length===0||busy)
+            ) ? 0.5 : 1 }}>
+          {busy
+            ? `Saving…`
+            : purchaseMode==="recurring"
+              ? `✓ ${pastRecurDates.length} Kauf${pastRecurDates.length!==1?"käufe":""} buchen`
+              : editMode ? "Save Changes" : `Add ${type==="buy"?"Buy":"Sell"}`}
         </button>
       </div>
     </Modal>
