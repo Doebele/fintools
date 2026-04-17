@@ -217,7 +217,8 @@ const quotesApi = {
   }),
   raw: (symbol, refresh=false, range="2y", interval="1d") =>
     apiFetch(`/quotes/yahoo/${symbol}${refresh?"?refresh=1":""}${range!=="2y"?`${refresh?"&":"?"}range=${range}`:""}${interval!=="1d"?`&interval=${interval}`:""}`),
-  lookup: (symbol, date) => apiFetch(`/quotes/lookup/${symbol}/${date}`),
+  lookup:       (symbol, date)         => apiFetch(`/quotes/lookup/${symbol}/${date}`),
+  historyMulti: (symbols, range="2y")  => apiFetch("/quotes/history-multi", { method:"POST", body: JSON.stringify({ symbols, range }) }),
 };
 const fxApi = {
   all:        ()               => apiFetch("/fx/all"),
@@ -2451,6 +2452,559 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
             compact/>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── PerformanceView ───────────────────────────────────────────────────────────
+function niceStep(rough) {
+  const mag = Math.pow(10, Math.floor(Math.log10(Math.max(rough, 1e-9))));
+  const n   = rough / mag;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
+}
+
+function PerformanceView({ portfolios, allTransactions, currency, rates, quotes }) {
+  const RANGES = [
+    { label:"1M",  value:"1mo"  },
+    { label:"3M",  value:"3mo"  },
+    { label:"6M",  value:"6mo"  },
+    { label:"YTD", value:"ytd"  },
+    { label:"1Y",  value:"1y"   },
+    { label:"2Y",  value:"2y"   },
+    { label:"Max", value:"max"  },
+  ];
+
+  const [range,      setRange]      = useState("1y");
+  const [histData,   setHistData]   = useState(null);   // { SYM: [[date, price], ...] }
+  const [loading,    setLoading]    = useState(false);
+  const [hoverIdx,   setHoverIdx]   = useState(null);   // index into valueSeries
+  const [txPopover,  setTxPopover]  = useState(null);   // { marker, clientX, clientY }
+  const svgRef      = useRef(null);
+  const containerRef = useRef(null);
+  const { w, h } = useSize(containerRef);
+
+  // Flatten transactions (all portfolios)
+  const allTxFlat = useMemo(() => {
+    const rows = [];
+    for (const p of portfolios) {
+      for (const tx of (allTransactions[p.id] ?? [])) {
+        rows.push({ ...tx, portfolioId:p.id, portfolioColor:p.color, portfolioName:p.name });
+      }
+    }
+    return rows.sort((a, b) => a.date.localeCompare(b.date));
+  }, [portfolios, allTransactions]);
+
+  const allSymbols = useMemo(() => [...new Set(allTxFlat.map(t => t.symbol))], [allTxFlat]);
+
+  // Fetch historical data
+  useEffect(() => {
+    if (!allSymbols.length) return;
+    setLoading(true);
+    setHistData(null);
+    setHoverIdx(null);
+    quotesApi.historyMulti(allSymbols, range)
+      .then(res => setHistData(res.results ?? {}))
+      .catch(() => setHistData({}))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allSymbols.join(","), range]);
+
+  // Build price lookup: sym → Map(date → price in native ccy)
+  const priceMaps = useMemo(() => {
+    if (!histData) return {};
+    const out = {};
+    for (const [sym, series] of Object.entries(histData)) {
+      if (!series?.length) continue;
+      out[sym] = new Map(series.map(([d, p]) => [d, p]));
+    }
+    return out;
+  }, [histData]);
+
+  // FX helpers
+  const toUSD = useCallback((price, sym) => {
+    const q = quotes[sym];
+    if (!q?.currency || q.currency === "USD") return price;
+    return (rates[q.currency] ?? 1) > 0 ? price / (rates[q.currency] ?? 1) : price;
+  }, [quotes, rates]);
+
+  // Compute portfolio value series + cost series
+  const { valueSeries, costSeries } = useMemo(() => {
+    if (!histData || !Object.keys(priceMaps).length) return { valueSeries:[], costSeries:[] };
+
+    // Union of dates across all series, sorted
+    const allDatesSet = new Set();
+    for (const series of Object.values(histData)) {
+      if (series) for (const [d] of series) allDatesSet.add(d);
+    }
+    const dates = [...allDatesSet].sort();
+    if (!dates.length) return { valueSeries:[], costSeries:[] };
+
+    const usdToDisp = currency === "USD" ? 1 : (rates[currency] ?? 1);
+
+    // Running state
+    const qtyState  = {};   // sym → qty held
+    const symCost   = {};   // sym → cost basis in USD (per-symbol, for correct SELL accounting)
+    const lastPrice = {};   // sym → last known price in USD (carry-forward for missing dates)
+    let   txCursor  = 0;    // pointer into allTxFlat (sorted by date)
+
+    const valueSeries = [];
+    const costSeries  = [];
+
+    for (const date of dates) {
+      // Advance transactions up to this date
+      while (txCursor < allTxFlat.length && allTxFlat[txCursor].date <= date) {
+        const tx  = allTxFlat[txCursor++];
+        const sym = tx.symbol;
+        if (!qtyState[sym]) { qtyState[sym] = 0; symCost[sym] = 0; }
+        if (tx.type === "BUY") {
+          qtyState[sym] += tx.quantity;
+          symCost[sym]  += tx.quantity * (tx.price_usd || tx.price);
+        } else {
+          // Per-symbol average cost basis for SELL
+          const symAvg = qtyState[sym] > 0 ? symCost[sym] / qtyState[sym] : 0;
+          qtyState[sym] = Math.max(0, qtyState[sym] - tx.quantity);
+          symCost[sym]  = Math.max(0, symCost[sym] - tx.quantity * symAvg);
+        }
+      }
+
+      // Update carry-forward prices from today's data
+      for (const sym of Object.keys(qtyState)) {
+        const pm = priceMaps[sym];
+        if (!pm) continue;
+        const p = pm.get(date);
+        if (p != null && p > 0) lastPrice[sym] = toUSD(p, sym);
+      }
+
+      // Compute portfolio value — use carry-forward price if today's is missing
+      let value   = 0;
+      let runCost = 0;
+      for (const [sym, qty] of Object.entries(qtyState)) {
+        if (qty <= 0) continue;
+        const priceUSD = lastPrice[sym];
+        if (priceUSD != null && priceUSD > 0) value += qty * priceUSD;
+        runCost += symCost[sym] ?? 0;
+      }
+      if (value <= 0 && valueSeries.length === 0) continue; // skip leading zeros
+
+      valueSeries.push({ date, value: value   * usdToDisp });
+      costSeries.push({  date, cost:  runCost * usdToDisp });
+    }
+
+    return { valueSeries, costSeries };
+  }, [histData, priceMaps, allTxFlat, toUSD, currency, rates]);
+
+  // ── Chart geometry ────────────────────────────────────────────────────────
+  const PAD = { top:24, right:20, bottom:88, left:72 };
+  const CW  = Math.max(1, w - PAD.left - PAD.right);
+  const CH  = Math.max(1, h - 130 - PAD.top - PAD.bottom); // 130 = stats bar
+
+  // Y scale
+  const { minV, maxV, yTicks } = useMemo(() => {
+    if (!valueSeries.length) return { minV:0, maxV:1, yTicks:[] };
+    const vals  = valueSeries.map(d => d.value);
+    const costs = costSeries.map(d => d.cost).filter(v => v > 0);
+    const allV  = [...vals, ...costs];
+    const mn = Math.min(...allV) * 0.97;
+    const mx = Math.max(...allV) * 1.03;
+    const step  = niceStep((mx - mn) / 5);
+    const start = Math.floor(mn / step) * step;
+    const ticks = [];
+    for (let v = start; v <= mx + step * 0.5; v += step) ticks.push(v);
+    return { minV: mn, maxV: mx, yTicks: ticks.filter(t => t >= mn && t <= mx + step) };
+  }, [valueSeries, costSeries]);
+
+  const xS = useCallback((i) =>
+    valueSeries.length < 2 ? 0 : (i / (valueSeries.length - 1)) * CW
+  , [valueSeries.length, CW]);
+
+  const yS = useCallback((v) =>
+    CH - ((v - minV) / Math.max(1, maxV - minV)) * CH
+  , [CH, minV, maxV]);
+
+  // SVG paths
+  const valuePath = useMemo(() => {
+    if (valueSeries.length < 2) return "";
+    return valueSeries.map((d, i) => `${i===0?"M":"L"}${xS(i).toFixed(1)},${yS(d.value).toFixed(1)}`).join(" ");
+  }, [valueSeries, xS, yS]);
+
+  const costPath = useMemo(() => {
+    if (costSeries.length < 2) return "";
+    return costSeries.map((d, i) => `${i===0?"M":"L"}${xS(i).toFixed(1)},${yS(d.cost).toFixed(1)}`).join(" ");
+  }, [costSeries, xS, yS]);
+
+  const areaPath = useMemo(() => {
+    if (valueSeries.length < 2) return "";
+    const line = valueSeries.map((d, i) => `${i===0?"M":"L"}${xS(i).toFixed(1)},${yS(d.value).toFixed(1)}`).join(" ");
+    return `${line} L${xS(valueSeries.length-1).toFixed(1)},${CH} L0,${CH} Z`;
+  }, [valueSeries, xS, yS, CH]);
+
+  // X-axis tick labels
+  const xTicks = useMemo(() => {
+    if (valueSeries.length < 2) return [];
+    const n = valueSeries.length;
+    const target = Math.max(3, Math.min(8, Math.floor(CW / 80)));
+    const step = Math.ceil(n / target);
+    const ticks = [];
+    for (let i = 0; i < n; i += step) ticks.push(i);
+    if (ticks[ticks.length-1] !== n-1) ticks.push(n-1);
+    return ticks;
+  }, [valueSeries.length, CW]);
+
+  // Transaction markers (grouped by date)
+  const txMarkers = useMemo(() => {
+    if (!valueSeries.length) return [];
+    const n = valueSeries.length;
+    const dateToIdx = new Map(valueSeries.map((d, i) => [d.date, i]));
+    const grouped = {};
+    for (const tx of allTxFlat) {
+      if (!grouped[tx.date]) grouped[tx.date] = [];
+      grouped[tx.date].push(tx);
+    }
+    return Object.entries(grouped).map(([date, txs]) => {
+      let idx = dateToIdx.get(date);
+      if (idx == null) {
+        // Find nearest date in series
+        for (let i = 0; i < n; i++) {
+          if (valueSeries[i].date >= date) { idx = i; break; }
+        }
+        if (idx == null) idx = n - 1;
+      }
+      const hasBuy  = txs.some(t => t.type === "BUY");
+      const hasSell = txs.some(t => t.type === "SELL");
+      return { date, txs, idx, hasBuy, hasSell };
+    }).filter(m => m.idx != null && m.idx >= 0 && m.idx < n);
+  }, [allTxFlat, valueSeries]);
+
+  // Stats
+  const stats = useMemo(() => {
+    if (!valueSeries.length) return null;
+    const first = valueSeries[0].value;
+    const last  = valueSeries[valueSeries.length - 1].value;
+    const cost  = costSeries.length ? costSeries[costSeries.length - 1].cost : 0;
+    const periodChange    = last - first;
+    // Only show period % if the starting value is substantial (avoids near-zero distortion from early capital inflows)
+    const minThreshold    = 100; // in display currency
+    const periodChangePct = first >= minThreshold ? (periodChange / first) * 100 : null;
+    const glAbs = cost > 0 ? last - cost : null;
+    const glPct = cost > 0 ? ((last - cost) / cost) * 100 : null;
+    // Best/worst day — only consider days with NO transaction (pure market movement)
+    const txDateSet = new Set(allTxFlat.map(t => t.date));
+    let bestDay = null, worstDay = null;
+    for (let i = 1; i < valueSeries.length; i++) {
+      const d = valueSeries[i].date;
+      if (txDateSet.has(d)) continue; // skip capital-inflow days
+      const prev = valueSeries[i-1].value;
+      if (prev <= 0) continue;
+      const pct = ((valueSeries[i].value - prev) / prev) * 100;
+      if (bestDay  == null || pct > bestDay.pct)  bestDay  = { date: d, pct };
+      if (worstDay == null || pct < worstDay.pct) worstDay = { date: d, pct };
+    }
+    return { first, last, cost, periodChange, periodChangePct, glAbs, glPct, bestDay, worstDay };
+  }, [valueSeries, costSeries, allTxFlat]);
+
+  // ── Interaction ────────────────────────────────────────────────────────────
+  const handleMouseMove = useCallback((e) => {
+    if (!svgRef.current || valueSeries.length < 2) return;
+    const rect     = svgRef.current.getBoundingClientRect();
+    const bodyZoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    const mx       = (e.clientX - rect.left) / bodyZoom - PAD.left;
+    if (mx < 0 || mx > CW) { setHoverIdx(null); return; }
+    const idx = Math.max(0, Math.min(valueSeries.length - 1,
+      Math.round((mx / CW) * (valueSeries.length - 1))));
+    setHoverIdx(idx);
+  }, [valueSeries.length, CW]);
+
+  // Format helpers
+  const CCY_SYM = { USD:"$", EUR:"€", GBP:"£", CHF:"Fr", JPY:"¥" };
+  const cSym    = CCY_SYM[currency] ?? currency + " ";
+  const fmtV    = (v) => {
+    if (v == null || isNaN(v)) return "—";
+    const abs = Math.abs(v);
+    if (abs >= 1e6) return `${cSym}${(v/1e6).toFixed(2)}M`;
+    if (abs >= 1e3) return `${cSym}${(v/1e3).toFixed(1)}K`;
+    return `${cSym}${v.toFixed(0)}`;
+  };
+  const fmtDate = (d) => {
+    if (!d) return "";
+    const dt = new Date(d + "T00:00:00Z");
+    return dt.toLocaleDateString("de-DE", { day:"2-digit", month:"short", year:"2-digit", timeZone:"UTC" });
+  };
+  const fmtPct  = (v) => v == null ? "—" : `${v>=0?"+":""}${v.toFixed(2)}%`;
+
+  // Hover point
+  const hoverPoint = hoverIdx != null && valueSeries[hoverIdx]
+    ? { ...valueSeries[hoverIdx], idx: hoverIdx }
+    : null;
+
+  const isPositive = stats ? stats.periodChange >= 0 : true;
+  const lineColor  = isPositive ? "#34d399" : "#f87171";  // green / red
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden",
+      background:THEME.bg, fontFamily:THEME.font }}>
+
+      {/* ── Top bar: range selector + stats ─────────────────────────────── */}
+      <div style={{ padding:"10px 20px 0", flexShrink:0 }}>
+        {/* Range buttons */}
+        <div style={{ display:"flex", gap:4, marginBottom:12, alignItems:"center" }}>
+          {RANGES.map(r => (
+            <button key={r.value} onClick={() => setRange(r.value)}
+              style={{ padding:"5px 12px", borderRadius:7, border:"none", cursor:"pointer",
+                background: range===r.value ? "rgba(59,130,246,0.18)" : "transparent",
+                color: range===r.value ? THEME.accent : THEME.text3,
+                fontSize:12, fontWeight: range===r.value ? 700 : 500,
+                fontFamily:THEME.font, transition:"background 0.15s, color 0.15s" }}>
+              {r.label}
+            </button>
+          ))}
+          {loading && <span style={{ fontSize:10, color:THEME.text3, marginLeft:8 }}>⟳ Laden…</span>}
+        </div>
+
+        {/* Stats bar */}
+        {stats && (
+          <div style={{ display:"flex", gap:24, flexWrap:"wrap", marginBottom:10 }}>
+            {[
+              { label:"Aktueller Wert",     val: fmtV(stats.last),           color: THEME.text1 },
+              { label:"Investiert",          val: fmtV(stats.cost),           color: THEME.text2 },
+              { label:`G/L gesamt`,          val: `${fmtV(stats.glAbs)} (${fmtPct(stats.glPct)})`,
+                color: stats.glAbs >= 0 ? THEME.green : THEME.red },
+              { label:`Periode (${RANGES.find(r=>r.value===range)?.label})`,
+                val: `${fmtV(stats.periodChange)} (${fmtPct(stats.periodChangePct)})`,
+                color: stats.periodChange >= 0 ? THEME.green : THEME.red },
+              ...(stats.bestDay  ? [{ label:"Bester Tag",   val:`${fmtPct(stats.bestDay.pct)}  ${fmtDate(stats.bestDay.date)}`,  color:THEME.green }] : []),
+              ...(stats.worstDay ? [{ label:"Schlechtester", val:`${fmtPct(stats.worstDay.pct)}  ${fmtDate(stats.worstDay.date)}`, color:THEME.red }] : []),
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.05em", textTransform:"uppercase" }}>{s.label}</div>
+                <div style={{ fontSize:13, fontWeight:700, color:s.color, fontFamily:THEME.mono, marginTop:1 }}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── SVG Chart ───────────────────────────────────────────────────── */}
+      <div ref={containerRef} style={{ flex:1, position:"relative", overflow:"hidden" }}>
+        {loading && (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+            color:THEME.text3, fontSize:13 }}>Historische Daten werden geladen…</div>
+        )}
+        {!loading && !valueSeries.length && histData != null && (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+            color:THEME.text3, fontSize:13 }}>Keine Daten für den gewählten Zeitraum</div>
+        )}
+
+        {w > 0 && h > 0 && valueSeries.length >= 2 && (
+          <svg ref={svgRef} width={w} height={h - 130}
+            style={{ overflow:"visible", cursor:"crosshair", userSelect:"none" }}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => { setHoverIdx(null); }}>
+
+            <defs>
+              <linearGradient id="perfAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor={lineColor} stopOpacity="0.28"/>
+                <stop offset="100%" stopColor={lineColor} stopOpacity="0.02"/>
+              </linearGradient>
+              <clipPath id="chartClip">
+                <rect x={PAD.left} y={PAD.top} width={CW} height={CH}/>
+              </clipPath>
+            </defs>
+
+            {/* ── Y-axis grid + labels ──────────────────────────────── */}
+            {yTicks.map(v => {
+              const y = yS(v) + PAD.top;
+              if (y < PAD.top - 4 || y > PAD.top + CH + 4) return null;
+              return (
+                <g key={v}>
+                  <line x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y}
+                    stroke="rgba(255,255,255,0.05)" strokeWidth={1}/>
+                  <text x={PAD.left - 6} y={y + 4} textAnchor="end"
+                    fill={THEME.text3} fontSize={9} fontFamily={THEME.mono}>
+                    {fmtV(v)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* ── X-axis labels ─────────────────────────────────────── */}
+            {xTicks.map(i => {
+              const x = xS(i) + PAD.left;
+              return (
+                <text key={i} x={x} y={PAD.top + CH + 16} textAnchor="middle"
+                  fill={THEME.text3} fontSize={9} fontFamily={THEME.mono}>
+                  {fmtDate(valueSeries[i]?.date)}
+                </text>
+              );
+            })}
+
+            {/* ── Chart area clip group ─────────────────────────────── */}
+            <g clipPath="url(#chartClip)" transform={`translate(${PAD.left},${PAD.top})`}>
+              {/* Area fill */}
+              <path d={areaPath} fill="url(#perfAreaGrad)" opacity={0.9}/>
+              {/* Cost basis dashed line */}
+              {costSeries.length >= 2 && (
+                <path d={costPath} fill="none" stroke="rgba(148,163,184,0.45)"
+                  strokeWidth={1.5} strokeDasharray="5 4"/>
+              )}
+              {/* Value line */}
+              <path d={valuePath} fill="none" stroke={lineColor} strokeWidth={2.5} strokeLinejoin="round"/>
+
+              {/* Hover crosshair */}
+              {hoverPoint && (
+                <>
+                  <line x1={xS(hoverPoint.idx)} y1={0} x2={xS(hoverPoint.idx)} y2={CH}
+                    stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="3 3"/>
+                  <circle cx={xS(hoverPoint.idx)} cy={yS(hoverPoint.value)} r={4}
+                    fill={lineColor} stroke={THEME.bg} strokeWidth={2}/>
+                </>
+              )}
+            </g>
+
+            {/* ── Transaction markers (below chart) ────────────────── */}
+            {txMarkers.map(m => {
+              const mx = xS(m.idx) + PAD.left;
+              const my = PAD.top + CH + 28;
+              const color = m.hasSell && !m.hasBuy ? THEME.red
+                          : m.hasBuy && m.hasSell  ? "#f59e0b"
+                          : THEME.green;
+              return (
+                <g key={m.date}
+                  style={{ cursor:"pointer" }}
+                  onMouseEnter={e => setTxPopover({ marker:m, clientX:e.clientX, clientY:e.clientY })}
+                  onMouseLeave={() => setTxPopover(null)}>
+                  {/* Stem */}
+                  <line x1={mx} y1={PAD.top + CH + 6} x2={mx} y2={my - 7}
+                    stroke={color} strokeWidth={1} strokeOpacity={0.4}/>
+                  {/* Marker circle */}
+                  <circle cx={mx} cy={my} r={5} fill={color} opacity={0.85}
+                    stroke={THEME.bg} strokeWidth={1.5}/>
+                  {m.txs.length > 1 && (
+                    <text x={mx} y={my + 3.5} textAnchor="middle"
+                      fill={THEME.bg} fontSize={6} fontWeight="700">{m.txs.length}</text>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* ── Axes border ───────────────────────────────────────── */}
+            <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH}
+              stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>
+            <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH}
+              stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>
+          </svg>
+        )}
+
+        {/* ── Hover value tooltip ──────────────────────────────────── */}
+        {hoverPoint && w > 0 && (
+          <div style={{ position:"absolute", pointerEvents:"none",
+            left: Math.min(xS(hoverPoint.idx) + PAD.left + 12, w - 160),
+            top:  Math.max(PAD.top, yS(hoverPoint.value) + PAD.top - 40),
+            background:THEME.surface, border:`1px solid ${THEME.border}`,
+            borderRadius:8, padding:"6px 10px", minWidth:140 }}>
+            <div style={{ fontSize:9, color:THEME.text3, marginBottom:2 }}>{fmtDate(hoverPoint.date)}</div>
+            <div style={{ fontSize:14, fontWeight:700, color:lineColor, fontFamily:THEME.mono }}>
+              {fmtV(hoverPoint.value)}
+            </div>
+            {costSeries[hoverPoint.idx] && (
+              <div style={{ fontSize:10, color:THEME.text3, marginTop:2, fontFamily:THEME.mono }}>
+                Investiert: {fmtV(costSeries[hoverPoint.idx].cost)}
+              </div>
+            )}
+            {costSeries[hoverPoint.idx] && costSeries[hoverPoint.idx].cost > 0 && (() => {
+              const gl = hoverPoint.value - costSeries[hoverPoint.idx].cost;
+              const pct = (gl / costSeries[hoverPoint.idx].cost) * 100;
+              return (
+                <div style={{ fontSize:10, fontWeight:700, marginTop:2, fontFamily:THEME.mono,
+                  color: gl >= 0 ? THEME.green : THEME.red }}>
+                  G/L: {fmtV(gl)} ({fmtPct(pct)})
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ── Transaction marker popover ───────────────────────────── */}
+        {txPopover && (() => {
+          const { marker, clientX, clientY } = txPopover;
+          const bodyZoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+          const rect     = containerRef.current?.getBoundingClientRect() ?? { left:0, top:0 };
+          const px       = (clientX - rect.left) / bodyZoom;
+          const py       = (clientY - rect.top)  / bodyZoom;
+          const popW     = 260;
+          const left     = px + popW + 16 > w / bodyZoom ? px - popW - 8 : px + 12;
+          const top      = Math.max(8, py - 20);
+          return (
+            <div style={{ position:"absolute", left, top, width:popW, pointerEvents:"none",
+              background:THEME.surface, border:`1px solid ${THEME.border}`,
+              borderRadius:12, padding:"10px 12px", zIndex:200,
+              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              <div style={{ fontSize:10, color:THEME.text3, marginBottom:8, fontWeight:700,
+                letterSpacing:"0.05em" }}>
+                {marker.txs.length} TRANSAKTION{marker.txs.length>1?"EN":""} · {fmtDate(marker.date)}
+              </div>
+              {marker.txs.map((tx, i) => {
+                const isBuy = tx.type === "BUY";
+                const total = tx.quantity * (tx.price_usd || tx.price);
+                return (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:8,
+                    padding:"5px 0", borderBottom: i < marker.txs.length-1 ? `1px solid ${THEME.border2}` : "none" }}>
+                    <span style={{ padding:"2px 5px", borderRadius:4, fontSize:9, fontWeight:700,
+                      background: isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
+                      color: isBuy ? THEME.green : THEME.red,
+                      border:`1px solid ${isBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
+                      flexShrink:0 }}>{tx.type}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>
+                        {tx.symbol}
+                      </div>
+                      <div style={{ fontSize:10, color:THEME.text2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                        {tx.name}
+                      </div>
+                    </div>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <div style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text1 }}>
+                        {tx.quantity.toLocaleString("en-US",{maximumFractionDigits:4})} × ${parseFloat(tx.price).toFixed(2)}
+                      </div>
+                      <div style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text3, marginTop:1 }}>
+                        = ${total.toLocaleString("en-US",{maximumFractionDigits:0})}
+                      </div>
+                      {tx.portfolioName && (
+                        <div style={{ fontSize:9, color:THEME.text3, marginTop:1, display:"flex", alignItems:"center", gap:3, justifyContent:"flex-end" }}>
+                          <span style={{ width:5, height:5, borderRadius:"50%", background:tx.portfolioColor, display:"inline-block" }}/>
+                          {tx.portfolioName}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* Legend */}
+        {valueSeries.length >= 2 && (
+          <div style={{ position:"absolute", top: PAD.top + 8, right: PAD.right + 8,
+            display:"flex", gap:12, pointerEvents:"none" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+              <svg width={20} height={10}><line x1={0} y1={5} x2={20} y2={5} stroke={lineColor} strokeWidth={2.5}/></svg>
+              <span style={{ fontSize:9, color:THEME.text3 }}>Portfoliowert</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+              <svg width={20} height={10}><line x1={0} y1={5} x2={20} y2={5} stroke="rgba(148,163,184,0.55)" strokeWidth={1.5} strokeDasharray="4 3"/></svg>
+              <span style={{ fontSize:9, color:THEME.text3 }}>Investiert</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <svg width={10} height={10}><circle cx={5} cy={5} r={4} fill={THEME.green} opacity={0.85}/></svg>
+              <span style={{ fontSize:9, color:THEME.text3 }}>Kauf</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <svg width={10} height={10}><circle cx={5} cy={5} r={4} fill={THEME.red} opacity={0.85}/></svg>
+              <span style={{ fontSize:9, color:THEME.text3 }}>Verkauf</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -6413,10 +6967,11 @@ export default function App() {
 
             {/* View tabs */}
             {[
-              { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"   },
-              { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart" },
-              { key:"transactions", icon:<List size={14}/>,            label:"Holdings"  },
-              { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends" },
+              { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"    },
+              { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart"  },
+              { key:"performance",  icon:<TrendingUp  size={14}/>,     label:"Performance"},
+              { key:"transactions", icon:<List size={14}/>,            label:"Holdings"   },
+              { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends"  },
             ].map(t => (
               <button key={t.key} onClick={() => handleTab(t.key)}
                 style={{
@@ -6553,6 +7108,16 @@ export default function App() {
                   colorMode={colorMode} period={period}
                   subView={barSubView}
                   onCellHover={handleCellHover} onCellLeave={handleCellLeave}/>
+              </div>
+            )}
+            {activeTab === "performance" && (
+              <div style={{ height:"100%", overflow:"hidden" }}>
+                <PerformanceView
+                  portfolios={activePortfolios}
+                  allTransactions={allTransactions}
+                  currency={currency}
+                  rates={rates}
+                  quotes={quotes}/>
               </div>
             )}
             {activeTab === "transactions" && viewMode !== "split" && (
