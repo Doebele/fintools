@@ -2481,10 +2481,18 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
     { label:"Monat",   value:"month"   },
     { label:"Quartal", value:"quarter" },
   ];
+  // Ansicht = what each line represents
+  // ┌──────────────────────────────────────────────────────────────┐
+  // │ total            │ all portfolios summed → 1 line            │
+  // │ portfolios       │ one line per portfolio                    │
+  // │ instruments      │ one line per instrument (cross-portfolio) │
+  // │ inst_by_portfolio│ one line per instrument × portfolio       │
+  // └──────────────────────────────────────────────────────────────┘
   const VIEW_MODES = [
-    { label:"Gesamt",     value:"total"       },
-    { label:"Portfolio",  value:"portfolios"  },
-    { label:"Instrument", value:"instruments" },
+    { label:"Gesamt",           value:"total",             short:"Alle Portfolios · konsolidiert"    },
+    { label:"Portfolios",       value:"portfolios",        short:"Je Portfolio eine Linie"           },
+    { label:"Instrumente",      value:"instruments",       short:"Je Instrument · portfolioübergreifend" },
+    { label:"Inst.×Portfolio",  value:"inst_by_portfolio", short:"Je Instrument und Portfolio"       },
   ];
   const LINE_COLORS = [
     "#3b82f6","#34d399","#f59e0b","#ec4899","#8b5cf6",
@@ -2522,6 +2530,9 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
   }, [portfolios, allTransactions]);
 
   const allSymbols = useMemo(() => [...new Set(allTxFlat.map(t => t.symbol))], [allTxFlat]);
+
+  // Reset hidden series whenever the view mode changes
+  useEffect(() => { setHiddenKeys(new Set()); }, [viewMode]);
 
   // ── Fetch historical prices ─────────────────────────────────────────────────
   useEffect(() => {
@@ -2701,6 +2712,28 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
           color: LINE_COLORS[i % LINE_COLORS.length], vs, cs: null };
       }).filter(s => s.vs.length > 0);
     }
+    if (viewMode === "inst_by_portfolio") {
+      // One line per (symbol × portfolio) — e.g. "AAPL · Depot A", "AAPL · Depot B"
+      const result = [];
+      let colorIdx = 0;
+      for (const p of portfolios) {
+        const portTxs = (allTransactions[p.id] ?? []).map(tx => ({
+          ...tx, portfolioId:p.id, portfolioColor:p.color, portfolioName:p.name,
+        }));
+        const portSymbols = [...new Set(portTxs.map(t => t.symbol))];
+        for (const sym of portSymbols) {
+          const vs   = computeSymbolSeries(sym, portTxs);
+          if (!vs.length) continue;
+          result.push({
+            key:   `${p.id}_${sym}`,
+            label: `${sym} · ${p.name}`,
+            color: LINE_COLORS[colorIdx++ % LINE_COLORS.length],
+            vs, cs: null,
+          });
+        }
+      }
+      return result;
+    }
     return [];
   }, [viewMode, histData, resolvedDates, allTxFlat, portfolios, allTransactions, allSymbols,
       computeSeriesForTxList, computeSymbolSeries]);
@@ -2768,7 +2801,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
 
   // ── Chart geometry ──────────────────────────────────────────────────────────
   const CW = Math.max(1, w - PAD.left - PAD.right);
-  const CH = Math.max(1, h - 148 - PAD.top - PAD.bottom);
+  const CH = Math.max(1, h - 168 - PAD.top - PAD.bottom); // 168 = 3 control rows + stats
 
   const { minV, maxV, yTicks } = useMemo(() => {
     const vals = [];
@@ -2882,14 +2915,16 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden",
       background:THEME.bg, fontFamily:THEME.font }}>
 
-      {/* ── Controls: range · resolution · view mode ─────────────────────── */}
+      {/* ── Controls ─────────────────────────────────────────────────────── */}
       <div style={{ padding:"10px 20px 6px", flexShrink:0 }}>
-        <div style={{ display:"flex", gap:2, alignItems:"center", flexWrap:"wrap", marginBottom:8 }}>
 
-          {/* Range */}
+        {/* Row 1 – Zeitraum */}
+        <div style={{ display:"flex", gap:2, alignItems:"center", marginBottom:6 }}>
+          <span style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.07em",
+            textTransform:"uppercase", marginRight:6, minWidth:52 }}>Zeitraum</span>
           {RANGES.map(r => (
             <button key={r.value} onClick={() => setRange(r.value)}
-              style={{ padding:"5px 12px", borderRadius:7, border:"none", cursor:"pointer",
+              style={{ padding:"4px 11px", borderRadius:7, border:"none", cursor:"pointer",
                 background: range===r.value ? "rgba(59,130,246,0.18)" : "transparent",
                 color: range===r.value ? THEME.accent : THEME.text3,
                 fontSize:12, fontWeight: range===r.value ? 700 : 500,
@@ -2897,10 +2932,13 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
               {r.label}
             </button>
           ))}
+          {loading && <span style={{ fontSize:10, color:THEME.text3, marginLeft:8 }}>⟳ Laden…</span>}
+        </div>
 
-          <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 6px" }}/>
-
-          {/* Resolution */}
+        {/* Row 2 – Periodizität */}
+        <div style={{ display:"flex", gap:2, alignItems:"center", marginBottom:6 }}>
+          <span style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.07em",
+            textTransform:"uppercase", marginRight:6, minWidth:52 }}>Auflösung</span>
           {RESOLUTIONS.map(r => (
             <button key={r.value} onClick={() => setResolution(r.value)}
               style={{ padding:"4px 9px", borderRadius:6, border:"none", cursor:"pointer",
@@ -2911,22 +2949,27 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
               {r.label}
             </button>
           ))}
+        </div>
 
-          <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 6px" }}/>
-
-          {/* View mode */}
+        {/* Row 3 – Ansicht (4 modes clearly labelled) */}
+        <div style={{ display:"flex", gap:4, alignItems:"center", marginBottom:8 }}>
+          <span style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.07em",
+            textTransform:"uppercase", marginRight:4, minWidth:52 }}>Ansicht</span>
           {VIEW_MODES.map(v => (
             <button key={v.value} onClick={() => setViewMode(v.value)}
-              style={{ padding:"4px 9px", borderRadius:6, border:"none", cursor:"pointer",
-                background: viewMode===v.value ? "rgba(249,115,22,0.18)" : "transparent",
+              title={v.short}
+              style={{ padding:"5px 12px", borderRadius:7, cursor:"pointer",
+                border: viewMode===v.value
+                  ? "1px solid rgba(249,115,22,0.4)"
+                  : "1px solid rgba(255,255,255,0.06)",
+                background: viewMode===v.value ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.03)",
                 color: viewMode===v.value ? "#fb923c" : THEME.text3,
                 fontSize:11, fontWeight: viewMode===v.value ? 700 : 500,
-                fontFamily:THEME.font, transition:"background 0.15s" }}>
+                fontFamily:THEME.font, transition:"all 0.15s",
+                whiteSpace:"nowrap" }}>
               {v.label}
             </button>
           ))}
-
-          {loading && <span style={{ fontSize:10, color:THEME.text3, marginLeft:6 }}>⟳ Laden…</span>}
         </div>
 
         {/* Stats */}
@@ -2972,7 +3015,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes 
         )}
 
         {w > 0 && h > 0 && visibleSeries.length > 0 && nPts >= 2 && (
-          <svg ref={svgRef} width={w} height={h - 148}
+          <svg ref={svgRef} width={w} height={h - 168}
             style={{ overflow:"visible", cursor:"crosshair", userSelect:"none" }}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => { setHoverIdx(null); setTxPopover(null); setDivPopover(null); }}>
