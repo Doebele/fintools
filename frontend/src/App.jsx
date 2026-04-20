@@ -218,7 +218,8 @@ const quotesApi = {
   raw: (symbol, refresh=false, range="2y", interval="1d") =>
     apiFetch(`/quotes/yahoo/${symbol}${refresh?"?refresh=1":""}${range!=="2y"?`${refresh?"&":"?"}range=${range}`:""}${interval!=="1d"?`&interval=${interval}`:""}`),
   lookup:       (symbol, date)         => apiFetch(`/quotes/lookup/${symbol}/${date}`),
-  historyMulti:   (symbols, range="2y") => apiFetch("/quotes/history-multi",    { method:"POST", body: JSON.stringify({ symbols, range }) }),
+  historyMulti:        (symbols, range="2y") => apiFetch("/quotes/history-multi",         { method:"POST", body: JSON.stringify({ symbols, range }) }),
+  historyMultiIntraday:(symbols)            => apiFetch("/quotes/history-multi-intraday", { method:"POST", body: JSON.stringify({ symbols }) }),
   dividendsMulti: (symbols, range="2y") => apiFetch("/quotes/dividends-multi", { method:"POST", body: JSON.stringify({ symbols, range }) }),
 };
 const fxApi = {
@@ -2476,48 +2477,67 @@ function niceStep(rough) {
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
 }
 
-function PerformanceView({ portfolios, allTransactions, currency, rates, quotes, period = "1Y" }) {
-  // ── Range derived from the global period toolbar (no local state needed) ──
-  const range = PERIOD_TO_RANGE[period] ?? "1y";
+// Popular benchmark ETFs / indices for comparison overlay
+const BENCHMARKS = [
+  { sym:"SPY",    label:"S&P 500"          },
+  { sym:"QQQ",    label:"NASDAQ 100"       },
+  { sym:"URTH",   label:"MSCI World"       },
+  { sym:"EEM",    label:"MSCI EM"          },
+  { sym:"GLD",    label:"Gold"             },
+  { sym:"TLT",    label:"US Bonds 20Y"     },
+  { sym:"EWG",    label:"DAX (EWG)"        },
+  { sym:"FEZ",    label:"Euro Stoxx 50"    },
+  { sym:"MCHI",   label:"MSCI China"       },
+  { sym:"VNQ",    label:"US Real Estate"   },
+];
+
+function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
+                           period = "1Y", viewMode: portViewMode = "consolidated",
+                           ansicht = "portfolio",
+                           benchSymbols = [], setBenchSymbols,
+                           instrOverlays = [], setInstrOverlays,
+                           onSymbolsChange }) {
+  // ── Range derived from the global period toolbar ────────────────────────────
+  const range       = PERIOD_TO_RANGE[period] ?? "1y";
   const periodLabel = period === "Intraday" ? "1D" : period;
-  const RESOLUTIONS = [
-    { label:"Tag",     value:"day"     },
-    { label:"Woche",   value:"week"    },
-    { label:"Monat",   value:"month"   },
-    { label:"Quartal", value:"quarter" },
-  ];
-  // Ansicht = what each line represents
-  // ┌──────────────────────────────────────────────────────────────┐
-  // │ total            │ all portfolios summed → 1 line            │
-  // │ portfolios       │ one line per portfolio                    │
-  // │ instruments      │ one line per instrument (cross-portfolio) │
-  // │ inst_by_portfolio│ one line per instrument × portfolio       │
-  // └──────────────────────────────────────────────────────────────┘
-  const VIEW_MODES = [
-    { label:"Gesamt",           value:"total",             short:"Alle Portfolios · konsolidiert"    },
-    { label:"Portfolios",       value:"portfolios",        short:"Je Portfolio eine Linie"           },
-    { label:"Instrumente",      value:"instruments",       short:"Je Instrument · portfolioübergreifend" },
-    { label:"Inst.×Portfolio",  value:"inst_by_portfolio", short:"Je Instrument und Portfolio"       },
+
+  // ── Ansicht: Portfolio view vs. per-Instrument view ─────────────────────────
+  // Combined with portViewMode (consolidated/aggregated) this drives the 4 modes:
+  //   consolidated + portfolio   → total (1 line)
+  //   aggregated   + portfolio   → portfolios (1 line per portfolio)
+  //   consolidated + instruments → instruments (1 line per symbol)
+  //   aggregated   + instruments → inst_by_portfolio (1 line per symbol×portfolio)
+  const ANSICHT_MODES = [
+    { label:"Portfolio",   value:"portfolio",   tip:"Portfoliowert (gesamt oder je Portfolio)" },
+    { label:"Instrumente", value:"instruments", tip:"Je Instrument eine Linie"                 },
   ];
   const LINE_COLORS = [
     "#3b82f6","#34d399","#f59e0b","#ec4899","#8b5cf6",
     "#06b6d4","#f97316","#a78bfa","#10b981","#fb923c",
   ];
+  const BENCH_COLORS = [
+    "#94a3b8","#cbd5e1","#e2e8f0","#f1f5f9","#64748b",
+    "#475569","#334155","#1e293b","#0f172a","#c0c8d0",
+  ];
 
-  const PAD = { top:24, right:20, bottom:96, left:72 };
+  // Resolution is always "day" — controlled externally via period buttons
+  const resolution = "day";
+
+  const PAD = { top:24, right:20, bottom:64, left:72 };
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [resolution,   setResolution]   = useState("day");
-  const [viewMode,     setViewMode]     = useState("total");
-  const [hiddenKeys,   setHiddenKeys]   = useState(new Set());
-  const [showCost,     setShowCost]     = useState(true);
-  const [showDivs,     setShowDivs]     = useState(true);
-  const [histData,     setHistData]     = useState(null);
-  const [divData,      setDivData]      = useState(null);
-  const [loading,      setLoading]      = useState(false);
-  const [hoverIdx,     setHoverIdx]     = useState(null);
-  const [txPopover,    setTxPopover]    = useState(null);
-  const [divPopover,   setDivPopover]   = useState(null);
+  const [hiddenKeys,  setHiddenKeys]  = useState(new Set());
+  const [showCost,    setShowCost]    = useState(true);
+  const [showDivs,    setShowDivs]    = useState(true);
+  const [yMode,       setYMode]       = useState("abs"); // "abs" | "rel" | "pct"
+  const [histData,        setHistData]        = useState(null);
+  const [divData,         setDivData]         = useState(null);
+  const [loading,         setLoading]         = useState(false);
+  const [intradayHistData,setIntradayHistData] = useState(null);
+  const [intradayLoading, setIntradayLoading] = useState(false);
+  const [hoverIdx,    setHoverIdx]    = useState(null);
+  const [txPopover,   setTxPopover]   = useState(null);
+  const [divPopover,  setDivPopover]  = useState(null);
   const svgRef       = useRef(null);
   const containerRef = useRef(null);
   const { w, h }     = useSize(containerRef);
@@ -2535,23 +2555,42 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
   const allSymbols = useMemo(() => [...new Set(allTxFlat.map(t => t.symbol))], [allTxFlat]);
 
-  // Reset hidden series whenever the view mode changes
-  useEffect(() => { setHiddenKeys(new Set()); }, [viewMode]);
+  // All symbols to fetch: portfolio symbols + active benchmarks + instrument overlays
+  const fetchSymbols = useMemo(() =>
+    [...new Set([...allSymbols, ...benchSymbols, ...instrOverlays])],
+  [allSymbols, benchSymbols, instrOverlays]);
+
+  // Reset hidden series whenever the portfolio view mode or ansicht changes
+  useEffect(() => { setHiddenKeys(new Set()); }, [portViewMode, ansicht]);
+
+  // Report allSymbols up so App can build the picker
+  useEffect(() => { onSymbolsChange?.(allSymbols); }, [allSymbols, onSymbolsChange]);
 
   // ── Fetch historical prices ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!allSymbols.length) return;
+    if (!fetchSymbols.length) return;
     setLoading(true);
     setHistData(null);
     setHoverIdx(null);
-    quotesApi.historyMulti(allSymbols, range)
+    quotesApi.historyMulti(fetchSymbols, range)
       .then(res => setHistData(res.results ?? {}))
       .catch(() => setHistData({}))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allSymbols.join(","), range]);
+  }, [fetchSymbols.join(","), range]);
 
-  // ── Fetch dividends ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (period !== "Intraday" || !fetchSymbols.length) { setIntradayHistData(null); return; }
+    setIntradayLoading(true);
+    setIntradayHistData(null);
+    quotesApi.historyMultiIntraday(fetchSymbols)
+      .then(res => setIntradayHistData(res.results ?? {}))
+      .catch(() => setIntradayHistData({}))
+      .finally(() => setIntradayLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchSymbols.join(","), period]);
+
+  // ── Fetch dividends (portfolio symbols only) ────────────────────────────────
   useEffect(() => {
     if (!allSymbols.length) return;
     quotesApi.dividendsMulti(allSymbols, range)
@@ -2570,6 +2609,25 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     }
     return out;
   }, [histData]);
+
+  const intradayPriceMaps = useMemo(() => {
+    if (!intradayHistData) return null;
+    const out = {};
+    for (const [sym, series] of Object.entries(intradayHistData)) {
+      if (!series?.length) continue;
+      out[sym] = new Map(series.map(([dt, p]) => [dt, p]));
+    }
+    return out;
+  }, [intradayHistData]);
+
+  const intradayDates = useMemo(() => {
+    if (!intradayHistData) return null;
+    const s = new Set();
+    for (const series of Object.values(intradayHistData)) {
+      if (series) for (const [dt] of series) s.add(dt);
+    }
+    return [...s].sort();
+  }, [intradayHistData]);
 
   // ── FX ──────────────────────────────────────────────────────────────────────
   const toUSD = useCallback((price, sym) => {
@@ -2690,71 +2748,258 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     return series;
   }, [allDailyDates, resolvedSet, priceMaps, toUSD, currency, rates]);
 
-  // ── Build allSeries based on viewMode ───────────────────────────────────────
+  // ── Intraday series (minute-level, portfolio) ───────────────────────────────
+  const computeIntradaySeries = useCallback((txList) => {
+    if (!intradayDates?.length || !intradayPriceMaps) return { vs: [], cs: [] };
+    const usdToDisp = currency === "USD" ? 1 : (rates[currency] ?? 1);
+    const qtyState = {}, symCost = {};
+    for (const tx of [...txList].sort((a, b) => a.date.localeCompare(b.date))) {
+      const sym = tx.symbol;
+      if (!qtyState[sym]) { qtyState[sym] = 0; symCost[sym] = 0; }
+      if (tx.type === "BUY") {
+        qtyState[sym] += tx.quantity;
+        symCost[sym]  += tx.quantity * (tx.price_usd || tx.price);
+      } else {
+        const avg = qtyState[sym] > 0 ? symCost[sym] / qtyState[sym] : 0;
+        qtyState[sym] = Math.max(0, qtyState[sym] - tx.quantity);
+        symCost[sym]  = Math.max(0, symCost[sym] - tx.quantity * avg);
+      }
+    }
+    const totalCost = Object.values(symCost).reduce((a, b) => a + b, 0);
+    const lastPriceUSD = {};
+    const vs = [], cs = [];
+    for (const dt of intradayDates) {
+      for (const sym of Object.keys(qtyState)) {
+        const pm = intradayPriceMaps[sym];
+        if (pm) { const p = pm.get(dt); if (p != null && p > 0) lastPriceUSD[sym] = toUSD(p, sym); }
+      }
+      let value = 0;
+      for (const [sym, qty] of Object.entries(qtyState)) {
+        if (qty <= 0) continue;
+        if ((lastPriceUSD[sym] ?? 0) > 0) value += qty * lastPriceUSD[sym];
+      }
+      if (value <= 0 && vs.length === 0) continue;
+      vs.push({ date: dt, value: value * usdToDisp });
+      cs.push({ date: dt, cost: totalCost * usdToDisp });
+    }
+    return { vs, cs };
+  }, [intradayDates, intradayPriceMaps, toUSD, currency, rates]);
+
+  const computeIntradaySymbolSeries = useCallback((sym, txList) => {
+    if (!intradayDates?.length || !intradayPriceMaps) return [];
+    const usdToDisp = currency === "USD" ? 1 : (rates[currency] ?? 1);
+    const symTx = txList.filter(t => t.symbol === sym).sort((a, b) => a.date.localeCompare(b.date));
+    let qty = 0, cost = 0;
+    for (const tx of symTx) {
+      if (tx.type === "BUY") { qty += tx.quantity; cost += tx.quantity * (tx.price_usd || tx.price); }
+      else { const avg = qty > 0 ? cost / qty : 0; qty = Math.max(0, qty - tx.quantity); cost = Math.max(0, cost - tx.quantity * avg); }
+    }
+    if (qty <= 0) return [];
+    const pm = intradayPriceMaps[sym];
+    if (!pm) return [];
+    let lastPriceUSD = null;
+    const series = [];
+    for (const dt of intradayDates) {
+      const p = pm.get(dt);
+      if (p != null && p > 0) lastPriceUSD = toUSD(p, sym);
+      if (lastPriceUSD == null) continue;
+      series.push({ date: dt, value: qty * lastPriceUSD * usdToDisp, cost: cost * usdToDisp });
+    }
+    return series;
+  }, [intradayDates, intradayPriceMaps, toUSD, currency, rates]);
+
+  // ── Build allSeries based on portViewMode × ansicht ────────────────────────
   const allSeries = useMemo(() => {
-    if (!histData || !resolvedDates.length) return [];
-    if (viewMode === "total") {
-      const { vs, cs } = computeSeriesForTxList(allTxFlat);
-      const up = vs.length < 2 || vs[vs.length - 1].value >= vs[0].value;
-      return [{ key:"total", label:"Gesamt", color: up ? "#34d399" : "#f87171", vs, cs }];
-    }
-    if (viewMode === "portfolios") {
-      return portfolios.map((p, i) => {
-        const txs = (allTransactions[p.id] ?? []).map(tx => ({
-          ...tx, portfolioId:p.id, portfolioColor:p.color, portfolioName:p.name,
-        }));
-        const { vs, cs } = computeSeriesForTxList(txs);
-        return { key:`port_${p.id}`, label:p.name,
-          color: p.color || LINE_COLORS[i % LINE_COLORS.length], vs, cs };
-      }).filter(s => s.vs.length > 0);
-    }
-    if (viewMode === "instruments") {
-      return allSymbols.map((sym, i) => {
-        const vs   = computeSymbolSeries(sym, allTxFlat);
-        const name = allTxFlat.find(t => t.symbol === sym)?.name ?? sym;
-        return { key:sym, label:`${sym} · ${name}`,
-          color: LINE_COLORS[i % LINE_COLORS.length], vs, cs: null };
-      }).filter(s => s.vs.length > 0);
-    }
-    if (viewMode === "inst_by_portfolio") {
-      // One line per (symbol × portfolio) — e.g. "AAPL · Depot A", "AAPL · Depot B"
-      const result = [];
-      let colorIdx = 0;
-      for (const p of portfolios) {
-        const portTxs = (allTransactions[p.id] ?? []).map(tx => ({
-          ...tx, portfolioId:p.id, portfolioColor:p.color, portfolioName:p.name,
-        }));
-        const portSymbols = [...new Set(portTxs.map(t => t.symbol))];
-        for (const sym of portSymbols) {
-          const vs   = computeSymbolSeries(sym, portTxs);
-          if (!vs.length) continue;
-          result.push({
-            key:   `${p.id}_${sym}`,
-            label: `${sym} · ${p.name}`,
-            color: LINE_COLORS[colorIdx++ % LINE_COLORS.length],
-            vs, cs: null,
-          });
+    // ── Intraday branch: use minute-level data ─────────────────────────────
+    if (period === "Intraday" && intradayHistData && intradayDates?.length) {
+      const usdToDisp = currency === "USD" ? 1 : (rates[currency] ?? 1);
+      const isSplit       = portViewMode === "consolidated";
+      const isInstruments = ansicht === "instruments";
+      let baseSeries = [];
+      if (!isInstruments) {
+        if (isSplit) {
+          baseSeries = portfolios.map((p, i) => {
+            const txs = (allTransactions[p.id] ?? []).map(tx => ({ ...tx, portfolioId:p.id }));
+            const { vs, cs } = computeIntradaySeries(txs);
+            return { key:`port_${p.id}`, label:p.name, color: p.color || LINE_COLORS[i % LINE_COLORS.length], vs, cs, isPortfolio:true };
+          }).filter(s => s.vs.length > 0);
+        } else {
+          const { vs, cs } = computeIntradaySeries(allTxFlat);
+          const up = vs.length < 2 || vs[vs.length - 1].value >= vs[0].value;
+          baseSeries = [{ key:"total", label:"Gesamt", color: up ? "#34d399" : "#f87171", vs, cs, isPortfolio:true }];
+        }
+      } else {
+        if (isSplit) {
+          let colorIdx = 0;
+          for (const p of portfolios) {
+            const portTxs = (allTransactions[p.id] ?? []).map(tx => ({ ...tx, portfolioId:p.id }));
+            for (const sym of [...new Set(portTxs.map(t => t.symbol))]) {
+              const vs = computeIntradaySymbolSeries(sym, portTxs);
+              if (!vs.length) continue;
+              baseSeries.push({ key:`${p.id}_${sym}`, label:`${sym} · ${p.name}`, color: LINE_COLORS[colorIdx++ % LINE_COLORS.length], vs, cs: null, isPortfolio:true });
+            }
+          }
+        } else {
+          baseSeries = allSymbols.map((sym, i) => {
+            const vs   = computeIntradaySymbolSeries(sym, allTxFlat);
+            const name = allTxFlat.find(t => t.symbol === sym)?.name ?? sym;
+            return { key:sym, label:`${sym} · ${name}`, color: LINE_COLORS[i % LINE_COLORS.length], vs, cs: null, isPortfolio:true };
+          }).filter(s => s.vs.length > 0);
         }
       }
-      return result;
+      const primaryFirst = baseSeries[0]?.vs[0]?.value ?? 0;
+      const benchSeries = benchSymbols.map((sym, i) => {
+        const pm = intradayPriceMaps?.[sym];
+        if (!pm || !intradayDates.length) return null;
+        let normPrice = null;
+        const pts = [];
+        for (const dt of intradayDates) {
+          const p = pm.get(dt);
+          if (normPrice == null && p != null && p > 0 && primaryFirst > 0) normPrice = toUSD(p, sym);
+          if (normPrice != null && normPrice > 0 && p != null && p > 0) {
+            pts.push({ date: dt, value: primaryFirst * (toUSD(p, sym) / normPrice) * usdToDisp });
+          }
+        }
+        if (pts.length < 2) return null;
+        const bLabel = BENCHMARKS.find(b => b.sym === sym)?.label ?? sym;
+        return { key:`bench_${sym}`, label:`${bLabel} (${sym})`, color: BENCH_COLORS[i % BENCH_COLORS.length], vs: pts, cs: null, isBenchmark:true };
+      }).filter(Boolean);
+      return [...baseSeries, ...benchSeries];
     }
-    return [];
-  }, [viewMode, histData, resolvedDates, allTxFlat, portfolios, allTransactions, allSymbols,
-      computeSeriesForTxList, computeSymbolSeries]);
+
+    if (!histData || !resolvedDates.length) return [];
+    const usdToDisp = currency === "USD" ? 1 : (rates[currency] ?? 1);
+
+    // ── Portfolio / instrument series ────────────────────────────────────────
+    let baseSeries = [];
+    // Consolidated = separate line per portfolio (or per symbol×portfolio)
+    // Aggregated   = one combined line (all portfolios merged)
+    const isSplit       = portViewMode === "consolidated";
+    const isInstruments = ansicht === "instruments";
+
+    if (!isInstruments) {
+      // Portfolio value lines
+      if (isSplit) {
+        // Consolidated → one line per portfolio
+        baseSeries = portfolios.map((p, i) => {
+          const txs = (allTransactions[p.id] ?? []).map(tx => ({
+            ...tx, portfolioId:p.id, portfolioColor:p.color, portfolioName:p.name,
+          }));
+          const { vs, cs } = computeSeriesForTxList(txs);
+          return { key:`port_${p.id}`, label:p.name,
+            color: p.color || LINE_COLORS[i % LINE_COLORS.length], vs, cs, isPortfolio:true };
+        }).filter(s => s.vs.length > 0);
+      } else {
+        // Aggregated → single combined line
+        const { vs, cs } = computeSeriesForTxList(allTxFlat);
+        const up = vs.length < 2 || vs[vs.length - 1].value >= vs[0].value;
+        baseSeries = [{ key:"total", label:"Gesamt", color: up ? "#34d399" : "#f87171", vs, cs, isPortfolio:true }];
+      }
+    } else {
+      // Instrument value lines
+      if (isSplit) {
+        // Consolidated → one line per symbol×portfolio
+        let colorIdx = 0;
+        for (const p of portfolios) {
+          const portTxs = (allTransactions[p.id] ?? []).map(tx => ({
+            ...tx, portfolioId:p.id, portfolioColor:p.color, portfolioName:p.name,
+          }));
+          for (const sym of [...new Set(portTxs.map(t => t.symbol))]) {
+            const vs = computeSymbolSeries(sym, portTxs);
+            if (!vs.length) continue;
+            baseSeries.push({ key:`${p.id}_${sym}`, label:`${sym} · ${p.name}`,
+              color: LINE_COLORS[colorIdx++ % LINE_COLORS.length], vs, cs: null, isPortfolio:true });
+          }
+        }
+      } else {
+        // Aggregated → one line per symbol (across all portfolios)
+        baseSeries = allSymbols.map((sym, i) => {
+          const vs   = computeSymbolSeries(sym, allTxFlat);
+          const name = allTxFlat.find(t => t.symbol === sym)?.name ?? sym;
+          return { key:sym, label:`${sym} · ${name}`,
+            color: LINE_COLORS[i % LINE_COLORS.length], vs, cs: null, isPortfolio:true };
+        }).filter(s => s.vs.length > 0);
+      }
+    }
+
+    // ── Benchmark overlay series (normalized to primary series' first value) ─
+    const primaryFirst = baseSeries[0]?.vs[0]?.value ?? 0;
+    const benchSeries = benchSymbols.map((sym, i) => {
+      const pm = priceMaps[sym];
+      if (!pm || !resolvedDates.length) return null;
+      // Find first resolved date where both portfolio and benchmark have data
+      let normPrice = null;
+      const pts = [];
+      for (const date of resolvedDates) {
+        const p = pm.get(date);
+        if (normPrice == null && p != null && p > 0 && primaryFirst > 0) {
+          // First available benchmark price in the resolved date range
+          normPrice = toUSD(p, sym);
+        }
+        if (normPrice != null && normPrice > 0 && p != null && p > 0) {
+          const val = primaryFirst * (toUSD(p, sym) / normPrice);
+          pts.push({ date, value: val * usdToDisp });
+        }
+      }
+      if (pts.length < 2) return null;
+      const bLabel = BENCHMARKS.find(b => b.sym === sym)?.label ?? sym;
+      return { key:`bench_${sym}`, label:`${bLabel} (${sym})`,
+        color: BENCH_COLORS[i % BENCH_COLORS.length],
+        vs: pts, cs: null, isBenchmark:true };
+    }).filter(Boolean);
+
+    // ── Individual instrument overlay series ─────────────────────────────────
+    const instrSeries = instrOverlays.map((sym, i) => {
+      // If already in baseSeries, skip
+      if (baseSeries.some(s => s.key === sym || s.key.endsWith(`_${sym}`))) return null;
+      const vs   = computeSymbolSeries(sym, allTxFlat);
+      if (!vs.length) return null;
+      const name = allTxFlat.find(t => t.symbol === sym)?.name ?? sym;
+      return { key:`instr_${sym}`, label:`${sym} · ${name}`,
+        color: LINE_COLORS[(baseSeries.length + i) % LINE_COLORS.length],
+        vs, cs: null, isInstrOverlay:true };
+    }).filter(Boolean);
+
+    return [...baseSeries, ...benchSeries, ...instrSeries];
+  }, [portViewMode, ansicht, histData, resolvedDates, allTxFlat, portfolios, allTransactions,
+      allSymbols, benchSymbols, instrOverlays, priceMaps, toUSD, computeSeriesForTxList,
+      computeSymbolSeries, currency, rates,
+      period, intradayHistData, intradayDates, intradayPriceMaps,
+      computeIntradaySeries, computeIntradaySymbolSeries]);
 
   // ── Visible series ──────────────────────────────────────────────────────────
   const visibleSeries = useMemo(() =>
     allSeries.filter(s => !hiddenKeys.has(s.key)),
   [allSeries, hiddenKeys]);
 
+  // ── Display series: values transformed by yMode ──────────────────────────
+  const displaySeries = useMemo(() => {
+    if (yMode === "abs") return visibleSeries;
+    return visibleSeries.map(s => {
+      const base = s.vs.find(p => p.value > 0)?.value ?? 0;
+      if (!base) return s;
+      return {
+        ...s,
+        vs: s.vs.map(p => ({
+          ...p,
+          value: yMode === "rel"
+            ? p.value - base
+            : ((p.value - base) / base) * 100,
+        })),
+        cs: null,
+      };
+    });
+  }, [visibleSeries, yMode]);
+
   const toggleKey = useCallback((key) =>
     setHiddenKeys(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; }),
   []);
 
-  // Primary series drives the x-axis
+  // Primary series used for stats only — x-axis always uses the full fetched date range
   const primarySeries = visibleSeries[0];
-  const chartDates    = useMemo(() => primarySeries?.vs.map(d => d.date) ?? [], [primarySeries]);
-  const nPts          = chartDates.length;
+  // chartDates = full resolvedDates range; for intraday use minute-level datetime strings.
+  const chartDates = (period === "Intraday" && intradayDates?.length) ? intradayDates : resolvedDates;
+  const nPts       = chartDates.length;
 
   // ── Dividend markers ────────────────────────────────────────────────────────
   const divMarkers = useMemo(() => {
@@ -2763,7 +3008,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     for (const [sym, divs] of Object.entries(divData)) {
       if (!divs?.length) continue;
       if (!allSymbols.includes(sym)) continue;
-      if (viewMode === "instruments" && hiddenKeys.has(sym)) continue;
+      if (ansicht === "instruments" && hiddenKeys.has(sym)) continue;
       for (const div of divs) {
         let nearestIdx = null;
         for (let i = 0; i < chartDates.length; i++) {
@@ -2776,15 +3021,15 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       }
     }
     return Object.entries(grouped).map(([idx, items]) => ({ idx:parseInt(idx), items }));
-  }, [showDivs, divData, chartDates, allSymbols, viewMode, hiddenKeys]);
+  }, [showDivs, divData, chartDates, allSymbols, ansicht, hiddenKeys]);
 
   // ── Transaction markers ─────────────────────────────────────────────────────
   const txMarkers = useMemo(() => {
     if (!chartDates.length) return [];
     const visKeys = new Set(visibleSeries.map(s => s.key));
     const relevant = allTxFlat.filter(tx => {
-      if (viewMode === "portfolios")  return visKeys.has(`port_${tx.portfolioId}`);
-      if (viewMode === "instruments") return visKeys.has(tx.symbol);
+      if (portViewMode === "aggregated" && ansicht === "portfolio") return visKeys.has(`port_${tx.portfolioId}`);
+      if (ansicht === "instruments") return visKeys.has(tx.symbol);
       return true;
     });
     const grouped = {};
@@ -2801,15 +3046,15 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     return Object.values(grouped).map(g => ({
       ...g, hasBuy: g.txs.some(t => t.type === "BUY"), hasSell: g.txs.some(t => t.type === "SELL"),
     }));
-  }, [allTxFlat, chartDates, viewMode, visibleSeries]);
+  }, [allTxFlat, chartDates, portViewMode, ansicht, visibleSeries]);
 
   // ── Chart geometry ──────────────────────────────────────────────────────────
   const CW = Math.max(1, w - PAD.left - PAD.right);
-  const CH = Math.max(1, h - 148 - PAD.top - PAD.bottom); // 148 = 2 control rows + stats
+  const CH = Math.max(1, h - 96 - PAD.top - PAD.bottom); // 96 = 1 control row + stats
 
   const { minV, maxV, yTicks } = useMemo(() => {
     const vals = [];
-    for (const s of visibleSeries) {
+    for (const s of displaySeries) {
       for (const pt of s.vs) vals.push(pt.value);
       if (showCost && s.cs) for (const pt of s.cs) if (pt.cost > 0) vals.push(pt.cost);
     }
@@ -2828,26 +3073,26 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
   // SVG paths per series
   const seriesPaths = useMemo(() =>
-    visibleSeries.map(s => {
+    displaySeries.map(s => {
       const ptMap = new Map(s.vs.map(pt => [pt.date, pt.value]));
       const pts   = chartDates.map((d, i) => ({ i, v:ptMap.get(d) })).filter(p => p.v != null);
-      if (pts.length < 2) return { key:s.key, color:s.color, line:"", area:"" };
+      if (pts.length < 2) return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:"", area:"" };
       const pathD = pts.map((p, j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ");
       const areaD = `${pathD} L${xS(pts[pts.length-1].i).toFixed(1)},${CH} L${xS(pts[0].i).toFixed(1)},${CH} Z`;
-      return { key:s.key, color:s.color, line:pathD, area:areaD };
+      return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:pathD, area:areaD };
     }),
-  [visibleSeries, chartDates, xS, yS, CH]);
+  [displaySeries, chartDates, xS, yS, CH]);
 
   const costPaths = useMemo(() => {
     if (!showCost) return [];
-    return visibleSeries.filter(s => s.cs).map(s => {
+    return displaySeries.filter(s => s.cs).map(s => {
       const ptMap = new Map(s.cs.map(pt => [pt.date, pt.cost]));
       const pts   = chartDates.map((d, i) => ({ i, v:ptMap.get(d) })).filter(p => p.v != null && p.v > 0);
       if (pts.length < 2) return null;
       const pathD = pts.map((p, j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ");
       return { key:s.key, color:s.color, path:pathD };
     }).filter(Boolean);
-  }, [visibleSeries, showCost, chartDates, xS, yS]);
+  }, [displaySeries, showCost, chartDates, xS, yS]);
 
   const xTicks = useMemo(() => {
     if (nPts < 2) return [];
@@ -2904,8 +3149,21 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     if (abs >= 1e3) return `${cSym}${(v/1e3).toFixed(1)}K`;
     return `${cSym}${v.toFixed(0)}`;
   };
+  const fmtDisplay = (v) => {
+    if (v == null || isNaN(v)) return "—";
+    if (yMode === "pct") return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+    if (yMode === "rel") {
+      const sign = v >= 0 ? "+" : "−";
+      const absV = Math.abs(v);
+      if (absV >= 1e6) return `${sign}${cSym}${(absV/1e6).toFixed(2)}M`;
+      if (absV >= 1e3) return `${sign}${cSym}${(absV/1e3).toFixed(1)}K`;
+      return `${sign}${cSym}${absV.toFixed(0)}`;
+    }
+    return fmtV(v);
+  };
   const fmtDate = (d) => {
     if (!d) return "";
+    if (d.includes("T")) return d.slice(11, 16); // intraday: show HH:MM
     return new Date(d + "T00:00:00Z").toLocaleDateString("de-DE",
       { day:"2-digit", month:"short", year:"2-digit", timeZone:"UTC" });
   };
@@ -2919,46 +3177,11 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden",
       background:THEME.bg, fontFamily:THEME.font }}>
 
-      {/* ── Controls ─────────────────────────────────────────────────────── */}
-      <div style={{ padding:"6px 20px 6px", flexShrink:0 }}>
-
-        {/* Row 1 – Auflösung */}
-        <div style={{ display:"flex", gap:2, alignItems:"center", marginBottom:6 }}>
-          <span style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.07em",
-            textTransform:"uppercase", marginRight:6, minWidth:52 }}>Auflösung</span>
-          {RESOLUTIONS.map(r => (
-            <button key={r.value} onClick={() => setResolution(r.value)}
-              style={{ padding:"4px 9px", borderRadius:6, border:"none", cursor:"pointer",
-                background: resolution===r.value ? "rgba(139,92,246,0.2)" : "transparent",
-                color: resolution===r.value ? "#a78bfa" : THEME.text3,
-                fontSize:11, fontWeight: resolution===r.value ? 700 : 500,
-                fontFamily:THEME.font, transition:"background 0.15s" }}>
-              {r.label}
-            </button>
-          ))}
-          {loading && <span style={{ fontSize:10, color:THEME.text3, marginLeft:8 }}>⟳ Laden…</span>}
-        </div>
-
-        {/* Row 3 – Ansicht (4 modes clearly labelled) */}
-        <div style={{ display:"flex", gap:4, alignItems:"center", marginBottom:8 }}>
-          <span style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.07em",
-            textTransform:"uppercase", marginRight:4, minWidth:52 }}>Ansicht</span>
-          {VIEW_MODES.map(v => (
-            <button key={v.value} onClick={() => setViewMode(v.value)}
-              title={v.short}
-              style={{ padding:"5px 12px", borderRadius:7, cursor:"pointer",
-                border: viewMode===v.value
-                  ? "1px solid rgba(249,115,22,0.4)"
-                  : "1px solid rgba(255,255,255,0.06)",
-                background: viewMode===v.value ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.03)",
-                color: viewMode===v.value ? "#fb923c" : THEME.text3,
-                fontSize:11, fontWeight: viewMode===v.value ? 700 : 500,
-                fontFamily:THEME.font, transition:"all 0.15s",
-                whiteSpace:"nowrap" }}>
-              {v.label}
-            </button>
-          ))}
-        </div>
+      {/* ── Controls: only stats (loading indicator lives in toolbar) ──── */}
+      <div style={{ padding:"8px 20px 6px", flexShrink:0 }}>
+        {(loading || intradayLoading) && (
+          <div style={{ fontSize:10, color:THEME.text3, marginBottom:4 }}>⟳ Laden…</div>
+        )}
 
         {/* Stats */}
         {stats && (
@@ -2989,13 +3212,14 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       {/* ── Chart area ───────────────────────────────────────────────────── */}
       <div ref={containerRef} style={{ flex:1, position:"relative", overflow:"hidden" }}>
 
-        {loading && (
+        {(loading || intradayLoading) && (
           <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
             justifyContent:"center", color:THEME.text3, fontSize:13 }}>
             Historische Daten werden geladen…
           </div>
         )}
-        {!loading && !visibleSeries.length && histData != null && (
+        {!(loading || intradayLoading) && !visibleSeries.length &&
+            (period === "Intraday" ? intradayHistData != null : histData != null) && (
           <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
             justifyContent:"center", color:THEME.text3, fontSize:13 }}>
             Keine Daten für den gewählten Zeitraum
@@ -3003,7 +3227,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
         )}
 
         {w > 0 && h > 0 && visibleSeries.length > 0 && nPts >= 2 && (
-          <svg ref={svgRef} width={w} height={h - 148}
+          <svg ref={svgRef} width={w} height={h - 96}
             style={{ overflow:"visible", cursor:"crosshair", userSelect:"none" }}
             onMouseMove={handleMouseMove}
             onMouseLeave={() => { setHoverIdx(null); setTxPopover(null); setDivPopover(null); }}>
@@ -3032,7 +3256,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                   <line x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y}
                     stroke="rgba(255,255,255,0.05)" strokeWidth={1}/>
                   <text x={PAD.left - 6} y={y + 4} textAnchor="end"
-                    fill={THEME.text3} fontSize={9} fontFamily={THEME.mono}>{fmtV(v)}</text>
+                    fill={THEME.text3} fontSize={9} fontFamily={THEME.mono}>{fmtDisplay(v)}</text>
                 </g>
               );
             })}
@@ -3048,7 +3272,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             {/* Chart clip group */}
             <g clipPath="url(#perfClip)" transform={`translate(${PAD.left},${PAD.top})`}>
               {/* Area fill — only if single series */}
-              {visibleSeries.length === 1 && seriesPaths.map(p => p.area && (
+              {displaySeries.length === 1 && seriesPaths.map(p => p.area && (
                 <path key={p.key + "_a"} d={p.area}
                   fill={`url(#grad_${p.key.replace(/[^a-z0-9]/gi, "_")})`} opacity={0.9}/>
               ))}
@@ -3061,14 +3285,17 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
               {/* Value lines */}
               {seriesPaths.map(p => p.line && (
                 <path key={p.key + "_l"} d={p.line} fill="none" stroke={p.color}
-                  strokeWidth={visibleSeries.length === 1 ? 2.5 : 2} strokeLinejoin="round"/>
+                  strokeWidth={p.isBenchmark ? 1.5 : displaySeries.length === 1 ? 2.5 : 2}
+                  strokeDasharray={p.isBenchmark ? "4 3" : undefined}
+                  strokeOpacity={p.isBenchmark ? 0.75 : 1}
+                  strokeLinejoin="round"/>
               ))}
               {/* Hover crosshair + dots */}
               {hoverIdx != null && (
                 <>
                   <line x1={xS(hoverIdx)} y1={0} x2={xS(hoverIdx)} y2={CH}
                     stroke="rgba(255,255,255,0.18)" strokeWidth={1} strokeDasharray="3 3"/>
-                  {visibleSeries.map(s => {
+                  {displaySeries.map(s => {
                     const pt = s.vs.find(p => p.date === chartDates[hoverIdx]);
                     if (!pt) return null;
                     return <circle key={s.key} cx={xS(hoverIdx)} cy={yS(pt.value)} r={4}
@@ -3137,11 +3364,13 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             background:THEME.surface, border:`1px solid ${THEME.border}`,
             borderRadius:10, padding:"8px 12px", minWidth:170 }}>
             <div style={{ fontSize:9, color:THEME.text3, marginBottom:6 }}>{fmtDate(hoverDate)}</div>
-            {visibleSeries.map(s => {
-              const pt  = s.vs.find(p => p.date === hoverDate);
+            {displaySeries.map(s => {
+              const pt   = s.vs.find(p => p.date === hoverDate);
               if (!pt) return null;
-              const csPt = s.cs?.find(p => p.date === hoverDate);
-              const gl   = csPt?.cost > 0 ? pt.value - csPt.cost : null;
+              const rawS = visibleSeries.find(r => r.key === s.key);
+              const rawPt = rawS?.vs.find(p => p.date === hoverDate);
+              const csPt = rawS?.cs?.find(p => p.date === hoverDate);
+              const gl   = yMode === "abs" && csPt?.cost > 0 ? rawPt.value - csPt.cost : null;
               return (
                 <div key={s.key} style={{ marginBottom:5 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:5 }}>
@@ -3151,7 +3380,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
                       maxWidth:90 }}>{s.label}</span>
                     <span style={{ fontFamily:THEME.mono, fontSize:13, fontWeight:700,
-                      color:s.color }}>{fmtV(pt.value)}</span>
+                      color:s.color }}>{fmtDisplay(pt.value)}</span>
                   </div>
                   {gl != null && (
                     <div style={{ fontSize:10, color:gl >= 0 ? THEME.green : THEME.red,
@@ -3253,60 +3482,89 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           );
         })()}
 
-        {/* ── Legend + toggles ───────────────────────────────────────────── */}
-        {allSeries.length > 0 && (
-          <div style={{ position:"absolute", top:PAD.top + 4, right:PAD.right + 4,
-            display:"flex", flexDirection:"column", gap:5, alignItems:"flex-end" }}>
-            {/* Series chips */}
-            <div style={{ display:"flex", gap:4, flexWrap:"wrap", justifyContent:"flex-end", maxWidth:320 }}>
-              {allSeries.map(s => {
-                const hidden = hiddenKeys.has(s.key);
-                return (
-                  <button key={s.key} onClick={() => toggleKey(s.key)}
-                    title={s.label}
-                    style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 8px",
-                      borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-                      border: `1px solid ${hidden ? "rgba(255,255,255,0.08)" : s.color + "88"}`,
-                      background: hidden ? "rgba(255,255,255,0.04)" : s.color + "22",
-                      opacity: hidden ? 0.4 : 1 }}>
-                    <span style={{ width:8, height:8, borderRadius:2, flexShrink:0,
-                      background: hidden ? "rgba(255,255,255,0.2)" : s.color, display:"inline-block" }}/>
-                    <span style={{ fontSize:9, color:hidden ? THEME.text3 : THEME.text2,
-                      fontFamily:THEME.font, maxWidth:110,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {s.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {/* Toggle chips: Einstand + Dividenden */}
-            <div style={{ display:"flex", gap:4 }}>
-              <button onClick={() => setShowCost(v => !v)}
-                style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px",
-                  borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-                  border: `1px solid ${showCost ? "rgba(148,163,184,0.4)" : "rgba(255,255,255,0.08)"}`,
-                  background: showCost ? "rgba(148,163,184,0.1)" : "rgba(255,255,255,0.04)",
-                  opacity: showCost ? 1 : 0.4 }}>
-                <svg width={16} height={8}>
-                  <line x1={0} y1={4} x2={16} y2={4} stroke="rgba(148,163,184,0.8)"
-                    strokeWidth={1.5} strokeDasharray="3 2"/>
-                </svg>
-                <span style={{ fontSize:9, color:THEME.text3 }}>Einstand</span>
-              </button>
-              <button onClick={() => setShowDivs(v => !v)}
-                style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px",
-                  borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-                  border: `1px solid ${showDivs ? "rgba(250,204,21,0.4)" : "rgba(255,255,255,0.08)"}`,
-                  background: showDivs ? "rgba(250,204,21,0.08)" : "rgba(255,255,255,0.04)",
-                  opacity: showDivs ? 1 : 0.4 }}>
-                <span style={{ fontSize:10 }}>💰</span>
-                <span style={{ fontSize:9, color:THEME.text3 }}>Dividenden</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* ── Legend row — below the chart ─────────────────────────────────── */}
+      {allSeries.length > 0 && (
+        <div style={{ flexShrink:0, padding:"6px 20px 8px", display:"flex",
+          alignItems:"center", flexWrap:"wrap", gap:4,
+          borderTop:`1px solid ${THEME.border2}` }}>
+
+          {/* Y-axis mode toggle */}
+          {[["abs","Abs"],["rel","±$"],["pct","±%"]].map(([m, label]) => (
+            <button key={m} onClick={() => setYMode(m)}
+              style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer", fontSize:10,
+                fontFamily:THEME.mono, transition:"all 0.15s",
+                border: `1px solid ${yMode === m ? "rgba(99,179,237,0.5)" : "rgba(255,255,255,0.08)"}`,
+                background: yMode === m ? "rgba(99,179,237,0.12)" : "rgba(255,255,255,0.04)",
+                color: yMode === m ? "#93c5fd" : THEME.text3 }}>
+              {label}
+            </button>
+          ))}
+
+          <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 4px" }}/>
+
+          {/* Series toggle chips */}
+          {allSeries.map(s => {
+            const hidden = hiddenKeys.has(s.key);
+            return (
+              <button key={s.key} onClick={() => toggleKey(s.key)} title={s.label}
+                style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
+                  borderRadius:20, cursor:"pointer", transition:"all 0.15s",
+                  border: `1px solid ${hidden ? "rgba(255,255,255,0.08)" : s.color + "88"}`,
+                  background: hidden ? "rgba(255,255,255,0.04)" : s.color + "18",
+                  opacity: hidden ? 0.35 : 1 }}>
+                {s.isBenchmark ? (
+                  <svg width={14} height={8} style={{ flexShrink:0 }}>
+                    <line x1={0} y1={4} x2={14} y2={4}
+                      stroke={hidden ? "rgba(255,255,255,0.2)" : s.color}
+                      strokeWidth={1.5} strokeDasharray="3 2"/>
+                  </svg>
+                ) : (
+                  <span style={{ width:8, height:8, borderRadius:2, flexShrink:0,
+                    background: hidden ? "rgba(255,255,255,0.2)" : s.color }}/>
+                )}
+                <span style={{ fontSize:10, color: hidden ? THEME.text3 : THEME.text2,
+                  fontFamily:THEME.font, maxWidth:160,
+                  overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                  {s.label}
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Separator */}
+          {allSeries.length > 0 && (
+            <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 4px" }}/>
+          )}
+
+          {/* Einstand toggle */}
+          <button onClick={() => setShowCost(v => !v)}
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
+              borderRadius:20, cursor:"pointer", transition:"all 0.15s",
+              border: `1px solid ${showCost ? "rgba(148,163,184,0.4)" : "rgba(255,255,255,0.08)"}`,
+              background: showCost ? "rgba(148,163,184,0.1)" : "rgba(255,255,255,0.04)",
+              opacity: showCost ? 1 : 0.35 }}>
+            <svg width={14} height={8} style={{ flexShrink:0 }}>
+              <line x1={0} y1={4} x2={14} y2={4} stroke="rgba(148,163,184,0.8)"
+                strokeWidth={1.5} strokeDasharray="3 2"/>
+            </svg>
+            <span style={{ fontSize:10, color:THEME.text3 }}>Einstand</span>
+          </button>
+
+          {/* Dividenden toggle */}
+          <button onClick={() => setShowDivs(v => !v)}
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
+              borderRadius:20, cursor:"pointer", transition:"all 0.15s",
+              border: `1px solid ${showDivs ? "rgba(250,204,21,0.4)" : "rgba(255,255,255,0.08)"}`,
+              background: showDivs ? "rgba(250,204,21,0.08)" : "rgba(255,255,255,0.04)",
+              opacity: showDivs ? 1 : 0.35 }}>
+            <span style={{ fontSize:11, lineHeight:1 }}>◇</span>
+            <span style={{ fontSize:10, color:THEME.text3 }}>Dividenden</span>
+          </button>
+
+        </div>
+      )}
     </div>
   );
 }
@@ -5003,6 +5261,11 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
       { key:"single", label:"Combined",      icon:"□" },
       { key:"split",  label:"Per Portfolio", icon:"⊞" },
     ];
+  } else if (activeTab === "performance") {
+    var modes = [
+      { key:"consolidated", label:"Consolidated", icon:"⊞" },
+      { key:"aggregated",   label:"Aggregated",   icon:"⊕" },
+    ];
   } else {
     return null;
   }
@@ -5091,12 +5354,13 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
 // ════════════════════════════════════════════════════════════════════════════
 // PERIOD TOOLBAR
 // ════════════════════════════════════════════════════════════════════════════
-function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, portfolioCount, subView, onSubView }) {
+function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, portfolioCount, subView, onSubView, ansicht, onAnsicht, extraRight }) {
   const hasSubView   = activeTab === "chart" && onSubView;
-  const hasViewMode  = portfolioCount > 1; // ViewModeToggle only renders when >1 portfolio
-  const showSep1     = hasSubView;                          // sep between periods and subView
-  const showSep2     = hasSubView && hasViewMode;           // sep between subView and viewMode
-  const showSepOnly  = !hasSubView && hasViewMode;          // sep between periods and viewMode when no subView
+  const hasViewMode  = portfolioCount > 1;
+  const hasAnsicht   = activeTab === "performance" && onAnsicht;
+  const showSep1     = hasSubView;
+  const showSep2     = hasSubView && hasViewMode;
+  const showSepOnly  = !hasSubView && (hasViewMode || hasAnsicht);
 
   return (
     <div style={{ padding:"0 16px 0 22px", display:"flex", alignItems:"center",
@@ -5115,12 +5379,12 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
         }}>{p.label}</button>
       ))}
 
-      {/* Separator between periods and first toggle group */}
+      {/* Separator */}
       {(showSep1 || showSepOnly) && (
         <div style={{ width:1, height:20, background:THEME.border, margin:"0 12px", flexShrink:0 }}/>
       )}
 
-      {/* Bar Chart sort mode — directly after period buttons */}
+      {/* Bar Chart sort mode */}
       {hasSubView && (
         <div style={{
           display:"flex", alignItems:"center", gap:2,
@@ -5139,15 +5403,42 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
         </div>
       )}
 
-      {/* Separator between subView and viewMode */}
       {showSep2 && (
         <div style={{ width:1, height:20, background:THEME.border, margin:"0 12px", flexShrink:0 }}/>
       )}
 
-      {/* View mode toggle (Consolidated / Aggregated / Per Portfolio…) */}
+      {/* View mode toggle (Consolidated / Aggregated) */}
       <ViewModeToggle viewMode={viewMode} onViewMode={onViewMode} activeTab={activeTab} portfolioCount={portfolioCount}/>
 
-      {/* Flexible spacer — pushes nothing, but allows API badge to be positioned absolute */}
+      {/* Performance: Portfolio / Instrumente ansicht toggle */}
+      {hasAnsicht && (
+        <>
+          {hasViewMode && <div style={{ width:1, height:20, background:THEME.border, margin:"0 10px", flexShrink:0 }}/>}
+          <div style={{
+            display:"flex", alignItems:"center", gap:2,
+            background:"rgba(0,0,0,0.25)", borderRadius:9, padding:3,
+            border:`1px solid ${THEME.border}`, flexShrink:0,
+          }}>
+            {[["portfolio","Portfolio"],["instruments","Instrumente"]].map(([key, label]) => (
+              <button key={key} onClick={() => onAnsicht(key)} style={{
+                padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
+                fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
+                background: ansicht===key ? "rgba(249,115,22,0.22)" : "transparent",
+                color:       ansicht===key ? "#fb923c" : THEME.text3,
+                letterSpacing:"0.04em",
+              }}>{label}</button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Extra right-side content (e.g. Vergleich picker) */}
+      {extraRight && (
+        <>
+          <div style={{ width:1, height:20, background:THEME.border, margin:"0 10px", flexShrink:0 }}/>
+          {extraRight}
+        </>
+      )}
     </div>
   );
 }
@@ -6804,6 +7095,13 @@ export default function App() {
   const [activePortfolioIds,setActivePortfolioIds] = useState([]);  // checked portfolios
   const [viewMode,          setViewMode]           = useState("aggregated"); // aggregated|consolidated|split
   const [barSubView,        setBarSubView]         = useState("perf"); // perf|size — shared across all bar charts
+  const [ansicht,           setAnsicht]            = useState("portfolio"); // portfolio|instruments — performance tab
+  // Performance: benchmark / instrument overlay state (lifted so PeriodToolbar can show the picker)
+  const [benchSymbols,      setBenchSymbols]       = useState([]);
+  const [instrOverlays,     setInstrOverlays]      = useState([]);
+  const [showVergleich,     setShowVergleich]      = useState(false);
+  const [perfSymbols,       setPerfSymbols]        = useState([]); // allSymbols from PerformanceView
+  const vergleichRef = useRef(null);
   const [activeTab,         setActiveTab]          = useState("holdings");
 
   // ── UI state ──────────────────────────────────────────────────────────────
@@ -7181,6 +7479,16 @@ export default function App() {
     setTooltip(null);
   }, []);
 
+  // Close Vergleich picker when clicking outside
+  useEffect(() => {
+    if (!showVergleich) return;
+    const handler = (e) => {
+      if (vergleichRef.current && !vergleichRef.current.contains(e.target)) setShowVergleich(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showVergleich]);
+
   // ── Tab handler — also normalises viewMode when switching tabs ─────────────
   const handleTab = useCallback((tab) => {
     if (tab === "_addtx") { setShowAddTx(true); return; }
@@ -7188,14 +7496,17 @@ export default function App() {
     // Analytics tabs don't use viewMode
     if (["correlation","montecarlo","rebalance","calendar"].includes(tab)) return;
     setViewMode(prev => {
-      if (tab === "holdings") {
-        // chart/tx use single|split — map "split" to "consolidated", keep aggregated
-        if (prev === "split") return "consolidated";
-        if (prev === "single") return "aggregated";
-        return prev; // consolidated or aggregated stay
+      const usesConsolidated = tab === "holdings" || tab === "performance";
+      if (usesConsolidated) {
+        // holdings + performance use consolidated|aggregated
+        // map single|split → consolidated|aggregated
+        if (prev === "split")   return "aggregated";
+        if (prev === "single")  return "consolidated";
+        return prev; // consolidated or aggregated stay as-is
       } else {
-        // chart/tx use single|split — map holdings-only modes to single
-        if (prev === "aggregated" || prev === "consolidated") return "single";
+        // chart + transactions use single|split
+        // map consolidated|aggregated → single
+        if (prev === "consolidated" || prev === "aggregated") return "single";
         return prev;
       }
     });
@@ -7347,7 +7658,84 @@ export default function App() {
 
           {/* Period toolbar — hide for analytics tabs */}
           {!["correlation","montecarlo","rebalance","calendar"].includes(activeTab) && (
-            <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView}/>
+            <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView} ansicht={ansicht} onAnsicht={setAnsicht}
+              extraRight={activeTab === "performance" ? (
+                <div style={{ position:"relative" }} ref={vergleichRef}>
+                  <button onClick={() => setShowVergleich(v => !v)}
+                    style={{ padding:"4px 11px", borderRadius:7, cursor:"pointer", fontSize:10,
+                      fontWeight:700, fontFamily:"inherit", letterSpacing:"0.04em",
+                      border: (benchSymbols.length + instrOverlays.length) > 0
+                        ? "1px solid rgba(99,102,241,0.45)" : "1px solid rgba(255,255,255,0.12)",
+                      background: (benchSymbols.length + instrOverlays.length) > 0
+                        ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.04)",
+                      color: (benchSymbols.length + instrOverlays.length) > 0 ? "#818cf8" : THEME.text2,
+                      transition:"all 0.15s" }}>
+                    + Vergleich{(benchSymbols.length + instrOverlays.length) > 0
+                      ? ` (${benchSymbols.length + instrOverlays.length})` : ""}
+                  </button>
+                  {showVergleich && (
+                    <div style={{ position:"fixed",
+                      top: (vergleichRef.current?.getBoundingClientRect().bottom ?? 46) + 4,
+                      left: vergleichRef.current?.getBoundingClientRect().left ?? 0,
+                      zIndex:500, background:THEME.surface, border:`1px solid ${THEME.border}`,
+                      borderRadius:12, padding:"12px 14px", minWidth:280, maxWidth:340,
+                      boxShadow:"0 12px 40px rgba(0,0,0,0.7)" }}
+                      onMouseDown={e => e.stopPropagation()}>
+                      <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
+                        textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>Benchmarks</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 }}>
+                        {BENCHMARKS.map((b, i) => {
+                          const active = benchSymbols.includes(b.sym);
+                          const col = ["#94a3b8","#64748b","#475569","#6366f1","#818cf8","#a5b4fc","#c7d2fe","#e0e7ff","#cbd5e1","#e2e8f0"][i % 10];
+                          return (
+                            <button key={b.sym} onClick={() => setBenchSymbols(prev =>
+                              prev.includes(b.sym) ? prev.filter(s => s !== b.sym) : [...prev, b.sym])}
+                              style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer",
+                                fontSize:10, fontFamily:"inherit", transition:"all 0.15s",
+                                border: active ? `1px solid ${col}88` : "1px solid rgba(255,255,255,0.08)",
+                                background: active ? `${col}22` : "rgba(255,255,255,0.03)",
+                                color: active ? col : THEME.text3 }}>
+                              {b.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {perfSymbols.length > 0 && (
+                        <>
+                          <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
+                            textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>Instrumente</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                            {perfSymbols.map((sym, i) => {
+                              const active = instrOverlays.includes(sym);
+                              const col = ["#3b82f6","#34d399","#f59e0b","#ec4899","#8b5cf6","#06b6d4","#f97316","#a78bfa","#10b981","#fb923c"][i % 10];
+                              return (
+                                <button key={sym} onClick={() => setInstrOverlays(prev =>
+                                  prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym])}
+                                  style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer",
+                                    fontSize:10, fontFamily:"inherit", transition:"all 0.15s",
+                                    border: active ? `1px solid ${col}88` : "1px solid rgba(255,255,255,0.08)",
+                                    background: active ? `${col}22` : "rgba(255,255,255,0.03)",
+                                    color: active ? col : THEME.text3 }}>
+                                  {sym}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                      {(benchSymbols.length + instrOverlays.length) > 0 && (
+                        <button onClick={() => { setBenchSymbols([]); setInstrOverlays([]); }}
+                          style={{ marginTop:12, padding:"4px 10px", borderRadius:6, cursor:"pointer",
+                            fontSize:10, border:"1px solid rgba(248,113,113,0.3)",
+                            background:"rgba(248,113,113,0.08)", color:THEME.red,
+                            fontFamily:"inherit", width:"100%" }}>
+                          Alle entfernen
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : null}/>
           )}
 
           {/* Summary bar */}
@@ -7420,7 +7808,14 @@ export default function App() {
                   currency={currency}
                   rates={rates}
                   quotes={quotes}
-                  period={period}/>
+                  period={period}
+                  viewMode={viewMode}
+                  ansicht={ansicht}
+                  benchSymbols={benchSymbols}
+                  setBenchSymbols={setBenchSymbols}
+                  instrOverlays={instrOverlays}
+                  setInstrOverlays={setInstrOverlays}
+                  onSymbolsChange={setPerfSymbols}/>
               </div>
             )}
             {activeTab === "transactions" && viewMode !== "split" && (
