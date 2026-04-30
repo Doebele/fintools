@@ -3117,7 +3117,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     const ticks = [];
     for (let v = start; v <= mx + step * 0.5; v += step) ticks.push(v);
     return { minV:mn, maxV:mx, yTicks: ticks.filter(t => t >= mn && t <= mx + step) };
-  }, [visibleSeries, showCost]);
+  }, [displaySeries, showCost]);
 
   const xS = useCallback((i) => nPts < 2 ? 0 : (i / (nPts - 1)) * CW, [nPts, CW]);
   const yS = useCallback((v)  => CH - ((v - minV) / Math.max(1, maxV - minV)) * CH, [CH, minV, maxV]);
@@ -3132,32 +3132,20 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       }).filter(Boolean);
       if (pts.length < 2) return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:"", ghostLine:"", area:"" };
 
-      // Separate into owned and unowned sub-segments
-      const buildSubPaths = (filterFn) => {
-        const result = []; let seg = [];
-        for (let k = 0; k < pts.length; k++) {
-          const p = pts[k];
-          if (filterFn(p)) {
-            // Include adjacent neighbour to avoid gaps at transition
-            if (seg.length === 0 && k > 0) seg.push(pts[k-1]);
-            seg.push(p);
-          } else {
-            if (seg.length > 0) { if (k < pts.length) seg.push(p); result.push(seg); seg = []; }
-          }
-        }
-        if (seg.length > 0) result.push(seg);
-        return result.map(seg =>
-          seg.map((p, j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ")
-        ).join(" ");
+      // Build SVG path string for a filtered subset of pts (owned or unowned)
+      const ptsToPath = (filtered) => {
+        if (filtered.length < 2) return "";
+        return filtered
+          .map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`)
+          .join(" ");
       };
 
-      const hasOwned   = pts.some(p => p.owned);
-      const hasUnowned = pts.some(p => !p.owned);
-      const linePath   = hasOwned   ? buildSubPaths(p => p.owned)  : "";
-      const ghostPath  = hasUnowned ? buildSubPaths(p => !p.owned) : "";
+      const ownedPts   = pts.filter(p => p.owned);
+      const unownedPts = pts.filter(p => !p.owned);
+      const linePath   = ptsToPath(ownedPts);
+      const ghostPath  = ptsToPath(unownedPts);
 
-      // Area only for full owned line (or whole line if no ownership split)
-      const ownedPts = pts.filter(p => p.owned);
+      // Area only under the owned segment (falls back to full line if nothing unowned)
       const areaSrc  = ownedPts.length >= 2 ? ownedPts : (pts.length >= 2 ? pts : []);
       const areaD    = areaSrc.length >= 2
         ? areaSrc.map((p,j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ")
@@ -3596,10 +3584,10 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                   ["Gesamt",  `$${total.toLocaleString("en-US", { maximumFractionDigits:0 })}`],
                   ...(tx.portfolioName ? [["Portfolio", tx.portfolioName]] : []),
                 ].map(([l, v]) => (
-                  <React.Fragment key={l}>
+                  <div key={l} style={{ display:"contents" }}>
                     <span style={{ fontSize:9, color:THEME.text3 }}>{l}</span>
                     <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text1, textAlign:"right" }}>{v}</span>
-                  </React.Fragment>
+                  </div>
                 ))}
               </div>
             </div>
