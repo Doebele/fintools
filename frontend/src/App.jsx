@@ -3122,7 +3122,15 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
   const xS = useCallback((i) => nPts < 2 ? 0 : (i / (nPts - 1)) * CW, [nPts, CW]);
   const yS = useCallback((v)  => CH - ((v - minV) / Math.max(1, maxV - minV)) * CH, [CH, minV, maxV]);
 
-  // SVG paths per series — splits owned vs unowned segments for instrument lines
+  // Helper to turn a point array into an SVG path string — defined at useMemo scope
+  // to avoid nested-closure TDZ issues with esbuild minification.
+  const _mkPath = useCallback(
+    (filtered) => filtered.length < 2 ? "" :
+      filtered.map((p, j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" "),
+    [xS, yS]
+  );
+
+  // SVG paths per series — splits owned vs ghost (unowned) segments for instrument lines
   const seriesPaths = useMemo(() =>
     displaySeries.map(s => {
       const ptMap = new Map(s.vs.map(pt => [pt.date, { v:pt.value, owned: pt.owned !== false }]));
@@ -3132,30 +3140,20 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       }).filter(Boolean);
       if (pts.length < 2) return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:"", ghostLine:"", area:"" };
 
-      // Build SVG path string for a filtered subset of pts (owned or unowned)
-      const ptsToPath = (filtered) => {
-        if (filtered.length < 2) return "";
-        return filtered
-          .map((p, j) => `${j === 0 ? "M" : "L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`)
-          .join(" ");
-      };
-
       const ownedPts   = pts.filter(p => p.owned);
       const unownedPts = pts.filter(p => !p.owned);
-      const linePath   = ptsToPath(ownedPts);
-      const ghostPath  = ptsToPath(unownedPts);
+      const linePath   = _mkPath(ownedPts);
+      const ghostPath  = _mkPath(unownedPts);
 
-      // Area only under the owned segment (falls back to full line if nothing unowned)
-      const areaSrc  = ownedPts.length >= 2 ? ownedPts : (pts.length >= 2 ? pts : []);
-      const areaD    = areaSrc.length >= 2
-        ? areaSrc.map((p,j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ")
-          + ` L${xS(areaSrc[areaSrc.length-1].i).toFixed(1)},${CH} L${xS(areaSrc[0].i).toFixed(1)},${CH} Z`
+      // Area only under owned segment
+      const areaSrc = ownedPts.length >= 2 ? ownedPts : pts;
+      const areaD   = areaSrc.length >= 2
+        ? _mkPath(areaSrc) + ` L${xS(areaSrc[areaSrc.length-1].i).toFixed(1)},${CH} L${xS(areaSrc[0].i).toFixed(1)},${CH} Z`
         : "";
 
-      return { key:s.key, color:s.color, isBenchmark:s.isBenchmark,
-               line:linePath, ghostLine:ghostPath, area:areaD };
+      return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:linePath, ghostLine:ghostPath, area:areaD };
     }),
-  [displaySeries, chartDates, xS, yS, CH]);
+  [displaySeries, chartDates, _mkPath, xS, CH]);
 
   const costPaths = useMemo(() => {
     if (!showCost) return [];
