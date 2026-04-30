@@ -2496,7 +2496,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                            ansicht = "portfolio",
                            benchSymbols = [], setBenchSymbols,
                            instrOverlays = [], setInstrOverlays,
-                           onSymbolsChange }) {
+                           onSymbolsChange, onSeriesColorsChange }) {
   // ── Range derived from the global period toolbar ────────────────────────────
   const range       = PERIOD_TO_RANGE[period] ?? "1y";
   const periodLabel = period === "Intraday" ? "1D" : period;
@@ -2535,9 +2535,10 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
   const [loading,         setLoading]         = useState(false);
   const [intradayHistData,setIntradayHistData] = useState(null);
   const [intradayLoading, setIntradayLoading] = useState(false);
-  const [hoverIdx,    setHoverIdx]    = useState(null);
-  const [txPopover,   setTxPopover]   = useState(null);
-  const [divPopover,  setDivPopover]  = useState(null);
+  const [hoverIdx,       setHoverIdx]       = useState(null);
+  const [txPopover,      setTxPopover]      = useState(null);
+  const [divPopover,     setDivPopover]     = useState(null);
+  const [instrTxPopover, setInstrTxPopover] = useState(null); // { marker, clientX, clientY }
   const svgRef       = useRef(null);
   const containerRef = useRef(null);
   const { w, h }     = useSize(containerRef);
@@ -2565,6 +2566,13 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
   // Report allSymbols up so App can build the picker
   useEffect(() => { onSymbolsChange?.(allSymbols); }, [allSymbols, onSymbolsChange]);
+
+  // Report series colors up so picker pills can match chart line colors
+  useEffect(() => {
+    const map = {};
+    for (const s of allSeries) { if (s.sym) map[s.sym] = s.color; }
+    onSeriesColorsChange?.(map);
+  }, [allSeries, onSeriesColorsChange]);
 
   // ── Fetch historical prices ─────────────────────────────────────────────────
   useEffect(() => {
@@ -2717,12 +2725,30 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     return { vs, cs };
   }, [allDailyDates, resolvedSet, priceMaps, toUSD, currency, rates]);
 
-  // Per-symbol series (instruments mode) — only tracks one symbol's qty/price
+  // Per-symbol series (instruments mode) — shows full period even before first buy
   const computeSymbolSeries = useCallback((sym, txList) => {
     if (!allDailyDates.length) return [];
-    const usdToDisp = currency === "USD" ? 1 : (rates[currency] ?? 1);
-    const symTx = txList.filter(t => t.symbol === sym)
+    const usdToDisp  = currency === "USD" ? 1 : (rates[currency] ?? 1);
+    const symTx      = txList.filter(t => t.symbol === sym)
       .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Pass 1: find the reference point (first date the symbol is owned)
+    // so we can normalize the unowned segments to the same scale.
+    let refValue = null, refPriceUSD = null;
+    { let qty2 = 0, lastP = null, cur = 0;
+      for (const date of allDailyDates) {
+        while (cur < symTx.length && symTx[cur].date <= date) {
+          const tx = symTx[cur++];
+          qty2 = tx.type === "BUY" ? qty2 + tx.quantity : Math.max(0, qty2 - tx.quantity);
+        }
+        const pm = priceMaps[sym];
+        if (pm) { const p = pm.get(date); if (p != null && p > 0) lastP = toUSD(p, sym); }
+        if (!resolvedSet.has(date) || !lastP || qty2 <= 0) continue;
+        refValue = qty2 * lastP; refPriceUSD = lastP; break;
+      }
+    }
+
+    // Pass 2: build series with owned/unowned flag
     let qty = 0, cost = 0, lastPriceUSD = null, txCursor = 0;
     const series = [];
     for (const date of allDailyDates) {
@@ -2739,11 +2765,15 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       }
       const pm = priceMaps[sym];
       if (pm) { const p = pm.get(date); if (p != null && p > 0) lastPriceUSD = toUSD(p, sym); }
-      if (!resolvedSet.has(date)) continue;
-      if (qty <= 0) continue;
-      const value = qty * (lastPriceUSD ?? 0);
-      if (value <= 0 && series.length === 0) continue;
-      series.push({ date, value: value * usdToDisp, cost: cost * usdToDisp });
+      if (!resolvedSet.has(date) || !lastPriceUSD) continue;
+      if (qty > 0) {
+        const value = qty * lastPriceUSD;
+        series.push({ date, value: value * usdToDisp, cost: cost * usdToDisp, owned: true });
+      } else if (refValue != null && refPriceUSD != null) {
+        // Outside ownership: normalize price relative to first-owned reference
+        const normValue = refValue * (lastPriceUSD / refPriceUSD);
+        series.push({ date, value: normValue * usdToDisp, cost: 0, owned: false });
+      }
     }
     return series;
   }, [allDailyDates, resolvedSet, priceMaps, toUSD, currency, rates]);
@@ -2907,7 +2937,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           for (const sym of [...new Set(portTxs.map(t => t.symbol))]) {
             const vs = computeSymbolSeries(sym, portTxs);
             if (!vs.length) continue;
-            baseSeries.push({ key:`${p.id}_${sym}`, label:`${sym} · ${p.name}`,
+            baseSeries.push({ key:`${p.id}_${sym}`, sym, label:`${sym} · ${p.name}`,
               color: LINE_COLORS[colorIdx++ % LINE_COLORS.length], vs, cs: null, isPortfolio:true });
           }
         }
@@ -2916,7 +2946,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
         baseSeries = allSymbols.map((sym, i) => {
           const vs   = computeSymbolSeries(sym, allTxFlat);
           const name = allTxFlat.find(t => t.symbol === sym)?.name ?? sym;
-          return { key:sym, label:`${sym} · ${name}`,
+          return { key:sym, sym, label:`${sym} · ${name}`,
             color: LINE_COLORS[i % LINE_COLORS.length], vs, cs: null, isPortfolio:true };
         }).filter(s => s.vs.length > 0);
       }
@@ -2955,7 +2985,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       const vs   = computeSymbolSeries(sym, allTxFlat);
       if (!vs.length) return null;
       const name = allTxFlat.find(t => t.symbol === sym)?.name ?? sym;
-      return { key:`instr_${sym}`, label:`${sym} · ${name}`,
+      return { key:`instr_${sym}`, sym, label:`${sym} · ${name}`,
         color: LINE_COLORS[(baseSeries.length + i) % LINE_COLORS.length],
         vs, cs: null, isInstrOverlay:true };
     }).filter(Boolean);
@@ -3048,6 +3078,27 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
     }));
   }, [allTxFlat, chartDates, portViewMode, ansicht, visibleSeries]);
 
+  // ── Per-instrument on-line transaction markers (instruments mode only) ───────
+  const instrTxMarkers = useMemo(() => {
+    if (ansicht !== "instruments" || !chartDates.length) return [];
+    const markers = [];
+    for (const s of displaySeries) {
+      if (s.isBenchmark) continue;
+      const sym = s.sym;
+      if (!sym) continue;
+      const symTxs = allTxFlat.filter(t => t.symbol === sym);
+      for (const tx of symTxs) {
+        let idx = chartDates.findIndex(d => d >= tx.date);
+        if (idx < 0) idx = chartDates.length - 1;
+        const d   = chartDates[idx];
+        const pt  = s.vs.find(p => p.date === d);
+        if (!pt) continue;
+        markers.push({ seriesKey:s.key, sym, color:s.color, idx, date:d, displayValue:pt.value, tx });
+      }
+    }
+    return markers;
+  }, [ansicht, displaySeries, allTxFlat, chartDates]);
+
   // ── Chart geometry ──────────────────────────────────────────────────────────
   const CW = Math.max(1, w - PAD.left - PAD.right);
   const CH = Math.max(1, h - 96 - PAD.top - PAD.bottom); // 96 = 1 control row + stats
@@ -3071,15 +3122,50 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
   const xS = useCallback((i) => nPts < 2 ? 0 : (i / (nPts - 1)) * CW, [nPts, CW]);
   const yS = useCallback((v)  => CH - ((v - minV) / Math.max(1, maxV - minV)) * CH, [CH, minV, maxV]);
 
-  // SVG paths per series
+  // SVG paths per series — splits owned vs unowned segments for instrument lines
   const seriesPaths = useMemo(() =>
     displaySeries.map(s => {
-      const ptMap = new Map(s.vs.map(pt => [pt.date, pt.value]));
-      const pts   = chartDates.map((d, i) => ({ i, v:ptMap.get(d) })).filter(p => p.v != null);
-      if (pts.length < 2) return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:"", area:"" };
-      const pathD = pts.map((p, j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ");
-      const areaD = `${pathD} L${xS(pts[pts.length-1].i).toFixed(1)},${CH} L${xS(pts[0].i).toFixed(1)},${CH} Z`;
-      return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:pathD, area:areaD };
+      const ptMap = new Map(s.vs.map(pt => [pt.date, { v:pt.value, owned: pt.owned !== false }]));
+      const pts   = chartDates.map((d, i) => {
+        const info = ptMap.get(d);
+        return info ? { i, v:info.v, owned:info.owned } : null;
+      }).filter(Boolean);
+      if (pts.length < 2) return { key:s.key, color:s.color, isBenchmark:s.isBenchmark, line:"", ghostLine:"", area:"" };
+
+      // Separate into owned and unowned sub-segments
+      const buildSubPaths = (filterFn) => {
+        const result = []; let seg = [];
+        for (let k = 0; k < pts.length; k++) {
+          const p = pts[k];
+          if (filterFn(p)) {
+            // Include adjacent neighbour to avoid gaps at transition
+            if (seg.length === 0 && k > 0) seg.push(pts[k-1]);
+            seg.push(p);
+          } else {
+            if (seg.length > 0) { if (k < pts.length) seg.push(p); result.push(seg); seg = []; }
+          }
+        }
+        if (seg.length > 0) result.push(seg);
+        return result.map(seg =>
+          seg.map((p, j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ")
+        ).join(" ");
+      };
+
+      const hasOwned   = pts.some(p => p.owned);
+      const hasUnowned = pts.some(p => !p.owned);
+      const linePath   = hasOwned   ? buildSubPaths(p => p.owned)  : "";
+      const ghostPath  = hasUnowned ? buildSubPaths(p => !p.owned) : "";
+
+      // Area only for full owned line (or whole line if no ownership split)
+      const ownedPts = pts.filter(p => p.owned);
+      const areaSrc  = ownedPts.length >= 2 ? ownedPts : (pts.length >= 2 ? pts : []);
+      const areaD    = areaSrc.length >= 2
+        ? areaSrc.map((p,j) => `${j===0?"M":"L"}${xS(p.i).toFixed(1)},${yS(p.v).toFixed(1)}`).join(" ")
+          + ` L${xS(areaSrc[areaSrc.length-1].i).toFixed(1)},${CH} L${xS(areaSrc[0].i).toFixed(1)},${CH} Z`
+        : "";
+
+      return { key:s.key, color:s.color, isBenchmark:s.isBenchmark,
+               line:linePath, ghostLine:ghostPath, area:areaD };
     }),
   [displaySeries, chartDates, xS, yS, CH]);
 
@@ -3230,7 +3316,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           <svg ref={svgRef} width={w} height={h - 96}
             style={{ overflow:"visible", cursor:"crosshair", userSelect:"none" }}
             onMouseMove={handleMouseMove}
-            onMouseLeave={() => { setHoverIdx(null); setTxPopover(null); setDivPopover(null); }}>
+            onMouseLeave={() => { setHoverIdx(null); setTxPopover(null); setDivPopover(null); setInstrTxPopover(null); }}>
 
             <defs>
               {visibleSeries.map(s => {
@@ -3282,6 +3368,12 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                   stroke={visibleSeries.length === 1 ? "rgba(148,163,184,0.45)" : cp.color}
                   strokeWidth={1.5} strokeDasharray="5 4" strokeOpacity={0.55}/>
               ))}
+              {/* Ghost lines — price history outside ownership window */}
+              {seriesPaths.map(p => p.ghostLine && (
+                <path key={p.key + "_g"} d={p.ghostLine} fill="none" stroke={p.color}
+                  strokeWidth={1.5} strokeDasharray="3 4" strokeOpacity={0.35}
+                  strokeLinejoin="round"/>
+              ))}
               {/* Value lines */}
               {seriesPaths.map(p => p.line && (
                 <path key={p.key + "_l"} d={p.line} fill="none" stroke={p.color}
@@ -3304,6 +3396,27 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                 </>
               )}
             </g>
+
+            {/* Per-instrument BUY/SELL markers ON the line (instruments mode) */}
+            {instrTxMarkers.map((m, mi) => {
+              const mx  = xS(m.idx) + PAD.left;
+              const my  = PAD.top + yS(m.displayValue);
+              const isBuy = m.tx.type === "BUY";
+              const col   = isBuy ? THEME.green : THEME.red;
+              return (
+                <g key={`itx_${m.seriesKey}_${mi}`} style={{ cursor:"pointer" }}
+                  onMouseEnter={e => setInstrTxPopover({ marker:m, clientX:e.clientX, clientY:e.clientY })}
+                  onMouseLeave={() => setInstrTxPopover(null)}>
+                  {/* vertical tick from the line */}
+                  <line x1={mx} y1={my} x2={mx} y2={my + (isBuy ? -14 : 14)}
+                    stroke={col} strokeWidth={1} strokeOpacity={0.5}/>
+                  {/* diamond marker */}
+                  <polygon
+                    points={`${mx},${my + (isBuy?-20:8)} ${mx+5},${my+(isBuy?-14:14)} ${mx},${my+(isBuy?-8:20)} ${mx-5},${my+(isBuy?-14:14)}`}
+                    fill={col} opacity={0.9} stroke={THEME.bg} strokeWidth={1.5}/>
+                </g>
+              );
+            })}
 
             {/* Transaction markers */}
             {txMarkers.map(m => {
@@ -3446,6 +3559,49 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                   </div>
                 );
               })}
+            </div>
+          );
+        })()}
+
+        {/* ── Instrument-level BUY/SELL popover ─────────────────────────── */}
+        {instrTxPopover && (() => {
+          const { marker: m, clientX, clientY } = instrTxPopover;
+          const tx = m.tx;
+          const bodyZoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+          const rect = containerRef.current?.getBoundingClientRect() ?? { left:0, top:0 };
+          const px = (clientX - rect.left) / bodyZoom;
+          const py = (clientY - rect.top)  / bodyZoom;
+          const popW = 240;
+          const left = px + popW + 16 > w / bodyZoom ? px - popW - 8 : px + 12;
+          const isBuy  = tx.type === "BUY";
+          const total  = tx.quantity * (tx.price_usd || tx.price);
+          return (
+            <div style={{ position:"absolute", left, top:Math.max(8, py - 20), width:popW,
+              pointerEvents:"none", background:THEME.surface, border:`1px solid ${m.color}44`,
+              borderRadius:12, padding:"10px 12px", zIndex:201,
+              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                <span style={{ width:8, height:8, borderRadius:2, background:m.color, flexShrink:0 }}/>
+                <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:11, color:m.color }}>{m.sym}</span>
+                <span style={{ padding:"1px 6px", borderRadius:4, fontSize:9, fontWeight:700, marginLeft:"auto",
+                  background: isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
+                  color: isBuy ? THEME.green : THEME.red,
+                  border:`1px solid ${isBuy?"rgba(74,222,128,0.25)":"rgba(248,113,113,0.25)"}` }}>{tx.type}</span>
+              </div>
+              <div style={{ fontSize:10, color:THEME.text3, marginBottom:6 }}>{fmtDate(m.date)}</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4px 8px" }}>
+                {[
+                  ["Menge",    tx.quantity.toLocaleString("en-US", { maximumFractionDigits:4 })],
+                  ["Preis",   `$${parseFloat(tx.price).toFixed(2)}`],
+                  ["Gesamt",  `$${total.toLocaleString("en-US", { maximumFractionDigits:0 })}`],
+                  ...(tx.portfolioName ? [["Portfolio", tx.portfolioName]] : []),
+                ].map(([l, v]) => (
+                  <React.Fragment key={l}>
+                    <span style={{ fontSize:9, color:THEME.text3 }}>{l}</span>
+                    <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text1, textAlign:"right" }}>{v}</span>
+                  </React.Fragment>
+                ))}
+              </div>
             </div>
           );
         })()}
@@ -7101,6 +7257,7 @@ export default function App() {
   const [instrOverlays,     setInstrOverlays]      = useState([]);
   const [showVergleich,     setShowVergleich]      = useState(false);
   const [perfSymbols,       setPerfSymbols]        = useState([]); // allSymbols from PerformanceView
+  const [perfSeriesColors,  setPerfSeriesColors]   = useState({}); // { sym → color } from allSeries
   const vergleichRef = useRef(null);
   const [activeTab,         setActiveTab]          = useState("holdings");
 
@@ -7707,7 +7864,8 @@ export default function App() {
                           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                             {perfSymbols.map((sym, i) => {
                               const active = instrOverlays.includes(sym);
-                              const col = ["#3b82f6","#34d399","#f59e0b","#ec4899","#8b5cf6","#06b6d4","#f97316","#a78bfa","#10b981","#fb923c"][i % 10];
+                              const FALLBACK = ["#3b82f6","#34d399","#f59e0b","#ec4899","#8b5cf6","#06b6d4","#f97316","#a78bfa","#10b981","#fb923c"];
+                              const col = perfSeriesColors[sym] || FALLBACK[i % FALLBACK.length];
                               return (
                                 <button key={sym} onClick={() => setInstrOverlays(prev =>
                                   prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym])}
@@ -7815,7 +7973,8 @@ export default function App() {
                   setBenchSymbols={setBenchSymbols}
                   instrOverlays={instrOverlays}
                   setInstrOverlays={setInstrOverlays}
-                  onSymbolsChange={setPerfSymbols}/>
+                  onSymbolsChange={setPerfSymbols}
+                  onSeriesColorsChange={setPerfSeriesColors}/>
               </div>
             )}
             {activeTab === "transactions" && viewMode !== "split" && (
