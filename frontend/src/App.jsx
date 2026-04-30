@@ -2567,13 +2567,6 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
   // Report allSymbols up so App can build the picker
   useEffect(() => { onSymbolsChange?.(allSymbols); }, [allSymbols, onSymbolsChange]);
 
-  // Report series colors up so picker pills can match chart line colors
-  useEffect(() => {
-    const map = {};
-    for (const s of allSeries) { if (s.sym) map[s.sym] = s.color; }
-    onSeriesColorsChange?.(map);
-  }, [allSeries, onSeriesColorsChange]);
-
   // ── Fetch historical prices ─────────────────────────────────────────────────
   useEffect(() => {
     if (!fetchSymbols.length) return;
@@ -2996,6 +2989,14 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       computeSymbolSeries, currency, rates,
       period, intradayHistData, intradayDates, intradayPriceMaps,
       computeIntradaySeries, computeIntradaySymbolSeries]);
+
+  // Report series colors up so picker pills can match chart line colors
+  // (must be AFTER allSeries declaration to avoid TDZ on the deps array)
+  useEffect(() => {
+    const map = {};
+    for (const s of allSeries) { if (s.sym) map[s.sym] = s.color; }
+    onSeriesColorsChange?.(map);
+  }, [allSeries, onSeriesColorsChange]);
 
   // ── Visible series ──────────────────────────────────────────────────────────
   const visibleSeries = useMemo(() =>
