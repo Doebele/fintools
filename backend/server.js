@@ -714,7 +714,7 @@ async function fetchAlphaVantage(symbol, apiKey) {
   const timeSeries = histData['Time Series (Daily)'] ?? {};
   const dates  = Object.keys(timeSeries).sort().reverse();
   const refs   = {};
-  const periodDays = { '1W':7, '1M':30, '6M':180, 'YTD':null, '1Y':365, '2Y':730 };
+  const periodDays = { '1W':7, '1M':30, 'YTD':null, '1Y':365, '2Y':730 };
   for (const [label, days] of Object.entries(periodDays)) {
     if (label === 'YTD') {
       const jan1 = `${new Date().getFullYear()}-01-01`;
@@ -759,7 +759,7 @@ app.post('/api/quotes/batch', async (req, res) => {
   const results = {};
   const errors  = {};
   const ttl     = getQuoteTtlMin();  // smart TTL: 60 min market hours, 24h otherwise
-  const PERIODS = ['1W','1M','6M','YTD','1Y','2Y'];
+  const PERIODS = ['1W','1M','YTD','1Y','2Y'];
 
   // ── Parse raw Yahoo chart data into a compact quote object ──────────────────
   const parseYahooQuote = (sym, data) => {
@@ -777,7 +777,7 @@ app.post('/api/quotes/batch', async (req, res) => {
     const changePct = prevClose > 0 ? (change/prevClose)*100 : 0;
     const refs     = {};
     for (const period of PERIODS) {
-      const days = period==='1W'?7:period==='1M'?30:period==='6M'?180:period==='YTD'?null:period==='1Y'?365:730;
+      const days = period==='1W'?7:period==='1M'?30:period==='YTD'?null:period==='1Y'?365:730;
       let cutoffTs;
       if (period === 'YTD') { const jan1 = new Date(new Date().getFullYear(),0,1); cutoffTs = jan1.getTime()/1000; }
       else { const d = new Date(); d.setDate(d.getDate()-days); cutoffTs = d.getTime()/1000; }
@@ -2105,50 +2105,6 @@ app.post('/api/quotes/history-multi', async (req, res) => {
       ]).filter(([, v]) => v != null);
 
       db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'hist', CURRENT_TIMESTAMP)`)
-        .run(cacheKey, JSON.stringify(series));
-      results[sym] = series;
-    } catch(e) {
-      results[sym] = null;
-    }
-  }));
-
-  res.json({ results });
-});
-
-// POST /api/quotes/history-multi-intraday  — minute-level prices for today
-// Body: { symbols: ["AAPL",...] }
-// Returns: { results: { SYM: [["YYYY-MM-DDTHH:MM", price], ...] } }
-app.post('/api/quotes/history-multi-intraday', async (req, res) => {
-  const { symbols = [] } = req.body;
-  if (!Array.isArray(symbols) || !symbols.length) return err(res, 400, 'symbols required');
-  const uniq = [...new Set(symbols.map(s => s.toUpperCase()))].slice(0, 40);
-  const CACHE_TTL = 5; // 5 minutes
-  const results = {};
-
-  await Promise.all(uniq.map(async sym => {
-    const cacheKey = `intraday1m_${sym}`;
-    try {
-      const cached = db.prepare(
-        `SELECT data, updated_at FROM quotes_cache WHERE symbol=?
-         AND datetime(updated_at) > datetime('now', '-${CACHE_TTL} minutes')`
-      ).get(cacheKey);
-      if (cached) { results[sym] = JSON.parse(cached.data); return; }
-
-      const data = await fetchYahoo(sym, '1d', '1m');
-      const r    = data.chart?.result?.[0];
-      if (!r) { results[sym] = null; return; }
-      const ts     = r.timestamp ?? [];
-      const closes = r.indicators?.quote?.[0]?.close ?? [];
-      const tz     = r.meta?.exchangeTimezoneName ?? 'America/New_York';
-      const series = ts.map((t, i) => {
-        if (closes[i] == null) return null;
-        const dtStr = new Date(t * 1000)
-          .toLocaleString('sv-SE', { timeZone: tz })
-          .replace(' ', 'T').slice(0, 16); // "YYYY-MM-DDTHH:MM"
-        return [dtStr, closes[i]];
-      }).filter(Boolean);
-
-      db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'intraday1m', CURRENT_TIMESTAMP)`)
         .run(cacheKey, JSON.stringify(series));
       results[sym] = series;
     } catch(e) {
