@@ -1,4 +1,31 @@
+# macOS
 .DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
+**/.DS_Store
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Local data (SQLite DB and WAL files)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Claude Code session state
+.claude/
+
+# Environment / local overrides
+.env
+.env.local
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Build artifacts
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
