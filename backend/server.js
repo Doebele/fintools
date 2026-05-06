@@ -22,6 +22,12 @@ const fetch       = require('node-fetch');
 const path        = require('path');
 const fs          = require('fs');
 const ExcelJS     = require('exceljs');
+const yahooFinance = require('yahoo-finance2').default;
+
+// Silence yahoo-finance2 survey + ripHistorical notices on every call
+try {
+  yahooFinance.suppressNotices(['yahooSurvey', 'ripHistorical']);
+} catch (_) { /* older versions: no-op */ }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const app           = express();
@@ -579,25 +585,101 @@ const USER_AGENTS = [
 let uaIndex = 0;
 const nextUA = () => USER_AGENTS[uaIndex++ % USER_AGENTS.length];
 
-async function fetchYahoo(symbol, range = '2y', interval = '1d') {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
-              `?interval=${interval}&range=${range}&includePrePost=false`;
-  const controller = new AbortController();
-  const timeout    = setTimeout(() => controller.abort(), 10000);
+// ── Range-string → period1 (start date) helper ──────────────────────────────
+// yahoo-finance2 wants Date objects, not Yahoo's "2y"/"1mo" range syntax.
+function rangeToPeriod1(range) {
+  const now = Date.now();
+  const D   = (days) => new Date(now - days * 86400000);
+  switch (range) {
+    case '1d':  return D(2);     // include yesterday for intraday weekend lookups
+    case '2d':  return D(3);
+    case '5d':  return D(7);
+    case '1mo': return D(31);
+    case '3mo': return D(93);
+    case '6mo': return D(186);
+    case '1y':  return D(366);
+    case '2y':  return D(732);
+    case '5y':  return D(5  * 366);
+    case '10y': return D(10 * 366);
+    case '15y': return D(15 * 366);
+    case 'ytd': return new Date(new Date().getFullYear(), 0, 1);
+    case 'max': return new Date(0);
+    default:    return D(366);
+  }
+}
+
+// Convert yahoo-finance2's parsed chart shape back to raw Yahoo shape that
+// the rest of this server (and the frontend) already knows how to consume.
+function ynt2RawChart(yfResult) {
+  const { meta, quotes = [], events = {} } = yfResult || {};
+  const timestamp = quotes.map(q => Math.floor(new Date(q.date).getTime() / 1000));
+  const open      = quotes.map(q => q.open      ?? null);
+  const high      = quotes.map(q => q.high      ?? null);
+  const low       = quotes.map(q => q.low       ?? null);
+  const close     = quotes.map(q => q.close     ?? null);
+  const volume    = quotes.map(q => q.volume    ?? null);
+  const adjclose  = quotes.map(q => q.adjclose  ?? null);
+
+  // Convert events arrays → keyed-object format that Yahoo's raw API uses
+  const evOut = {};
+  if (Array.isArray(events.dividends) && events.dividends.length) {
+    evOut.dividends = {};
+    for (const d of events.dividends) {
+      const ts = Math.floor(new Date(d.date).getTime() / 1000);
+      evOut.dividends[ts] = { amount: d.amount, date: ts };
+    }
+  }
+  if (Array.isArray(events.splits) && events.splits.length) {
+    evOut.splits = {};
+    for (const s of events.splits) {
+      const ts = Math.floor(new Date(s.date).getTime() / 1000);
+      evOut.splits[ts] = { date: ts, numerator: s.numerator, denominator: s.denominator,
+                           splitRatio: s.splitRatio };
+    }
+  }
+
+  return {
+    chart: {
+      result: [{
+        meta: meta || {},
+        timestamp,
+        events: evOut,
+        indicators: {
+          quote:    [{ open, high, low, close, volume }],
+          adjclose: [{ adjclose }],
+        },
+      }],
+      error: null,
+    },
+  };
+}
+
+// ── fetchYahoo: now backed by yahoo-finance2 (handles crumb / cookie / session)
+//   Returns the same RAW shape we used to fetch directly, so callers don't change.
+async function fetchYahoo(symbol, range = '2y', interval = '1d', events = null) {
+  const opts = {
+    period1:  rangeToPeriod1(range),
+    interval: interval,        // '1m' | '5m' | '1d' | '1wk' | '1mo' | ...
+  };
+  if (events) opts.events = events; // 'history' | 'div' | 'split' | 'div|split'
+
+  // Tolerate schema drift in Yahoo payloads
+  const moduleOpts = { validateResult: false };
+
   try {
-    const resp = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': nextUA(), 'Accept': 'application/json',
-                 'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://finance.yahoo.com' },
-    });
-    clearTimeout(timeout);
-    if (resp.status === 429) throw new Error('Yahoo Finance rate limit — try again in a minute');
-    if (resp.status === 404) throw new Error(`Symbol "${symbol}" not found on Yahoo Finance`);
-    if (!resp.ok) throw new Error(`Yahoo Finance HTTP ${resp.status}`);
-    return await resp.json();
+    const result = await yahooFinance.chart(symbol, opts, moduleOpts);
+    return ynt2RawChart(result);
   } catch (e) {
-    clearTimeout(timeout);
-    if (e.name === 'AbortError') throw new Error('Yahoo Finance request timed out (10s)');
+    const msg = String(e && e.message || e);
+    if (/HTTP 429|Too Many Requests|rate.?limit/i.test(msg)) {
+      throw new Error('Yahoo Finance rate limit — try again in a minute');
+    }
+    if (/not found|HTTP 404|404/.test(msg)) {
+      throw new Error(`Symbol "${symbol}" not found on Yahoo Finance`);
+    }
+    if (e.name === 'AbortError' || /timeout/i.test(msg)) {
+      throw new Error('Yahoo Finance request timed out');
+    }
     throw e;
   }
 }
