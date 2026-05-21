@@ -2,7 +2,21 @@
 
 Self-hosted portfolio tracker with a Node.js/Express backend, SQLite database, Yahoo Finance proxy, and a React treemap frontend. Runs entirely on your Synology NAS via Docker.
 
-## ✨ What's new in v2.0
+## ✨ What's new
+
+### v3.x
+
+| Area | Improvement |
+|---|---|
+| **Backend** | **Migrated Yahoo proxy to `yahoo-finance2` v3** — built-in crumb/cookie/session auth that survives Yahoo's tightened 2025 rate limits (previously ~60% of requests hit `401`/`429`) |
+| **Backend** | New `/api/quotes/history-multi-intraday` endpoint — minute-level OHLCV for the current day, used by the 1D performance view |
+| **Frontend** | Performance chart now renders **intraday minute-resolution** on the 1D period (x-axis shows exchange-timezone `HH:MM`) |
+| **Frontend** | Y-axis mode toggle: **Abs / ±$ / ±%** — switch between absolute value, dollar delta and percentage change from period start |
+| **Frontend** | **BUY/SELL diamond markers** sit directly on each instrument line with a tooltip showing quantity, price, total and portfolio |
+| **Frontend** | Instruments now render their **full price history** even before the first buy (and after a full sell) — drawn as a dashed ghost line, normalised to first-owned value |
+| **Frontend** | Vergleich-picker pills use the **exact same colour** as the chart line for that instrument |
+
+### v2.0
 
 | Area | Improvement |
 |---|---|
@@ -25,10 +39,11 @@ Self-hosted portfolio tracker with a Node.js/Express backend, SQLite database, Y
 
 ✅ **Own database** (SQLite) — all portfolios & transactions persist across reboots  
 ✅ **Multi-portfolio** — each with PIN-protection, verified server-side with bcrypt  
-✅ **Yahoo Finance proxy** — no CORS issues, server-side caching, user-agent rotation  
+✅ **Yahoo Finance proxy** — backed by `yahoo-finance2` with automatic crumb/cookie/session auth and server-side caching  
 ✅ **FX rates** via Frankfurter API (cached 60 min)  
 ✅ **Interactive Treemap** — colour by market % or gain/loss %  
-✅ **Period performance** — 1D · 1W · 1M · YTD · 1Y · 2Y · Max  
+✅ **Period performance** — 1D (minute resolution) · 1W · 1M · 6M · YTD · 1Y · 2Y · Max  
+✅ **Y-axis modes** — absolute · ±$ · ±% for the performance chart  
 ✅ **Multi-currency** — USD · EUR · GBP · CHF  
 ✅ **Docker Compose** — one command install on Synology  
 ✅ **Auto-backups** — via included script + cron  

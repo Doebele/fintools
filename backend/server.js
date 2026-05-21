@@ -22,12 +22,14 @@ const fetch       = require('node-fetch');
 const path        = require('path');
 const fs          = require('fs');
 const ExcelJS     = require('exceljs');
-const yahooFinance = require('yahoo-finance2').default;
+// yahoo-finance2 v3: must be instantiated (was a default export in v2)
+const YahooFinance = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinance();
 
-// Silence yahoo-finance2 survey + ripHistorical notices on every call
+// Silence yahoo-finance2 survey notices
 try {
   yahooFinance.suppressNotices(['yahooSurvey', 'ripHistorical']);
-} catch (_) { /* older versions: no-op */ }
+} catch (_) { /* method may not exist in all versions */ }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const app           = express();
