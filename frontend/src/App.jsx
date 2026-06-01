@@ -509,6 +509,7 @@ const PERIOD_TO_RANGE = {
 
 // ─── Small UI Helpers ─────────────────────────────────────────────────────────
 function RefreshIconButton({ onClick, loading }) {
+  const { t } = useTranslation();
   const [hov, setHov] = useState(false);
   return (
     <button
@@ -516,7 +517,7 @@ function RefreshIconButton({ onClick, loading }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       disabled={loading}
-      title="Refresh Quotes"
+      title={t("tips.refresh")}
       style={{
         display:"flex", alignItems:"center", gap:5,
         padding: hov ? "4px 10px" : "4px 7px",
@@ -1359,7 +1360,9 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 // ════════════════════════════════════════════════════════════════════════════
 // ─── Delayed tooltip for collapsed sidebar icons ──────────────────────────
 // ─── Inline info tooltip (? icon with popover) ───────────────────────────────
-const InfoTip = ({ text, title, width=220, side="top" }) => {
+const InfoTip = ({ text, i18nKey, title, width=220, side="top" }) => {
+  const { t } = useTranslation();
+  const resolvedText = i18nKey ? t(i18nKey) : text;
   const [vis, setVis] = useState(false);
   const posStyle = side === "bottom"
     ? { top:"calc(100% + 6px)", bottom:"auto" }
@@ -1373,13 +1376,13 @@ const InfoTip = ({ text, title, width=220, side="top" }) => {
         <div style={{
           position:"absolute", left:"50%", ...posStyle,
           transform:"translateX(-50%)", width, zIndex:200,
-          background:"#1a1d2e", border:`1px solid ${THEME.border}`,
+          background:"var(--surface-2)", border:`1px solid ${THEME.border}`,
           borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-          boxShadow:"0 6px 24px rgba(0,0,0,0.6)",
+          boxShadow:"0 6px 24px rgba(0,0,0,0.5)",
           transition:"opacity 0.15s",
         }}>
           {title && <div style={{ fontSize:10, color:THEME.text1, fontWeight:700, marginBottom:4 }}>{title}</div>}
-          <div style={{ fontSize:10, color:THEME.text2, lineHeight:1.55 }}>{text}</div>
+          <div style={{ fontSize:10, color:THEME.text2, lineHeight:1.55 }}>{resolvedText}</div>
         </div>
       )}
     </span>
@@ -5263,6 +5266,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         border:`1px solid ${THEME.border}` }}>
         <input ref={pdfInputRef} type="file" accept=".pdf" style={{ display:"none" }}
           onChange={e => { const f = e.target.files?.[0]; if(f) handlePdfFile(f); e.target.value=''; }}/>
+        <InfoTip i18nKey="tips.pdfImport" side="bottom" width={240}/>
         <button onClick={() => pdfInputRef.current?.click()}
           disabled={pdfLoading}
           style={{ padding:"6px 13px", borderRadius:8, border:"none",
@@ -5314,7 +5318,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               <FInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)}/>
             </div>
             <div>
-              <FLabel>Periodicity</FLabel>
+              <FLabel>Periodicity <InfoTip i18nKey="tips.recurrence" side="top" width={200}/></FLabel>
               <FSelect value={periodicity} onChange={e => setPeriodicity(e.target.value)}>
                 {PERIODICITY_OPTIONS.map(o => (
                   <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>
@@ -5348,7 +5352,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         </div>
         {/* ISIN */}
         <div>
-          <FLabel>ISIN <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span></FLabel>
+          <FLabel>ISIN <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span><InfoTip i18nKey="tips.isin" side="top" width={240}/></FLabel>
           <div style={{ display:"flex", gap:6 }}>
             <FInput placeholder="e.g. US0378331005" value={isin}
               style={{ fontFamily:THEME.mono, letterSpacing:"0.05em", flex:1 }}
@@ -5356,7 +5360,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               onKeyDown={e => e.key==="Enter" && isin.length>=12 && handleIsinLookup()}/>
             <button onClick={handleIsinLookup}
               disabled={isin.length < 12 || isinBusy}
-              title="Symbol aus ISIN suchen"
+              title={t("tips.isinSearch")}
               style={{
                 padding:"0 13px", borderRadius:10, flexShrink:0,
                 border:`1.5px solid ${isin.length>=12 ? THEME.accent : THEME.border}`,
@@ -5430,6 +5434,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             </div>
             <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
               disabled={!symbol||!date||lookupBusy}
+              title={t("tips.getPrice")}
               style={{
                 height:42, padding:"0 16px", borderRadius:10, cursor:"pointer",
                 border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
@@ -5450,6 +5455,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, paddingBottom:2 }}>
               <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
                 disabled={!symbol||!date||lookupBusy}
+                title={t("tips.getPrice")}
                 style={{
                   height:42, padding:"0 14px", borderRadius:10, cursor:"pointer",
                   border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
@@ -5470,7 +5476,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         {/* Row 4: Price | Currency */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div style={{ position:"relative" }}>
-            <FLabel>Price per Share</FLabel>
+            <FLabel>Price per Share <InfoTip i18nKey="tips.buyPrice" side="top" width={220}/></FLabel>
             <FInput type="number" min="0" step="any" placeholder="0.00" value={price}
               onChange={e => { setPrice(e.target.value); setPriceEdited(true); }}/>
             {lookupOk && !priceEdited && !lookupBusy && (
@@ -5482,7 +5488,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             )}
           </div>
           <div>
-            <FLabel>Currency</FLabel>
+            <FLabel>Currency <InfoTip i18nKey="tips.currency" side="top" width={220}/></FLabel>
             <FSelect value={currency} onChange={e => setCurrency(e.target.value)}>
               {["USD","EUR","GBP","CHF","JPY","CAD","AUD","HKD","CNY","SGD","SEK","NOK","DKK"].map(c => <option key={c} value={c}>{c}</option>)}
             </FSelect>
@@ -5694,7 +5700,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         </div>
         {dataSource==="alphavantage" && (
           <div>
-            <FLabel>Alpha Vantage API Key</FLabel>
+            <FLabel>Alpha Vantage API Key <InfoTip i18nKey="tips.avKey" side="top" width={240}/></FLabel>
             <FInput placeholder="Free key at alphavantage.co"
               value={avApiKey} onChange={e => setAvApiKey(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:12 }}/>
@@ -5740,11 +5746,11 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
             ))}
           </div>
           {aiProvider !== "disabled" && (<>
-            <FLabel>{t("settings.endpointUrl")}</FLabel>
+            <FLabel>{t("settings.endpointUrl")} <InfoTip i18nKey="tips.aiEndpoint" side="top" width={240}/></FLabel>
             <FInput value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
               placeholder="http://localhost:1234"/>
-            <FLabel>{t("settings.modelName")}</FLabel>
+            <FLabel>{t("settings.modelName")} <InfoTip i18nKey="tips.aiModel" side="top" width={240}/></FLabel>
             <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
               placeholder="e.g. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
             {aiProvider === "openrouter" && (<>
@@ -5798,6 +5804,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
 // VIEW MODE TOGGLE  (inline on main screen)
 // ════════════════════════════════════════════════════════════════════════════
 function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
+  const { t } = useTranslation();
   // With only 1 portfolio, none of the split/consolidated modes add value
   if (portfolioCount <= 1) return null;
 
@@ -5822,25 +5829,28 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
   }
 
   return (
-    <div style={{
-      display:"flex", alignItems:"center", gap:2,
-      background:"rgba(0,0,0,0.25)", borderRadius:9,
-      padding:3, border:`1px solid ${THEME.border}`,
-    }}>
-      {modes.map(m => (
-        <button key={m.key} onClick={() => onViewMode(m.key)} style={{
-          display:"flex", alignItems:"center", gap:5,
-          padding:"4px 12px", borderRadius:7, border:"none", cursor:"pointer",
-          fontSize:10, fontWeight:700, fontFamily:"inherit",
-          transition:"all 0.15s",
-          background: viewMode === m.key ? "rgba(59,130,246,0.22)" : "transparent",
-          color:       viewMode === m.key ? THEME.accent : THEME.text3,
-          letterSpacing:"0.04em",
-        }}>
-          <span style={{ fontSize:12, lineHeight:1 }}>{m.icon}</span>
-          {m.label}
-        </button>
-      ))}
+    <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+      <InfoTip i18nKey="tips.consolidated" side="top" width={230}/>
+      <div style={{
+        display:"flex", alignItems:"center", gap:2,
+        background:"rgba(0,0,0,0.25)", borderRadius:9,
+        padding:3, border:`1px solid ${THEME.border}`,
+      }}>
+        {modes.map(m => (
+          <button key={m.key} onClick={() => onViewMode(m.key)} style={{
+            display:"flex", alignItems:"center", gap:5,
+            padding:"4px 12px", borderRadius:7, border:"none", cursor:"pointer",
+            fontSize:10, fontWeight:700, fontFamily:"inherit",
+            transition:"all 0.15s",
+            background: viewMode === m.key ? "rgba(59,130,246,0.22)" : "transparent",
+            color:       viewMode === m.key ? THEME.accent : THEME.text3,
+            letterSpacing:"0.04em",
+          }}>
+            <span style={{ fontSize:12, lineHeight:1 }}>{m.icon}</span>
+            {m.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -5849,6 +5859,7 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
 // SUMMARY BAR
 // ════════════════════════════════════════════════════════════════════════════
 function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period, currency, rates, colorMode, onColorMode }) {
+  const { t } = useTranslation();
   const totalNetGain = totalValueUSD - totalCostUSD;
   return (
     <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
@@ -5872,6 +5883,8 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
 
       <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
         {/* Color mode toggle */}
+        <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+          <InfoTip i18nKey="tips.colourMode" side="top" width={240}/>
         <div style={{ display:"flex", background:THEME.bg, border:`1px solid ${THEME.border}`,
           borderRadius:8, padding:2, gap:2 }}>
           {[["market","Mkt %"],["gainloss","G&L"]].map(([mode,label]) => (
@@ -5897,6 +5910,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
             <span style={{ fontSize:7, color:THEME.text3 }}>+5%</span>
           </div>
         </div>
+        </div>{/* end color mode wrapper */}
       </div>
     </div>
   );
