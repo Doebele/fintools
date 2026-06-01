@@ -837,6 +837,7 @@ const RESOLUTION_LABELS = {
 };
 
 function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone, onCreatePortfolio }) {
+  const { t } = useTranslation();
   const [tab,         setTab]         = useState("export");
   const [selPort,     setSelPort]     = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
   const [file,        setFile]        = useState(null);
@@ -938,7 +939,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       if (onCreatePortfolio) onCreatePortfolio(port);
       setSelPort(port.id);
       setNewPortName("");
-    } catch(e) { setImportErr(e.message || "Portfolio konnte nicht erstellt werden"); }
+    } catch(e) { setImportErr(e.message || t("portfolio.errCreate")); }
     setCreatingPort(false);
   };
 
@@ -950,14 +951,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
         style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
           background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
         {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        <option value="new">＋ Neues Portfolio anlegen…</option>
+        <option value="new">{t("portfolio.createNew")}</option>
       </select>
       {isNewPort && (
         <div style={{ display:"flex", gap:8, marginTop:8 }}>
           <input
             autoFocus
             value={newPortName} onChange={e => setNewPortName(e.target.value)}
-            placeholder="Name des neuen Portfolios"
+            placeholder={t("portfolio.namePlaceholder")}
             onKeyDown={e => e.key === "Enter" && handleCreatePort()}
             style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1px solid ${THEME.accent}66`,
               background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}/>
@@ -966,7 +967,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               background:THEME.accent, color:"#fff", fontSize:12, fontWeight:600,
               cursor: newPortName.trim() ? "pointer" : "not-allowed", fontFamily:"inherit",
               opacity: newPortName.trim() ? 1 : 0.5 }}>
-            {creatingPort ? "…" : "Anlegen"}
+            {creatingPort ? "…" : t("common.create")}
           </button>
         </div>
       )}
@@ -3439,7 +3440,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             (period === "Intraday" ? intradayHistData != null : histData != null) && (
           <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
             justifyContent:"center", color:THEME.text3, fontSize:13 }}>
-            Keine Daten für den gewählten Zeitraum
+            {t("perf.noData")}
           </div>
         )}
 
@@ -4026,9 +4027,9 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
         <div style={{ borderRadius:10, border:`1px solid ${THEME.border}`, overflow:"hidden", marginBottom:12 }}>
           <div style={{ padding:"8px 12px", background:"rgba(255,255,255,0.04)",
             borderBottom:`1px solid ${THEME.border}`, display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:11, color:THEME.text2, fontWeight:700 }}>Sparplan-Vorschau</span>
+            <span style={{ fontSize:11, color:THEME.text2, fontWeight:700 }}>{t("savingsPlan.preview")}</span>
             <span style={{ marginLeft:"auto", fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
-              {allDates.length} Termine gesamt
+              {allDates.length} {t("savingsPlan.datesTotal")}
             </span>
           </div>
 
@@ -5210,7 +5211,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   }, [budget, price]);
 
   return (
-    <Modal title={editMode?"Edit Transaction":"Add Transaction"} onClose={onClose}>
+    <Modal title={editMode ? t("tx.edit") : t("tx.add")} onClose={onClose}>
       {/* Portfolio selector — only in add mode with multiple portfolios */}
       {!editMode && portfolios.length > 1 && (
         <div style={{ marginBottom:16 }}>
@@ -5416,7 +5417,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           )}
           {isinCandidates && isinCandidates.length === 0 && (
             <div style={{ fontSize:11, color:THEME.text3, marginTop:4 }}>
-              Kein Symbol für diese ISIN gefunden
+              {t("tips.noSymbolFound")}
             </div>
           )}
 
@@ -5504,10 +5505,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
             padding:"9px 14px", background:THEME.surface }}>
             <span style={{ fontSize:11, fontWeight:700, color:THEME.text2 }}>
-              Sparplan-Vorschau
+              {t("savingsPlan.preview")}
             </span>
             <span style={{ fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
-              {recurDates.length} Termin{recurDates.length!==1?"e":""}
+              {recurDates.length} {t("savingsPlan.datesTotal")}
             </span>
           </div>
           {/* Past — will be booked */}
@@ -6308,6 +6309,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                    user, savedEtfs, onSaveEtf, onRemoveEtf, onSwitchToPortfolio,
                    onBack, onSignOut,
                    displayMode, onToggleDisplayMode }) {
+  const { t } = useTranslation();
   const [search,      setSearch]      = useState("");
   const [searching,   setSearching]   = useState(false);
   const [results,     setResults]     = useState([]);
@@ -6824,10 +6826,10 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                   transition:"background 0.12s",
                 }} className="rail-btn">
                   <span style={{ flexShrink:0, display:"flex" }}><LayoutDashboard size={16}/></span>
-                  <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>Portfolio Explorer</span>
+                  <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>{t("portfolio.explorer")}</span>
                 </button>
               ) : (
-                <SidebarTip label="Portfolio Explorer" open={open}>
+                <SidebarTip label={t("portfolio.explorer")} open={open}>
                   <button onClick={onSwitchToPortfolio} style={{
                     display:"flex", alignItems:"center", justifyContent:"center",
                     width:"100%", padding:"9px 0", borderRadius:9,

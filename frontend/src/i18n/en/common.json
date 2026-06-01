@@ -41,7 +41,9 @@
     "errBudget": "Budget must be a positive number",
     "errPrice": "Price for new purchases required",
     "saving": "Saving…",
-    "noPastDates": "No past purchase dates — set Start Date in the past"
+    "noPastDates": "No past purchase dates — set Start Date in the past",
+    "preview": "Savings Plan Preview",
+    "datesTotal": "dates total"
   },
   "periodicity": {
     "daily": "Daily",
@@ -87,7 +89,8 @@
     "period": "Period",
     "bestDay": "Best Day",
     "worstDay": "Worst Day",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "noData": "No data for the selected period"
   },
   "tx": {
     "one": "Transaction",
@@ -117,6 +120,7 @@
     "quoteSource": "Quote Data Source"
   },
   "tips": {
+    "noSymbolFound": "No symbol found for this ISIN",
     "refresh": "Refresh live quotes for all positions",
     "colourMode": "Toggle between market % change and absolute gain/loss colouring",
     "consolidated": "Merge all portfolios into a single aggregated view",
@@ -135,6 +139,7 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
+    "create": "Create",
     "delete": "Delete",
     "edit": "Edit",
     "close": "Close",

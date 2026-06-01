@@ -41,7 +41,9 @@
     "errBudget": "Budget muss eine positive Zahl sein",
     "errPrice": "Preis für neue Käufe erforderlich",
     "saving": "Speichern…",
-    "noPastDates": "Keine vergangenen Kauftermine — Start Date in der Vergangenheit setzen"
+    "noPastDates": "Keine vergangenen Kauftermine — Start Date in der Vergangenheit setzen",
+    "preview": "Sparplan-Vorschau",
+    "datesTotal": "Termine gesamt"
   },
   "periodicity": {
     "daily": "Täglich",
@@ -87,7 +89,8 @@
     "period": "Periode",
     "bestDay": "Bester Tag",
     "worstDay": "Schlechtester",
-    "loading": "Laden…"
+    "loading": "Laden…",
+    "noData": "Keine Daten für den gewählten Zeitraum"
   },
   "tx": {
     "one": "Transaktion",
@@ -117,6 +120,7 @@
     "quoteSource": "Kursdatenquelle"
   },
   "tips": {
+    "noSymbolFound": "Kein Symbol für diese ISIN gefunden",
     "refresh": "Live-Kurse für alle Positionen aktualisieren",
     "colourMode": "Zwischen Markt-% und absolutem Gewinn/Verlust wechseln",
     "consolidated": "Alle Portfolios in einer zusammengeführten Ansicht zeigen",
@@ -135,6 +139,7 @@
   "common": {
     "save": "Speichern",
     "cancel": "Abbrechen",
+    "create": "Anlegen",
     "delete": "Löschen",
     "edit": "Bearbeiten",
     "close": "Schließen",
