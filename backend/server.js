@@ -2527,6 +2527,50 @@ app.get('/api/quotes/isin/:symbol', (req, res) => {
   res.json({ symbol: sym, isin });
 });
 
+// GET /api/quotes/symbols-for-isin/:isin — return all Yahoo symbols for an ISIN with live prices
+app.get('/api/quotes/symbols-for-isin/:isin', async (req, res) => {
+  const isin = req.params.isin.toUpperCase().trim();
+  if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) return err(res, 400, 'Invalid ISIN format');
+  try {
+    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(isin)}&quotesCount=15&newsCount=0&listsCount=0`;
+    const resp = await fetch(url, { headers: { 'User-Agent': nextUA(), 'Accept': 'application/json' }, timeout: 8000 });
+    if (!resp.ok) throw new Error(`Yahoo search HTTP ${resp.status}`);
+    const json = await resp.json();
+
+    const raw = (json.quotes || []).filter(q => q.symbol && !['OPTION', 'FUTURE'].includes(q.quoteType));
+
+    // Fetch live prices in parallel (best-effort — missing price is ok)
+    const candidates = (await Promise.all(
+      raw.slice(0, 10).map(async q => {
+        try {
+          const quote = await yahooFinance.quote(q.symbol, {}, { validateResult: false });
+          return {
+            symbol:   q.symbol,
+            name:     q.shortname || q.longname || q.symbol,
+            exchange: q.exchange  || '',
+            exchDisp: q.exchDisp  || q.exchange || '',
+            price:    quote.regularMarketPrice ?? null,
+            currency: quote.currency ?? '',
+          };
+        } catch {
+          return {
+            symbol:   q.symbol,
+            name:     q.shortname || q.longname || q.symbol,
+            exchange: q.exchange  || '',
+            exchDisp: q.exchDisp  || q.exchange || '',
+            price:    null,
+            currency: '',
+          };
+        }
+      })
+    )).filter(Boolean);
+
+    res.json({ isin, candidates });
+  } catch(e) {
+    err(res, 502, `ISIN symbol lookup failed: ${e.message}`);
+  }
+});
+
 // ── Helper: Frankfurter FX time-series ──────────────────────────────────────
 // Returns { "YYYY-MM-DD": rate, ... } for the full range from startDate to today.
 // Stored in quotes_cache (needs a JSON blob, not just a single rate).

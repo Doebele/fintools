@@ -223,6 +223,7 @@ const quotesApi = {
   dividendsMulti: (symbols, range="2y") => apiFetch("/quotes/dividends-multi", { method:"POST", body: JSON.stringify({ symbols, range }) }),
   historicCourse: (symbol, targetPrice, currency) => apiFetch("/quotes/historic-course", { method:"POST", body: JSON.stringify({ symbol, targetPrice, currency }) }),
   isin:           (symbol)                        => apiFetch(`/quotes/isin/${encodeURIComponent(symbol)}`),
+  symbolsForIsin: (isin)                          => apiFetch(`/quotes/symbols-for-isin/${encodeURIComponent(isin)}`),
 };
 const fxApi = {
   all:        ()               => apiFetch("/fx/all"),
@@ -4893,8 +4894,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   const [lookupMsg,   setLookupMsg]   = useState("");
   const [priceEdited, setPriceEdited] = useState(!!initialTx?.price);
   const [error,       setError]       = useState("");
-  const [pdfLoading,  setPdfLoading]  = useState(false);
-  const [pdfBanner,   setPdfBanner]   = useState(null); // null | "ok" | "error:..."
+  const [pdfLoading,      setPdfLoading]      = useState(false);
+  const [pdfBanner,       setPdfBanner]       = useState(null); // null | "ok" | "error:..."
+  const [isinBusy,        setIsinBusy]        = useState(false);
+  const [isinCandidates,  setIsinCandidates]  = useState(null); // null | array
   const lookupTimer = useRef(null);
   const pdfInputRef = useRef(null);
 
@@ -4922,6 +4925,27 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
       setPdfLoading(false);
     }
   }, [userId]);
+
+  // ISIN → symbol lookup: fetches all candidates, auto-selects if only one
+  const handleIsinLookup = useCallback(async () => {
+    const val = isin.trim().toUpperCase();
+    if (val.length < 12) return;
+    setIsinBusy(true);
+    setIsinCandidates(null);
+    try {
+      const data = await quotesApi.symbolsForIsin(val);
+      if (data.candidates.length === 1) {
+        setSymbol(data.candidates[0].symbol);
+        setIsinCandidates(null);
+      } else {
+        setIsinCandidates(data.candidates);
+      }
+    } catch(e) {
+      setIsinCandidates([]);  // show "not found" state
+    } finally {
+      setIsinBusy(false);
+    }
+  }, [isin]);
 
   // Recurring purchase state
   const [purchaseMode, setPurchaseMode] = useState("single"); // "single" | "recurring"
@@ -5202,9 +5226,72 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         {/* ISIN */}
         <div>
           <FLabel>ISIN <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span></FLabel>
-          <FInput placeholder="e.g. US0378331005" value={isin}
-            style={{ fontFamily:THEME.mono, letterSpacing:"0.05em" }}
-            onChange={e => setIsin(e.target.value.toUpperCase().trim())}/>
+          <div style={{ display:"flex", gap:6 }}>
+            <FInput placeholder="e.g. US0378331005" value={isin}
+              style={{ fontFamily:THEME.mono, letterSpacing:"0.05em", flex:1 }}
+              onChange={e => { setIsin(e.target.value.toUpperCase().trim()); setIsinCandidates(null); }}
+              onKeyDown={e => e.key==="Enter" && isin.length>=12 && handleIsinLookup()}/>
+            <button onClick={handleIsinLookup}
+              disabled={isin.length < 12 || isinBusy}
+              title="Symbol aus ISIN suchen"
+              style={{
+                padding:"0 13px", borderRadius:10, flexShrink:0,
+                border:`1.5px solid ${isin.length>=12 ? THEME.accent : THEME.border}`,
+                background: isin.length>=12 ? "rgba(59,130,246,0.12)" : "transparent",
+                color: isin.length>=12 ? THEME.accent : THEME.text3,
+                cursor: isin.length>=12 && !isinBusy ? "pointer" : "default",
+                display:"flex", alignItems:"center", gap:5,
+                fontSize:11, fontWeight:700, transition:"all 0.15s",
+              }}>
+              {isinBusy
+                ? <span style={{ fontSize:13, display:"inline-block",
+                    animation:"spin 0.8s linear infinite" }}>⟳</span>
+                : <Search size={13}/>}
+            </button>
+          </div>
+
+          {/* Candidates picker */}
+          {isinCandidates && isinCandidates.length > 0 && (
+            <div style={{ marginTop:6, borderRadius:10, border:`1px solid ${THEME.border}`,
+              background:THEME.card, overflow:"hidden", maxHeight:260, overflowY:"auto" }}>
+              {isinCandidates.map((c, idx) => (
+                <button key={c.symbol}
+                  onClick={() => { setSymbol(c.symbol); setIsinCandidates(null); }}
+                  style={{
+                    display:"flex", alignItems:"center", justifyContent:"space-between",
+                    width:"100%", padding:"9px 12px", background:"transparent", border:"none",
+                    borderBottom: idx < isinCandidates.length-1 ? `1px solid ${THEME.border}` : "none",
+                    cursor:"pointer", textAlign:"left", gap:10,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background="rgba(59,130,246,0.08)"}
+                  onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, overflow:"hidden" }}>
+                    <span style={{ fontFamily:THEME.mono, fontSize:13, fontWeight:700,
+                      color:THEME.text, flexShrink:0 }}>{c.symbol}</span>
+                    <span style={{ fontSize:11, color:THEME.text2, overflow:"hidden",
+                      textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.name}</span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                    {c.price != null && (
+                      <span style={{ fontSize:11, color:THEME.text2, fontFamily:THEME.mono }}>
+                        {c.price.toFixed(2)}&thinsp;{c.currency}
+                      </span>
+                    )}
+                    <span style={{ fontSize:9, color:THEME.text3, background:"rgba(255,255,255,0.06)",
+                      borderRadius:4, padding:"2px 5px", letterSpacing:"0.04em" }}>
+                      {c.exchDisp || c.exchange || "—"}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {isinCandidates && isinCandidates.length === 0 && (
+            <div style={{ fontSize:11, color:THEME.text3, marginTop:4 }}>
+              Kein Symbol für diese ISIN gefunden
+            </div>
+          )}
+
           <div style={{ fontSize:10, color:THEME.text3, marginTop:3 }}>
             Find on your broker's site or{' '}
             <a href="https://www.isin.org" target="_blank" rel="noreferrer"
