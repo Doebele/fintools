@@ -1,195 +1,187 @@
-# 📊 Portfolio Tracker — Synology NAS Edition v2.0
+# Portfolio Tracker
 
-Self-hosted portfolio tracker with a Node.js/Express backend, SQLite database, Yahoo Finance proxy, and a React treemap frontend. Runs entirely on your Synology NAS via Docker.
+A self-hosted, privacy-first portfolio tracker for stocks, ETFs and other securities. Runs as two Docker containers — a Node.js/Express backend with a SQLite database, and a React SPA served by nginx. Designed for Synology NAS but works on any Docker host.
 
-## ✨ What's new
+Live quotes via Yahoo Finance (no API key needed). FX rates via Frankfurter API. Optional Alpha Vantage fallback. Full multi-currency support including HKD, CNY, SGD, JPY and more.
 
-### v3.x
+---
 
-| Area | Improvement |
-|---|---|
-| **Backend** | **Migrated Yahoo proxy to `yahoo-finance2` v3** — built-in crumb/cookie/session auth that survives Yahoo's tightened 2025 rate limits (previously ~60% of requests hit `401`/`429`) |
-| **Backend** | New `/api/quotes/history-multi-intraday` endpoint — minute-level OHLCV for the current day, used by the 1D performance view |
-| **Frontend** | Performance chart now renders **intraday minute-resolution** on the 1D period (x-axis shows exchange-timezone `HH:MM`) |
-| **Frontend** | Y-axis mode toggle: **Abs / ±$ / ±%** — switch between absolute value, dollar delta and percentage change from period start |
-| **Frontend** | **BUY/SELL diamond markers** sit directly on each instrument line with a tooltip showing quantity, price, total and portfolio |
-| **Frontend** | Instruments now render their **full price history** even before the first buy (and after a full sell) — drawn as a dashed ghost line, normalised to first-owned value |
-| **Frontend** | Vergleich-picker pills use the **exact same colour** as the chart line for that instrument |
+## Screenshots
 
-### v2.0
+### Portfolio Overview — TreeMap
+Positions sized by market value, coloured by today's gain/loss or absolute market move. Switch between Consolidated (all portfolios merged) and Aggregated (side-by-side) view.
 
-| Area | Improvement |
-|---|---|
-| **Backend** | Yahoo Finance proxy with user-agent rotation & retry logic |
-| **Backend** | Batch quote endpoint `/api/quotes/batch` — one call for all positions |
-| **Backend** | Separate FX cache table (`fx_cache`) with configurable TTL |
-| **Backend** | Soft-delete for portfolios (`deleted_at` column) |
-| **Backend** | Cache hit/miss counters exposed on `/api/stats` |
-| **Backend** | Graceful DB migration (adds `price_usd` column on first boot) |
-| **Frontend** | **All localStorage removed** — 100% API-backed |
-| **Frontend** | Login screen talks directly to the DB (portfolio list, PIN verify) |
-| **Frontend** | `AddTxModal` saves directly to the backend (with error handling) |
-| **Frontend** | Tooltip chart uses raw Yahoo chart data fetched via proxy |
-| **Frontend** | Backend-unreachable screen with troubleshooting hints |
-| **Docker** | `service_healthy` condition — frontend waits for backend health check |
-| **Docker** | Port overridable via `FRONTEND_PORT` / `BACKEND_PORT` env vars |
-| **Security** | Backend container runs as non-root user |
+![TreeMap](docs/screenshots/01_treemap.png)
 
-## 🌟 Features
+### Performance Chart
+Compare instruments over 1D · 1W · 1M · 6M · YTD · 1Y · 2Y · Max. Three y-axis modes: absolute value, ± dollar delta, ± percent. Intraday view uses minute-level data with exchange-timezone timestamps. BUY/SELL markers sit directly on the line.
 
-✅ **Own database** (SQLite) — all portfolios & transactions persist across reboots  
-✅ **Multi-portfolio** — each with PIN-protection, verified server-side with bcrypt  
-✅ **Yahoo Finance proxy** — backed by `yahoo-finance2` with automatic crumb/cookie/session auth and server-side caching  
-✅ **FX rates** via Frankfurter API (cached 60 min)  
-✅ **Interactive Treemap** — colour by market % or gain/loss %  
-✅ **Period performance** — 1D (minute resolution) · 1W · 1M · 6M · YTD · 1Y · 2Y · Max  
-✅ **Y-axis modes** — absolute · ±$ · ±% for the performance chart  
-✅ **Multi-currency** — USD · EUR · GBP · CHF  
-✅ **Docker Compose** — one command install on Synology  
-✅ **Auto-backups** — via included script + cron  
+![Performance](docs/screenshots/02_performance.png)
 
-## 📦 Project structure
+### Holdings Table
+Full position list with current price, quantity, book value, unrealised P/L, weight, and daily change — sortable by any column.
 
-```
-portfolio-nas/
-├── .env.example            → copy to .env, edit ports / TTLs
-├── docker-compose.yml      → orchestrates backend + frontend
-├── backup.sh               → SQLite backup + compression
-├── Makefile                → handy shortcuts
-│
-├── backend/
-│   ├── Dockerfile          → node:18-alpine, non-root user
-│   ├── package.json
-│   └── server.js           → Express + better-sqlite3 + Yahoo proxy
-│
-├── frontend/
-│   ├── Dockerfile          → nginx:alpine
-│   ├── nginx.conf          → SPA + /api/ reverse-proxy
-│   ├── index.html
-│   └── app.jsx             → React app (API-backed, no localStorage)
-│
-└── data/                   → SQLite DB (created on first boot, gitignored)
-```
+![Holdings](docs/screenshots/03_holdings.png)
 
-## 🚀 Installation
+### Transaction Log
+Every buy and sell with original price, quantity, currency and portfolio. Import directly from a broker PDF (Comdirect, Flatex, and others).
+
+![Transactions](docs/screenshots/04_transactions.png)
+
+### Analytics — Correlation, Monte Carlo, Rebalancing
+Correlation heatmap, Monte Carlo simulation and portfolio rebalancing assistant available from the top navigation bar.
+
+![Analytics](docs/screenshots/05_analytics.png)
+
+> **Adding your own screenshots:** navigate to each view in the browser, press `Cmd/Ctrl+Shift+4` to capture, and save the file into `docs/screenshots/` with the matching filename.
+
+---
+
+## Features
+
+### Portfolio management
+- **Multi-portfolio** — any number of named portfolios, each PIN-protected (bcrypt server-side)
+- **Multi-currency** — USD, EUR, GBP, CHF, JPY, HKD, CNY, SGD, CAD, AUD, SEK, NOK, DKK — correct FX conversion for all positions
+- **Transactions** — BUY and SELL records with quantity, price, date and original currency
+- **Savings plans** — recurring buy schedules with budget-per-period
+- **Soft-delete** — portfolios can be deleted and restored
+
+### Quotes & data
+- **Yahoo Finance proxy** — backed by `yahoo-finance2` v3 with automatic crumb/cookie/session auth; server-side caching with configurable TTL
+- **Intraday data** — minute-resolution OHLCV for the current trading day
+- **Alpha Vantage fallback** — optional secondary source when Yahoo rate-limits
+- **FX rates** — live rates from Frankfurter API (ECB data), cached 60 min; covers all major currencies including Asian pairs
+- **Batch quote endpoint** — one round trip for all positions
+
+### Visualisation
+- **TreeMap** — position tiles sized by value, coloured by Mkt % change or gain/loss %. Toggle Consolidated vs. Aggregated view across portfolios
+- **Bar Chart** — side-by-side value bars with period return overlay
+- **Performance chart** — multi-instrument line chart with owned/ghost segments, BUY/SELL markers, and three y-axis modes (Abs / ±$ / ±%)
+- **Holdings table** — sortable, with unrealised P/L and weight column
+- **Correlation matrix** — Pearson correlation heatmap across selected instruments
+- **Monte Carlo simulation** — forward projection with configurable parameters
+- **Rebalancing assistant** — target allocation vs. current weight with buy/sell suggestions
+- **Dividend calendar** — upcoming and historical dividend events
+
+### Transactions — PDF import
+Upload a broker settlement PDF directly in the Add Transaction dialog. The backend extracts text with `pdf-parse` and either:
+- Parses it with a **regex fallback** (Comdirect Wertpapierabrechnung format)
+- Sends the text to a **configurable AI model** (LM Studio, Ollama, or OpenRouter) for structured extraction from any broker format
+
+Extracted fields (type, date, ISIN, quantity, price, currency) pre-fill the form automatically.
+
+### ISIN → Symbol lookup
+Enter an ISIN and click the search button. The backend queries Yahoo Finance and returns up to 10 ticker candidates with exchange, name and current price. If there are multiple matches a pick-list appears; if there is only one it is applied automatically.
+
+### AI model settings
+Configure a local or cloud AI model for PDF parsing in the Settings dialog:
+- **LM Studio** — local inference server on `localhost:1234`
+- **Ollama** — local inference server on `localhost:11434`  
+- **OpenRouter** — cloud endpoint with API key
+- **Disabled** — regex-only fallback (works for Comdirect PDFs without any AI)
+
+A "Test Connection" button fires a lightweight request to confirm the model is reachable before saving.
+
+---
+
+## Quick start
 
 ### Prerequisites
+- Docker + Docker Compose
+- A Synology NAS (DSM 7+) or any Linux/macOS host
 
-1. Synology NAS with DSM 7.0+
-2. **Docker** installed (Package Center → search "Docker")
-3. SSH access enabled (Control Panel → Terminal & SNMP)
-
-### Step 1 — Transfer files to NAS
-
-**Option A — via SSH (recommended):**
+### Run
 ```bash
-# On your computer — zip the project
-zip -r portfolio-nas.zip portfolio-nas/
-
-# Copy to NAS
-scp portfolio-nas.zip admin@YOUR-NAS-IP:/volume1/docker/
-
-# On NAS via SSH
-ssh admin@YOUR-NAS-IP
-cd /volume1/docker
-unzip portfolio-nas.zip
-cd portfolio-nas
+git clone https://github.com/Doebele/fintools.git
+cd fintools
+make build    # builds both containers
+make start    # docker-compose up -d
 ```
 
-**Option B — via File Station:**
-1. Open File Station → create folder `/docker/portfolio-nas`
-2. Upload all files (preserve folder structure)
+Open **`http://localhost:3002`** (or `http://YOUR-NAS-IP:3002`).
 
-### Step 2 — Configure
+Backend health check: `http://localhost:3003/api/health`
 
-```bash
-cp .env.example .env
-# Edit .env if you need different ports
-```
+### Ports
+| Variable | Default | Description |
+|---|---|---|
+| `FRONTEND_PORT` | 3002 | nginx (React SPA) |
+| `BACKEND_PORT` | 3003 | Express API |
 
-### Step 3 — Start
+Override in `docker-compose.yml` or a `.env` file.
 
-```bash
-sudo docker-compose up -d
+---
 
-# Check status
-sudo docker-compose ps
+## Configuration
 
-# Follow logs
-sudo docker-compose logs -f
-```
+All options are environment variables (set in `docker-compose.yml`):
 
-### Step 4 — Open
+| Variable | Default | Description |
+|---|---|---|
+| `QUOTE_TTL_MIN` | 5 | Daily quote cache TTL in minutes |
+| `FX_TTL_MIN` | 60 | FX rate cache TTL in minutes |
+| `RATE_LIMIT_MAX_REQUESTS` | 200 | Express rate limit per IP per 15 min |
+| `LOG_LEVEL` | info | `error` / `warn` / `info` / `debug` |
+| `AV_API_KEY` | _(empty)_ | Alpha Vantage key for quote fallback |
 
-```
-http://YOUR-NAS-IP:3000
-```
-
-Backend health check: `http://YOUR-NAS-IP:3001/api/health`
-
-## 🔧 Configuration
-
-### Change ports
-
-Edit `.env`:
-```bash
-FRONTEND_PORT=8080
-BACKEND_PORT=8081
-```
-Then `sudo docker-compose up -d`.
-
-### Quote cache TTL
-
-```bash
-QUOTE_TTL_MIN=10   # cache quotes for 10 minutes (default: 5)
-FX_TTL_MIN=120     # cache FX rates for 2 hours  (default: 60)
-```
-
-### Reverse proxy (optional — for HTTPS)
-
+### Reverse proxy (HTTPS on Synology)
 1. Control Panel → Login Portal → Advanced → Reverse Proxy → Create
 2. Source: `https://portfolio.your-nas.synology.me` (port 443)
-3. Destination: `http://localhost:3000`
-4. Enable HSTS + HTTP/2
+3. Destination: `http://localhost:3002`
 
-## 💾 Backups
+---
+
+## Makefile commands
 
 ```bash
-# Manual backup
-chmod +x backup.sh
-./backup.sh
-
-# Automated via cron (daily at 2 AM)
-sudo crontab -e
-# Add: 0 2 * * * /volume1/docker/portfolio-nas/backup.sh
-
-# Restore last backup
-make restore
+make build      # docker-compose build --no-cache && up -d
+make start      # docker-compose up -d
+make stop       # docker-compose down
+make restart    # restart containers in place
+make logs       # tail logs from both containers
+make backup     # SQLite dump → backups/*.db.gz
+make restore    # restore newest backup
+make stats      # curl /api/stats  (cache hit rate, uptime)
 ```
 
-## 📡 API Reference
+**Faster backend iteration** (no full rebuild):
+```bash
+docker cp backend/server.js portfolio-backend-v3:/app/server.js
+docker restart portfolio-backend-v3
+```
+
+---
+
+## API reference
+
+### Users & auth
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/users` | List users |
+| POST | `/api/users` | Create user `{username, pin}` |
+| POST | `/api/users/login` | Login `{username, pin}` → user + settings |
 
 ### Portfolios
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/portfolios` | List all portfolios |
-| POST | `/api/portfolios` | Create portfolio `{name, pin}` |
-| DELETE | `/api/portfolios/:id` | Soft-delete portfolio |
-| POST | `/api/portfolios/:id/verify` | Verify PIN `{pin}` |
+| GET | `/api/portfolios` | List portfolios for user |
+| POST | `/api/portfolios` | Create `{name}` |
+| DELETE | `/api/portfolios/:id` | Soft-delete |
 
 ### Transactions
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/portfolios/:id/transactions` | List transactions |
-| POST | `/api/portfolios/:id/transactions` | Add transaction |
-| PUT | `/api/transactions/:id` | Update transaction |
-| DELETE | `/api/transactions/:id` | Delete transaction |
+| GET | `/api/portfolios/:id/transactions` | List |
+| POST | `/api/portfolios/:id/transactions` | Add `{type, symbol, quantity, price, date, currency}` |
+| PUT | `/api/transactions/:id` | Update |
+| DELETE | `/api/transactions/:id` | Delete |
 
-### Quotes (Yahoo Finance proxy)
+### Quotes
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/quotes/yahoo/:symbol` | Raw chart data (cached) |
-| POST | `/api/quotes/batch` | Batch parsed quotes `{symbols:[]}` |
+| GET | `/api/quotes/yahoo/:symbol` | Raw chart JSON (cached) |
+| POST | `/api/quotes/batch` | Batch quotes `{symbols:[]}` |
+| GET | `/api/quotes/symbols-for-isin/:isin` | Ticker candidates for ISIN |
 
 ### FX
 | Method | Endpoint | Description |
@@ -197,59 +189,62 @@ make restore
 | GET | `/api/fx/all` | All rates vs USD |
 | GET | `/api/fx/:from/:to` | Single pair |
 
+### Tools
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/tools/parse-pdf` | Extract transaction from broker PDF |
+| POST | `/api/tools/test-ai` | Test AI model connectivity |
+
 ### System
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/health` | Health check |
-| GET | `/api/stats` | DB stats + cache hit rate |
-| POST | `/api/admin/clean-cache` | Remove stale cache entries |
-
-## 🛠 Useful commands
-
-```bash
-make start       # docker-compose up -d
-make stop        # docker-compose down
-make restart     # docker-compose restart
-make logs        # docker-compose logs -f
-make build       # rebuild & restart
-make backup      # create DB backup
-make restore     # restore last backup
-make stats       # show /api/stats
-make clean       # ⚠ delete all containers + data
-```
-
-## 🔍 Troubleshooting
-
-**Backend won't start:**
-```bash
-sudo docker-compose logs portfolio-backend
-```
-
-**Frontend shows "Backend unreachable":**
-```bash
-curl http://YOUR-NAS-IP:3001/api/health
-sudo docker network inspect portfolio-network
-```
-
-**Yahoo Finance returns 429 (rate limited):**
-The backend automatically rotates user-agents and caches results. If you still hit limits, increase `QUOTE_TTL_MIN` to 15 or 30.
-
-**DB integrity check:**
-```bash
-sudo docker exec portfolio-backend sh -c 'sqlite3 /app/data/portfolio.db "PRAGMA integrity_check;"'
-```
-
-## 🔒 Security notes
-
-- PINs are hashed with bcrypt (cost factor 10) — never stored in plain text
-- Backend container runs as non-root (`appuser`)
-- Rate limiting: 200 requests / 15 min per IP (configurable)
-- For internet exposure: use Reverse Proxy + HTTPS + Synology Firewall
-
-## 📄 Licence
-
-Personal use. Not for redistribution.
+| GET | `/api/stats` | DB stats + cache metrics |
 
 ---
 
-**Version:** 2.0.0 · **Updated:** February 2026 · **Built with:** Claude + Claus 🚀
+## Architecture
+
+```
+browser  ──►  :3002  nginx (React SPA)
+                │
+                └──► proxy /api/ ──►  :3001  Express
+                                         │
+                                         ├── SQLite  /app/data/portfolio.db
+                                         ├── yahoo-finance2 v3  ──► Yahoo Finance
+                                         ├── Frankfurter API    ──► ECB FX rates
+                                         └── Alpha Vantage      ──► (optional fallback)
+```
+
+- **Backend** — single-file `backend/server.js` (~2,400 lines), organised in clearly labelled sections
+- **Frontend** — single-file `frontend/src/App.jsx` (~8,200 lines), React 18 with no router, no global state library
+- **Database** — SQLite via `better-sqlite3`; schema applied at boot, migrations via conditional `ALTER TABLE`
+- **Caching** — in-database quote cache + in-flight request coalescing (`dedupFetch`)
+
+---
+
+## Security
+
+- PINs hashed with bcrypt (cost 10) — never stored in plain text
+- Backend container runs as non-root user
+- Helmet + rate limiting (200 req / 15 min / IP) on all routes
+- PDF parsing runs server-side; uploaded files are never written to disk (memory storage)
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js 18 |
+| API | Express 4 |
+| Database | SQLite via better-sqlite3 |
+| Quotes | yahoo-finance2 v3 |
+| FX | Frankfurter API |
+| PDF parsing | pdf-parse |
+| Frontend | React 18, Vite 5, Recharts, D3, lucide-react |
+| Containers | Docker Compose, nginx:alpine + node:18-alpine |
+
+---
+
+**Version:** 3.x · **Updated:** June 2026 · **Built with:** Claude + Claus

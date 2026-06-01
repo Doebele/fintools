@@ -619,7 +619,7 @@ function tryComdirectRegex(text) {
   const kursM = text.match(/St[.\s]\s*[\d.]+\s*EUR\s*([\d.,]+)/i)
              || text.match(/Zum\s*Kurs\s*von[\s\S]{0,20}EUR\s*([\d.,]+)/i);
   // Currency from Kurswert line
-  const ccyM  = text.match(/Kurswert[:\s]+(EUR|USD|GBP|CHF)/i);
+  const ccyM  = text.match(/Kurswert[:\s]+(EUR|USD|GBP|CHF|HKD|CNY|SGD|JPY|CAD|AUD)/i);
 
   if (!typeM || !dateM || !isinM || !qtyM || !kursM) return null;
 
@@ -788,6 +788,51 @@ ${pdfText.slice(0, 4000)}`;
     const fallback = tryComdirectRegex(pdfText);
     if (fallback) return sendParsed(fallback, 'regex_fallback');
     return err(res, 502, 'KI-Extraktion fehlgeschlagen: ' + e.message);
+  }
+});
+
+// POST /api/tools/test-ai — ping an AI endpoint with a minimal request
+// Body: { endpoint, model, key }  (config values from the UI, not necessarily saved yet)
+app.post('/api/tools/test-ai', express.json(), async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return err(res, 401, 'x-user-id header required');
+
+  const { endpoint, model, key } = req.body || {};
+  if (!endpoint) return err(res, 400, 'endpoint required');
+
+  const aiUrl = `${endpoint.replace(/\/$/, '')}/v1/chat/completions`;
+  const t0 = Date.now();
+
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (key) headers['Authorization'] = `Bearer ${key}`;
+
+    const aiResp = await fetch(aiUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: model || 'default',
+        messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+        max_tokens: 10,
+        temperature: 0,
+      }),
+      timeout: 15000,
+    });
+
+    const latencyMs = Date.now() - t0;
+
+    if (!aiResp.ok) {
+      const body = await aiResp.text();
+      return err(res, 502, `HTTP ${aiResp.status}: ${body.slice(0, 200)}`);
+    }
+
+    const json = await aiResp.json();
+    const reply = json.choices?.[0]?.message?.content?.trim() ?? '(empty)';
+    const usedModel = json.model || model || 'unknown';
+
+    res.json({ ok: true, model: usedModel, reply, latencyMs });
+  } catch(e) {
+    err(res, 502, e.message);
   }
 });
 
@@ -1230,7 +1275,7 @@ app.get('/api/fx/historical/:date/:from/:to', async (req, res) => {
 app.get('/api/fx/all', async (_req, res) => {
   try {
     const ttl = FX_TTL_MIN;
-    const pairs = ['EUR','GBP','CHF','JPY','CAD','AUD'];
+    const pairs = ['EUR','GBP','CHF','JPY','CAD','AUD','HKD','CNY','SGD'];
     const result = { USD: 1 };
     const toFetch = [];
     for (const ccy of pairs) {
@@ -1251,7 +1296,7 @@ app.get('/api/fx/all', async (_req, res) => {
     res.json(result);
   } catch(e) {
     log.warn('FX all error:', e.message);
-    const fallback = db.prepare('SELECT pair, rate FROM fx_cache WHERE pair IN (?,?,?,?,?,?)').all('EUR','GBP','CHF','JPY','CAD','AUD');
+    const fallback = db.prepare('SELECT pair, rate FROM fx_cache WHERE pair IN (?,?,?,?,?,?,?,?,?)').all('EUR','GBP','CHF','JPY','CAD','AUD','HKD','CNY','SGD');
     const fb = { USD:1 };
     for (const r of fallback) fb[r.pair] = r.rate;
     res.json({ ...fb, _fallback: true });

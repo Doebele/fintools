@@ -239,6 +239,12 @@ const toolsApi = {
       headers: { "x-user-id": String(userId) },
     });
   },
+  testAi: (userId, endpoint, model, key) =>
+    apiFetch("/tools/test-ai", {
+      method: "POST",
+      body: JSON.stringify({ endpoint, model, key }),
+      headers: { "Content-Type": "application/json", "x-user-id": String(userId) },
+    }),
 };
 
 // ─── Global Dividend Cache ────────────────────────────────────────────────────
@@ -3882,7 +3888,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
             <select value={currency} onChange={e => setCurrency(e.target.value)}
               style={{ width:70, padding:"8px 6px", borderRadius:8, border:`1px solid ${THEME.border}`,
                 background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
-              {["USD","EUR","GBP","CHF","JPY","CAD","AUD","SEK","NOK","DKK"].map(c =>
+              {["USD","EUR","GBP","CHF","JPY","CAD","AUD","HKD","CNY","SGD","SEK","NOK","DKK"].map(c =>
                 <option key={c} value={c}>{c}</option>
               )}
             </select>
@@ -5361,7 +5367,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           <div>
             <FLabel>Currency</FLabel>
             <FSelect value={currency} onChange={e => setCurrency(e.target.value)}>
-              {Object.keys(CCY_SYM).map(c => <option key={c} value={c}>{c}</option>)}
+              {["USD","EUR","GBP","CHF","JPY","CAD","AUD","HKD","CNY","SGD","SEK","NOK","DKK"].map(c => <option key={c} value={c}>{c}</option>)}
             </FSelect>
           </div>
         </div>
@@ -5533,11 +5539,23 @@ function AddPortfolioModal({ onClose, onAdd }) {
 // SETTINGS MODAL
 // ════════════════════════════════════════════════════════════════════════════
 function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage,
-  aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey }) {
+  aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey, userId }) {
   const used = avUsage?.today ?? 0;
   const limit = 25;
   const pct   = Math.min(100, (used/limit)*100);
   const barColor = pct>=90?"#ef4444":pct>=70?"#f59e0b":"#22c55e";
+  const [aiTestState, setAiTestState] = useState(null); // null|"testing"|{ok,model,latencyMs}|{err}
+
+  const handleTestAi = useCallback(async () => {
+    if (!aiEndpoint) return;
+    setAiTestState("testing");
+    try {
+      const result = await toolsApi.testAi(userId, aiEndpoint, aiModel, aiApiKey);
+      setAiTestState({ ok: true, model: result.model, latencyMs: result.latencyMs, reply: result.reply });
+    } catch(e) {
+      setAiTestState({ err: e.message });
+    }
+  }, [userId, aiEndpoint, aiModel, aiApiKey]);
 
   return (
     <Modal title="Data Source Settings" onClose={onClose}>
@@ -5617,6 +5635,36 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
                 style={{ fontFamily:THEME.mono, fontSize:11 }}
                 placeholder="sk-or-..."/>
             </>)}
+            {/* Test connection */}
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:10 }}>
+              <button
+                onClick={handleTestAi}
+                disabled={aiTestState === "testing" || !aiEndpoint}
+                style={{
+                  padding:"7px 16px", borderRadius:8, border:`1.5px solid ${THEME.border}`,
+                  background:"transparent", color:THEME.text2, fontSize:11, fontWeight:700,
+                  cursor: aiTestState==="testing" ? "wait" : "pointer",
+                  opacity: !aiEndpoint ? 0.45 : 1,
+                  display:"flex", alignItems:"center", gap:6,
+                }}>
+                {aiTestState === "testing"
+                  ? <><span className="spin" style={{ display:"inline-block" }}>⟳</span> Testing…</>
+                  : "⚡ Test Connection"}
+              </button>
+              {aiTestState && aiTestState !== "testing" && (
+                aiTestState.ok
+                  ? <span style={{ fontSize:11, color:"#22c55e" }}>
+                      ✓ Connected — {aiTestState.latencyMs}ms
+                      {aiTestState.model && aiTestState.model !== "unknown" && (
+                        <span style={{ color:THEME.text3 }}> ({aiTestState.model})</span>
+                      )}
+                    </span>
+                  : <span style={{ fontSize:11, color:THEME.red, flex:1, wordBreak:"break-word" }}
+                      title={aiTestState.err}>
+                      ✗ {aiTestState.err?.slice(0, 80)}{(aiTestState.err?.length ?? 0) > 80 ? "…" : ""}
+                    </span>
+              )}
+            </div>
           </>)}
         </div>
 
@@ -8716,7 +8764,8 @@ export default function App() {
             aiProvider={aiProvider}   setAiProvider={setAiProvider}
             aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
             aiModel={aiModel}         setAiModel={setAiModel}
-            aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}/>
+            aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
+            userId={user?.id}/>
         )}
       </div>
     </>
