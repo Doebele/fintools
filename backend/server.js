@@ -645,6 +645,58 @@ function tryComdirectRegex(text) {
   };
 }
 
+// Resolve the best Yahoo Finance ticker for a given ISIN.
+// Searches Yahoo, then picks the candidate whose current price is closest to
+// targetPrice in targetCurrency. Returns null if nothing found.
+async function resolveSymbolFromIsin(isin, targetPrice, targetCurrency) {
+  if (!isin) return null;
+  try {
+    // 1. Yahoo Finance symbol search by ISIN
+    const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(isin)}&quotesCount=10&newsCount=0&listsCount=0`;
+    const searchResp = await fetch(searchUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+      timeout: 8000,
+    });
+    if (!searchResp.ok) return null;
+    const searchJson = await searchResp.json();
+
+    const candidates = (searchJson.quotes || [])
+      .filter(q => q.symbol && !['OPTION', 'FUTURE', 'INDEX'].includes(q.quoteType))
+      .map(q => q.symbol);
+
+    if (!candidates.length) return null;
+    if (candidates.length === 1) {
+      log.info(`ISIN ${isin} → single match: ${candidates[0]}`);
+      return candidates[0];
+    }
+
+    log.info(`ISIN ${isin} → ${candidates.length} candidates: ${candidates.join(', ')} — fetching prices`);
+
+    // 2. Fetch current quotes for up to 6 candidates (parallel, best-effort)
+    const priced = (await Promise.all(
+      candidates.slice(0, 6).map(async sym => {
+        try {
+          const q = await yahooFinance.quote(sym, {}, { validateResult: false });
+          return { symbol: sym, price: q.regularMarketPrice ?? 0, currency: q.currency ?? '' };
+        } catch { return null; }
+      })
+    )).filter(Boolean).filter(c => c.price > 0);
+
+    if (!priced.length) return candidates[0];
+
+    // 3. Prefer currency match, then pick closest price
+    const sameCcy = priced.filter(c => c.currency?.toUpperCase() === (targetCurrency || 'EUR').toUpperCase());
+    const pool    = sameCcy.length ? sameCcy : priced;
+    pool.sort((a, b) => Math.abs(a.price - targetPrice) - Math.abs(b.price - targetPrice));
+
+    log.info(`ISIN ${isin} best match: ${pool[0].symbol} (price ${pool[0].price} ${pool[0].currency}, target ${targetPrice} ${targetCurrency})`);
+    return pool[0].symbol;
+  } catch(e) {
+    log.warn(`resolveSymbolFromIsin(${isin}) failed: ${e.message}`);
+    return null;
+  }
+}
+
 // POST /api/tools/parse-pdf — extract transaction data from a broker PDF
 // Multipart: field "file" = PDF binary.  Header: x-user-id
 app.post('/api/tools/parse-pdf', multerPdf.single('file'), async (req, res) => {
@@ -666,10 +718,16 @@ app.post('/api/tools/parse-pdf', multerPdf.single('file'), async (req, res) => {
   const apiKeys = JSON.parse(settingsRow?.api_keys || '{}');
   const ai = apiKeys.ai || {};
 
+  // helper: enrich parsed result with Yahoo symbol and return
+  const sendParsed = async (parsed, source) => {
+    const symbol = await resolveSymbolFromIsin(parsed.isin, parsed.price, parsed.currency);
+    return res.json({ ...parsed, symbol: symbol || null, source });
+  };
+
   // 3. No AI configured → try Comdirect regex fallback
   if (!ai.provider || ai.provider === 'disabled') {
     const parsed = tryComdirectRegex(pdfText);
-    if (parsed) return res.json({ ...parsed, source: 'regex' });
+    if (parsed) return sendParsed(parsed, 'regex');
     return err(res, 422, 'Kein KI-Modell konfiguriert und kein unterstütztes PDF-Format erkannt.');
   }
 
@@ -724,11 +782,11 @@ ${pdfText.slice(0, 4000)}`;
     const jsonStr   = rawContent.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim();
     const parsed    = JSON.parse(jsonStr);
 
-    return res.json({ ...parsed, source: 'ai' });
+    return sendParsed(parsed, 'ai');
   } catch(e) {
     // AI failed → regex fallback before giving up
     const fallback = tryComdirectRegex(pdfText);
-    if (fallback) return res.json({ ...fallback, source: 'regex_fallback' });
+    if (fallback) return sendParsed(fallback, 'regex_fallback');
     return err(res, 502, 'KI-Extraktion fehlgeschlagen: ' + e.message);
   }
 });

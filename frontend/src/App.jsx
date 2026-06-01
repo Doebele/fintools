@@ -4913,6 +4913,8 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
       if (data.quantity != null) setQty(String(data.quantity));
       if (data.price    != null) { setPrice(String(data.price)); setPriceEdited(true); }
       if (data.currency) setCurrency(data.currency);
+      // Symbol resolved from ISIN — triggers the existing doLookup auto-fill for company name
+      if (data.symbol)   setSymbol(data.symbol.toUpperCase());
       setPdfBanner("ok");
     } catch(e) {
       setPdfBanner("error:" + e.message);
