@@ -86,6 +86,13 @@ function useGlobalStyles() {
         --font-mono:  'JetBrains Mono', monospace;
         --font-serif: 'DM Serif Display', Georgia, serif;
         --scrollbar-thumb: rgba(255,255,255,0.12);
+        /* Toggle colours */
+        --toggle-pill-bg:     rgba(0,0,0,0.25);
+        --toggle-neutral-bg:  rgba(255,255,255,0.12);
+        --toggle-orange-fg:   #fb923c;
+        --toggle-orange-bg:   rgba(249,115,22,0.22);
+        --toggle-blue-fg:     #3b82f6;
+        --toggle-blue-bg:     rgba(59,130,246,0.22);
       }
 
       /* ── CSS Custom Properties — Light theme ── */
@@ -106,6 +113,13 @@ function useGlobalStyles() {
         --font-mono:  'JetBrains Mono', monospace;
         --font-serif: 'DM Serif Display', Georgia, serif;
         --scrollbar-thumb: rgba(15,17,22,0.15);
+        /* Toggle colours — A11Y AA-compliant on light surfaces */
+        --toggle-pill-bg:     rgba(15,17,22,0.07);
+        --toggle-neutral-bg:  rgba(15,17,22,0.10);
+        --toggle-orange-fg:   #c2410c;   /* orange-700: 5.3:1 on white ✓ AA */
+        --toggle-orange-bg:   rgba(194,65,12,0.10);
+        --toggle-blue-fg:     #1d4ed8;   /* blue-700:   5.9:1 on white ✓ AA */
+        --toggle-blue-bg:     rgba(29,78,216,0.10);
       }
 
       /* ── Theme transition ── */
@@ -1764,7 +1778,7 @@ function Rail({
                 border:`1px solid ${THEME.border}` }}>
                 <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
                 <div style={{ display:"flex", gap:2, padding:"2px",
-                  borderRadius:6, background:"rgba(0,0,0,0.25)",
+                  borderRadius:6, background:"var(--toggle-pill-bg)",
                   border:`1px solid ${THEME.border}` }}>
                   {[["pro",<Gauge size={13}/>, t("rail.compact")],["comfort",<Armchair size={13}/>, t("rail.relaxed")]].map(([m, lbl]) => (
                     <button key={m} onClick={() => onToggleDisplayMode(m)}
@@ -1772,7 +1786,7 @@ function Rail({
                       style={{
                         padding:"3px 8px", borderRadius:5, border:"none",
                         background: displayMode===m
-                          ? (m==="comfort" ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.12)")
+                          ? (m==="comfort" ? "var(--toggle-blue-bg)" : "var(--toggle-neutral-bg)")
                           : "transparent",
                         color: displayMode===m ? THEME.text1 : THEME.text3,
                         fontSize:9, fontWeight:700, cursor:"pointer",
@@ -5835,7 +5849,7 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
       <InfoTip i18nKey="tips.consolidated" side="top" width={230}/>
       <div style={{
         display:"flex", alignItems:"center", gap:2,
-        background:"rgba(0,0,0,0.25)", borderRadius:9,
+        background:"var(--toggle-pill-bg)", borderRadius:9,
         padding:3, border:`1px solid ${THEME.border}`,
       }}>
         {modes.map(m => (
@@ -5844,8 +5858,8 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
             padding:"4px 12px", borderRadius:7, border:"none", cursor:"pointer",
             fontSize:10, fontWeight:700, fontFamily:"inherit",
             transition:"all 0.15s",
-            background: viewMode === m.key ? "rgba(59,130,246,0.22)" : "transparent",
-            color:       viewMode === m.key ? THEME.accent : THEME.text3,
+            background: viewMode === m.key ? "var(--toggle-blue-bg)" : "transparent",
+            color:       viewMode === m.key ? "var(--toggle-blue-fg)" : THEME.text3,
             letterSpacing:"0.04em",
           }}>
             <span style={{ fontSize:12, lineHeight:1 }}>{m.icon}</span>
@@ -5956,15 +5970,15 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
       {hasSubView && (
         <div style={{
           display:"flex", alignItems:"center", gap:2,
-          background:"rgba(0,0,0,0.25)", borderRadius:9, padding:3,
+          background:"var(--toggle-pill-bg)", borderRadius:9, padding:3,
           border:`1px solid ${THEME.border}`, flexShrink:0,
         }}>
           {[["perf",t("nav.performance")],["size",t("chart.bySize")]].map(([key, label]) => (
             <button key={key} onClick={() => onSubView(key)} style={{
               padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
               fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-              background: subView===key ? "rgba(59,130,246,0.22)" : "transparent",
-              color:       subView===key ? THEME.accent : THEME.text3,
+              background: subView===key ? "var(--toggle-blue-bg)" : "transparent",
+              color:       subView===key ? "var(--toggle-blue-fg)" : THEME.text3,
               letterSpacing:"0.04em",
             }}>{label}</button>
           ))}
@@ -5984,15 +5998,15 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
           {hasViewMode && <div style={{ width:1, height:20, background:THEME.border, margin:"0 10px", flexShrink:0 }}/>}
           <div style={{
             display:"flex", alignItems:"center", gap:2,
-            background:"rgba(0,0,0,0.25)", borderRadius:9, padding:3,
+            background:"var(--toggle-pill-bg)", borderRadius:9, padding:3,
             border:`1px solid ${THEME.border}`, flexShrink:0,
           }}>
             {[["portfolio",t("chart.viewPortfolio")],["instruments",t("chart.viewInstruments")]].map(([key, label]) => (
               <button key={key} onClick={() => onAnsicht(key)} style={{
                 padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
                 fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-                background: ansicht===key ? "rgba(249,115,22,0.22)" : "transparent",
-                color:       ansicht===key ? "#fb923c" : THEME.text3,
+                background: ansicht===key ? "var(--toggle-orange-bg)" : "transparent",
+                color:       ansicht===key ? "var(--toggle-orange-fg)" : THEME.text3,
                 letterSpacing:"0.04em",
               }}>{label}</button>
             ))}
@@ -6860,7 +6874,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 border:`1px solid ${THEME.border}` }}>
                 <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
                 <div style={{ display:"flex", gap:2, padding:"2px",
-                  borderRadius:6, background:"rgba(0,0,0,0.25)",
+                  borderRadius:6, background:"var(--toggle-pill-bg)",
                   border:`1px solid ${THEME.border}` }}>
                   {[["pro",<Gauge size={13}/>, t("rail.compact")],["comfort",<Armchair size={13}/>, t("rail.relaxed")]].map(([m, lbl]) => (
                     <button key={m} onClick={() => onToggleDisplayMode(m)}
@@ -6868,7 +6882,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                       style={{
                         padding:"3px 8px", borderRadius:5, border:"none",
                         background: displayMode===m
-                          ? (m==="comfort" ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.12)")
+                          ? (m==="comfort" ? "var(--toggle-blue-bg)" : "var(--toggle-neutral-bg)")
                           : "transparent",
                         color: displayMode===m ? THEME.text1 : THEME.text3,
                         fontSize:9, fontWeight:700, cursor:"pointer",
@@ -7520,15 +7534,15 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             {activeTab==="chart" && (
               <>
                 <div style={{ width:1, height:20, background:THEME.border, margin:"0 12px" }}/>
-                <div style={{ display:"flex", gap:2, background:"rgba(0,0,0,0.25)",
+                <div style={{ display:"flex", gap:2, background:"var(--toggle-pill-bg)",
                   borderRadius:9, padding:3, border:`1px solid ${THEME.border}` }}>
                   {[["perf",t("nav.performance")],["size",t("chart.byWeight")]].map(([key,label])=>(
                     <button key={key} onClick={()=>setBarSubView(key)} style={{
                       padding:"4px 11px", border:"none", cursor:"pointer",
                       borderRadius:7, fontSize:10, fontWeight:700,
                       fontFamily:"inherit", transition:"all 0.15s",
-                      background:barSubView===key?"rgba(59,130,246,0.22)":"transparent",
-                      color:barSubView===key?THEME.accent:THEME.text3 }}>{label}</button>
+                      background:barSubView===key?"var(--toggle-blue-bg)":"transparent",
+                      color:barSubView===key?"var(--toggle-blue-fg)":THEME.text3 }}>{label}</button>
                   ))}
                 </div>
               </>
