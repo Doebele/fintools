@@ -10,7 +10,7 @@ import {
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
-  Gauge, Armchair, Info,
+  Gauge, Armchair, Info, Clock,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
@@ -221,6 +221,7 @@ const quotesApi = {
   historyMulti:        (symbols, range="2y") => apiFetch("/quotes/history-multi",         { method:"POST", body: JSON.stringify({ symbols, range }) }),
   historyMultiIntraday:(symbols)            => apiFetch("/quotes/history-multi-intraday", { method:"POST", body: JSON.stringify({ symbols }) }),
   dividendsMulti: (symbols, range="2y") => apiFetch("/quotes/dividends-multi", { method:"POST", body: JSON.stringify({ symbols, range }) }),
+  historicCourse: (symbol, targetPrice, currency) => apiFetch("/quotes/historic-course", { method:"POST", body: JSON.stringify({ symbol, targetPrice, currency }) }),
 };
 const fxApi = {
   all:        ()               => apiFetch("/fx/all"),
@@ -7030,6 +7031,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart" },
             { key:"transactions", icon:<List size={14}/>,            label:"Holdings"  },
             { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends" },
+            { key:"historic",     icon:<Clock size={14}/>,           label:"Historic Courses" },
           ].map(t => (
             <button key={t.key} onClick={()=>setActiveTab(t.key)}
               style={{
@@ -7217,6 +7219,325 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         onSaved={(u, etfs) => { setSavedEtfs(etfs); setSaveModal(null); }}
       />
     )}
+    </div>
+  );
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// HISTORIC COURSES VIEW
+// ════════════════════════════════════════════════════════════════════════════
+function HistoricCoursesView({ currency: defaultCurrency }) {
+  const [symbol,      setSymbol]      = useState("");
+  const [targetPrice, setTargetPrice] = useState("");
+  const [currency,    setCurrency]    = useState(defaultCurrency || "USD");
+  const [loading,     setLoading]     = useState(false);
+  const [result,      setResult]      = useState(null);
+  const [error,       setError]       = useState("");
+  const [hoverIdx,    setHoverIdx]    = useState(null);
+  const containerRef = useRef(null);
+  const [svgW, setSvgW] = useState(800);
+
+  useEffect(() => { setCurrency(defaultCurrency || "USD"); }, [defaultCurrency]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(([e]) => setSvgW(e.contentRect.width));
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const handleSearch = useCallback(async () => {
+    const sym   = symbol.toUpperCase().trim();
+    const price = parseFloat(targetPrice);
+    if (!sym)             { setError("Please enter a symbol (e.g. AAPL, NESN.SW)"); return; }
+    if (!price || price <= 0) { setError("Please enter a valid positive price"); return; }
+    setError(""); setResult(null); setLoading(true);
+    try {
+      const data = await quotesApi.historicCourse(sym, price, currency);
+      setResult(data);
+      if (!data.found) {
+        const c = data.closest;
+        setError(`No match within ±10%. Closest: ${c.price?.toFixed(2)} ${data.targetCurrency} on ${c.date} (${c.delta}% away).`);
+      }
+    } catch(e) {
+      setError(e.message || "Lookup failed — check the symbol and try again.");
+    } finally { setLoading(false); }
+  }, [symbol, targetPrice, currency]);
+
+  // ── Derived chart values ──
+  const chartData = useMemo(() =>
+    result?.found && result.history?.length > 1 ? result.history : null,
+  [result]);
+
+  const PAD_L = 64, PAD_R = 24, PAD_T = 20, PAD_B = 40;
+  const SVG_H = 300;
+  const CW = useMemo(() => Math.max(100, svgW - PAD_L - PAD_R), [svgW]);
+  const CH = SVG_H - PAD_T - PAD_B;
+
+  const nPts  = useMemo(() => chartData?.length ?? 2, [chartData]);
+  const prices = useMemo(() => chartData ? chartData.map(p => p[1]) : [], [chartData]);
+  const minV  = useMemo(() => prices.length ? Math.min(...prices) * 0.97 : 0, [prices]);
+  const maxV  = useMemo(() => prices.length ? Math.max(...prices) * 1.03 : 1, [prices]);
+
+  const xS = useCallback((i) => nPts < 2 ? 0 : (i / (nPts - 1)) * CW, [nPts, CW]);
+  const yS = useCallback((v)  => CH - ((v - minV) / Math.max(1, maxV - minV)) * CH, [CH, minV, maxV]);
+
+  const linePath = useMemo(() => {
+    if (!chartData) return "";
+    return chartData.map((p, i) => `${i === 0 ? "M" : "L"} ${xS(i).toFixed(1)} ${yS(p[1]).toFixed(1)}`).join(" ");
+  }, [chartData, xS, yS]);
+
+  const areaPath = useMemo(() => {
+    if (!chartData) return "";
+    const n = chartData.length;
+    return `${linePath} L ${xS(n - 1).toFixed(1)} ${CH.toFixed(1)} L ${xS(0).toFixed(1)} ${CH.toFixed(1)} Z`;
+  }, [linePath, chartData, xS, CH]);
+
+  const xLabels = useMemo(() => {
+    if (!chartData?.length) return [];
+    const n = chartData.length;
+    const count = Math.min(8, n);
+    if (count < 2) return [{ idx: 0, label: chartData[0][0].slice(0, 7) }];
+    return Array.from({ length: count }, (_, i) => {
+      const idx = Math.round(i * (n - 1) / (count - 1));
+      return { idx, label: chartData[idx][0].slice(0, 7) };
+    });
+  }, [chartData]);
+
+  const yTicks = useMemo(() => {
+    if (!chartData) return [];
+    const step = (maxV - minV) / 4;
+    return Array.from({ length: 5 }, (_, i) => minV + step * i);
+  }, [chartData, minV, maxV]);
+
+  const splitMarkers = useMemo(() => {
+    if (!chartData?.length || !result?.splits?.length) return [];
+    return result.splits.map(s => {
+      const idx = chartData.findIndex(p => p[0] >= s.date);
+      return idx < 0 ? null : { ...s, idx };
+    }).filter(Boolean);
+  }, [chartData, result]);
+
+  const hoverPt = useMemo(() => {
+    if (hoverIdx == null || !chartData?.[hoverIdx]) return null;
+    return { x: xS(hoverIdx), y: yS(chartData[hoverIdx][1]),
+             date: chartData[hoverIdx][0], price: chartData[hoverIdx][1] };
+  }, [hoverIdx, chartData, xS, yS]);
+
+  const ccySym = result?.targetCurrency ? (CCY_SYM[result.targetCurrency] ?? (result.targetCurrency + " ")) : "";
+  const fmtP = (v) => v >= 10000 ? `${ccySym}${(v/1000).toFixed(1)}k`
+                    : v >= 1000  ? `${ccySym}${v.toFixed(0)}`
+                    : v >= 10    ? `${ccySym}${v.toFixed(2)}`
+                    :              `${ccySym}${v.toFixed(3)}`;
+
+  return (
+    <div style={{ flex:1, overflow:"auto", padding:"28px 32px", display:"flex", flexDirection:"column", gap:20 }}>
+      {/* Header */}
+      <div>
+        <h2 style={{ margin:0, fontFamily:THEME.serif, fontSize:24, color:THEME.text1, fontWeight:400 }}>
+          Historic Courses
+        </h2>
+        <p style={{ margin:"6px 0 0", fontSize:13, color:THEME.text3 }}>
+          Find the earliest date a stock traded at a given price level
+        </p>
+      </div>
+
+      {/* Input card */}
+      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+        <div style={{ display:"flex", gap:14, alignItems:"flex-end", flexWrap:"wrap" }}>
+          <div style={{ flex:"1 1 160px", minWidth:120 }}>
+            <FLabel>Symbol</FLabel>
+            <FInput placeholder="AAPL, NESN.SW…" value={symbol}
+              style={{ textTransform:"uppercase", fontFamily:THEME.mono, fontWeight:700 }}
+              onChange={e => { setSymbol(e.target.value.toUpperCase()); setError(""); }}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}/>
+          </div>
+          <div style={{ flex:"1 1 130px", minWidth:100 }}>
+            <FLabel>Target Price</FLabel>
+            <FInput placeholder="e.g. 28.50" value={targetPrice} type="number" min="0" step="0.01"
+              onChange={e => { setTargetPrice(e.target.value); setError(""); }}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}/>
+          </div>
+          <div style={{ flex:"0 0 auto" }}>
+            <FLabel>Currency</FLabel>
+            <div style={{ display:"flex", gap:4 }}>
+              {Object.keys(CCY_SYM).map(c => (
+                <button key={c} onClick={() => setCurrency(c)} style={{
+                  padding:"9px 12px", border:"none", cursor:"pointer",
+                  background: currency === c ? THEME.accent : THEME.surface2,
+                  color: currency === c ? "#fff" : THEME.text3,
+                  borderRadius:8, fontSize:12, fontWeight:600, fontFamily:THEME.font,
+                  transition:"background 0.15s",
+                }}>{c}</button>
+              ))}
+            </div>
+          </div>
+          <button onClick={handleSearch} disabled={loading} style={{
+            padding:"10px 22px", border:"none",
+            cursor: loading ? "default" : "pointer",
+            background: loading ? THEME.surface2 : THEME.accent,
+            color: loading ? THEME.text3 : "#fff",
+            borderRadius:10, fontSize:13, fontWeight:700, fontFamily:THEME.font,
+            transition:"background 0.15s", alignSelf:"flex-end",
+          }}>{loading ? "Searching…" : "Search"}</button>
+        </div>
+        {error && (
+          <div style={{ marginTop:14, padding:"10px 14px",
+            background:"rgba(248,113,113,0.1)", border:"1px solid rgba(248,113,113,0.3)",
+            borderRadius:8, fontSize:12, color:THEME.red }}>{error}</div>
+        )}
+      </div>
+
+      {/* Result summary */}
+      {result?.found && (
+        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+          <div style={{ display:"flex", gap:28, flexWrap:"wrap" }}>
+            {[
+              { label:"Earliest Match",
+                value: new Date(result.date + "T12:00:00").toLocaleDateString("en-GB",
+                         { day:"numeric", month:"long", year:"numeric" }),
+                color: THEME.text1 },
+              { label:"Price on That Day",
+                value: `${CCY_SYM[result.targetCurrency] ?? result.targetCurrency} ${result.matchedPrice.toFixed(2)}`,
+                color: THEME.accent },
+              { label:"Tolerance Applied", value:`±${result.tolerancePct}%`, color: THEME.text2 },
+              ...(result.stockCurrency !== result.targetCurrency ? [{
+                label: `FX on That Day (${result.stockCurrency}/${result.targetCurrency})`,
+                value: result.fxRateOnDate.toFixed(4),
+                color: THEME.text2,
+              }] : []),
+            ].map(({ label, value, color }) => (
+              <div key={label}>
+                <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
+                  letterSpacing:"0.08em", marginBottom:4 }}>{label}</div>
+                <div style={{ fontSize:20, fontWeight:700, color, fontFamily:THEME.mono }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Splits */}
+          <div style={{ height:1, background:THEME.border2, margin:"18px 0 14px" }}/>
+          <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
+            letterSpacing:"0.08em", marginBottom:10 }}>
+            Stock Splits Since {result.date}
+          </div>
+          {result.splits.length === 0
+            ? <div style={{ fontSize:13, color:THEME.text3 }}>No stock splits in this period.</div>
+            : (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {result.splits.map((s, i) => (
+                  <div key={i} style={{
+                    padding:"6px 14px",
+                    background:"rgba(251,191,36,0.12)", border:"1px solid rgba(251,191,36,0.3)",
+                    borderRadius:8, fontSize:12, fontWeight:600, color:THEME.yellow, fontFamily:THEME.mono,
+                  }}>
+                    {s.ratio} · {new Date(s.date + "T12:00:00").toLocaleDateString("en-GB",
+                      { day:"numeric", month:"short", year:"numeric" })}
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        </div>
+      )}
+
+      {/* Performance chart */}
+      {chartData && (
+        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
+            letterSpacing:"0.08em", marginBottom:14 }}>
+            {result.symbol} · Performance since {result.date} · {result.targetCurrency}
+          </div>
+          <div ref={containerRef} style={{ width:"100%", position:"relative" }}>
+            <svg width={svgW} height={SVG_H}
+              style={{ display:"block", cursor:"crosshair", userSelect:"none" }}
+              onMouseMove={e => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const mx = e.clientX - rect.left - PAD_L;
+                setHoverIdx(Math.max(0, Math.min(nPts - 1, Math.round(mx / CW * (nPts - 1)))));
+              }}
+              onMouseLeave={() => setHoverIdx(null)}>
+
+              <defs>
+                <linearGradient id="hcAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={THEME.accent} stopOpacity="0.22"/>
+                  <stop offset="100%" stopColor={THEME.accent} stopOpacity="0.01"/>
+                </linearGradient>
+                <clipPath id="hcChartClip"><rect x={0} y={0} width={CW} height={CH}/></clipPath>
+              </defs>
+
+              <g transform={`translate(${PAD_L},${PAD_T})`}>
+                {/* Y-axis grid + labels */}
+                {yTicks.map((v, i) => (
+                  <g key={i}>
+                    <line x1={0} y1={yS(v).toFixed(1)} x2={CW} y2={yS(v).toFixed(1)}
+                      stroke="rgba(255,255,255,0.06)" strokeWidth={1}/>
+                    <text x={-8} y={yS(v) + 4} textAnchor="end"
+                      fontSize={10} fill={THEME.text3} fontFamily={THEME.mono}>{fmtP(v)}</text>
+                  </g>
+                ))}
+
+                {/* X-axis labels */}
+                {xLabels.map(({ idx: xi, label }) => (
+                  <text key={xi} x={xS(xi).toFixed(1)} y={CH + 26}
+                    textAnchor="middle" fontSize={10} fill={THEME.text3} fontFamily={THEME.mono}>
+                    {label}
+                  </text>
+                ))}
+
+                {/* Area fill */}
+                <path d={areaPath} fill="url(#hcAreaGrad)" clipPath="url(#hcChartClip)"/>
+
+                {/* Price line */}
+                <path d={linePath} fill="none" stroke={THEME.accent} strokeWidth={2}
+                  strokeLinejoin="round" clipPath="url(#hcChartClip)"/>
+
+                {/* Split markers */}
+                {splitMarkers.map((s, i) => {
+                  const sx = xS(s.idx);
+                  return (
+                    <g key={i}>
+                      <line x1={sx.toFixed(1)} y1={0} x2={sx.toFixed(1)} y2={CH}
+                        stroke={THEME.yellow} strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7}/>
+                      <polygon points={`${sx},2 ${sx+6},11 ${sx},20 ${sx-6},11`}
+                        fill={THEME.yellow} opacity={0.85}/>
+                      <text x={sx + 9} y={15} fontSize={9} fill={THEME.yellow}
+                        fontFamily={THEME.mono} fontWeight="bold">{s.ratio}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Hover crosshair + dot */}
+                {hoverPt && (
+                  <g>
+                    <line x1={hoverPt.x.toFixed(1)} y1={0} x2={hoverPt.x.toFixed(1)} y2={CH}
+                      stroke={THEME.text3} strokeWidth={1} strokeDasharray="3 3" opacity={0.5}/>
+                    <circle cx={hoverPt.x.toFixed(1)} cy={hoverPt.y.toFixed(1)}
+                      r={5} fill={THEME.accent} stroke={THEME.bg} strokeWidth={2}/>
+                  </g>
+                )}
+              </g>
+            </svg>
+
+            {/* Floating tooltip */}
+            {hoverPt && (
+              <div style={{
+                position:"absolute",
+                top:  PAD_T + hoverPt.y - 42,
+                left: hoverPt.x + PAD_L + (hoverPt.x > CW * 0.7 ? -130 : 14),
+                background:THEME.surface2, border:`1px solid ${THEME.border}`,
+                borderRadius:8, padding:"7px 12px",
+                fontSize:12, color:THEME.text1, fontFamily:THEME.mono,
+                pointerEvents:"none", zIndex:10, lineHeight:1.6,
+              }}>
+                <div style={{ fontWeight:700, color:THEME.accent }}>{fmtP(hoverPt.price)}</div>
+                <div style={{ fontSize:10, color:THEME.text3 }}>{hoverPt.date}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -7729,6 +8050,7 @@ export default function App() {
               { key:"performance",  icon:<TrendingUp  size={14}/>,     label:"Performance"},
               { key:"transactions", icon:<List size={14}/>,            label:"Holdings"   },
               { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends"  },
+              { key:"historic",     icon:<Clock size={14}/>,           label:"Historic Courses" },
             ].map(t => (
               <button key={t.key} onClick={() => handleTab(t.key)}
                 style={{
@@ -8044,6 +8366,11 @@ export default function App() {
                   rates={rates}
                   onCellHover={handleCellHover}
                   onCellLeave={handleCellLeave}/>
+              </div>
+            )}
+            {activeTab === "historic" && (
+              <div style={{ height:"100%", overflow:"auto", display:"flex", flexDirection:"column" }}>
+                <HistoricCoursesView currency={currency} rates={rates}/>
               </div>
             )}
           </div>

@@ -2290,6 +2290,174 @@ app.post('/api/quotes/dividends-multi', async (req, res) => {
   res.json({ results });
 });
 
+// ── Helper: Frankfurter FX time-series ──────────────────────────────────────
+// Returns { "YYYY-MM-DD": rate, ... } for the full range from startDate to today.
+// Stored in quotes_cache (needs a JSON blob, not just a single rate).
+async function fetchFxSeries(fromCcy, toCcy, startDate) {
+  if (fromCcy === toCcy) return {};
+  const cacheKey = `fxseries_${fromCcy}_${toCcy}_${startDate}`;
+  const cached = db.prepare('SELECT data FROM quotes_cache WHERE symbol=?').get(cacheKey);
+  if (cached) return JSON.parse(cached.data);
+
+  const url = `https://api.frankfurter.app/${startDate}..?from=${fromCcy}&to=${toCcy}`;
+  const resp = await fetch(url, { headers: { 'User-Agent': nextUA(), 'Accept': 'application/json' } });
+  if (!resp.ok) throw new Error(`Frankfurter series HTTP ${resp.status}`);
+  const json = await resp.json();
+  const result = {};
+  for (const [d, pairs] of Object.entries(json.rates ?? {})) {
+    result[d] = pairs[toCcy] ?? null;
+  }
+  db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at)
+              VALUES (?, ?, 'fxseries', CURRENT_TIMESTAMP)`)
+    .run(cacheKey, JSON.stringify(result));
+  return result;
+}
+
+// POST /api/quotes/historic-course
+// Find the earliest date a stock traded at (or near) a given target price.
+// Body: { symbol, targetPrice, currency }
+// Returns: { found, date, matchedPrice, tolerancePct, splits, history, ... }
+app.post('/api/quotes/historic-course', async (req, res) => {
+  const { symbol: rawSym, targetPrice: rawPrice, currency = 'USD' } = req.body;
+  if (!rawSym) return err(res, 400, 'symbol required');
+  const symbol      = rawSym.toUpperCase().trim();
+  const targetPrice = parseFloat(rawPrice);
+  if (!targetPrice || targetPrice <= 0) return err(res, 400, 'targetPrice must be a positive number');
+  const ccy = (currency || 'USD').toUpperCase();
+
+  try {
+    // 1. Fetch max history with splits (cached with smart TTL)
+    const cacheKey = `historic_max_${symbol}`;
+    const ttl = getQuoteTtlMin();
+    let rawData;
+    const cached = db.prepare(
+      `SELECT data FROM quotes_cache WHERE symbol=?
+       AND datetime(updated_at) > datetime('now', '-${ttl} minutes')`
+    ).get(cacheKey);
+    if (cached) {
+      rawData = JSON.parse(cached.data);
+    } else {
+      rawData = await dedupFetch(`hc_max_${symbol}`, () => fetchYahoo(symbol, 'max', '1d', 'splits'));
+      db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at)
+                  VALUES (?, ?, 'yahoo', CURRENT_TIMESTAMP)`)
+        .run(cacheKey, JSON.stringify(rawData));
+    }
+
+    const result = rawData?.chart?.result?.[0];
+    if (!result) return err(res, 404, `No data found for "${symbol}"`);
+
+    const { meta, timestamp = [], events = {} } = result;
+    const adjcloseArr = result.indicators?.adjclose?.[0]?.adjclose ?? [];
+    const stockCurrency = (meta?.currency || 'USD').toUpperCase();
+
+    if (!timestamp.length) return err(res, 404, `No price history for "${symbol}"`);
+
+    // 2. Build date array
+    const dates     = timestamp.map(ts => new Date(ts * 1000).toISOString().slice(0, 10));
+    const startDate = dates[0];
+
+    // 3. FX series: one Frankfurter call covers the entire history window
+    let fxSeries = {};
+    if (ccy !== stockCurrency) {
+      try {
+        fxSeries = await fetchFxSeries(stockCurrency, ccy, startDate);
+      } catch(fxErr) {
+        log.warn(`FX series ${stockCurrency}→${ccy} failed: ${fxErr.message}. Falling back to current rate.`);
+        // Fallback: apply current live rate uniformly (rough approximation)
+        const liveRate = db.prepare('SELECT rate FROM fx_cache WHERE pair=?').get(ccy)?.rate;
+        if (liveRate) for (const d of dates) fxSeries[d] = liveRate;
+      }
+    }
+
+    // Get nearest available FX rate for a date (Frankfurter omits weekends / holidays)
+    const getFxRate = (date) => {
+      if (ccy === stockCurrency) return 1;
+      if (fxSeries[date]) return fxSeries[date];
+      const d = new Date(date);
+      for (let i = 1; i <= 5; i++) {
+        d.setDate(d.getDate() - 1);
+        const ds = d.toISOString().slice(0, 10);
+        if (fxSeries[ds]) return fxSeries[ds];
+      }
+      return 1;
+    };
+
+    // 4. Build price array with optional FX conversion
+    const priceArray = [];
+    for (let i = 0; i < timestamp.length; i++) {
+      const adj = adjcloseArr[i];
+      if (adj == null || adj === 0) continue;
+      priceArray.push({ date: dates[i], price: adj * getFxRate(dates[i]) });
+    }
+    if (!priceArray.length) return err(res, 404, `No valid price data for "${symbol}"`);
+
+    // 5. Search forward for earliest date within tolerance (2% → 5% → 10%)
+    const TOLERANCES = [0.02, 0.05, 0.10];
+    let foundIdx = -1;
+    let usedTol  = 0;
+    for (const tol of TOLERANCES) {
+      for (let i = 0; i < priceArray.length; i++) {
+        if (Math.abs(priceArray[i].price - targetPrice) / targetPrice <= tol) {
+          foundIdx = i;
+          usedTol  = tol;
+          break;
+        }
+      }
+      if (foundIdx >= 0) break;
+    }
+
+    // 6. No match → return closest
+    if (foundIdx < 0) {
+      let bestDelta = Infinity, bestIdx = 0;
+      for (let i = 0; i < priceArray.length; i++) {
+        const d = Math.abs(priceArray[i].price - targetPrice) / targetPrice;
+        if (d < bestDelta) { bestDelta = d; bestIdx = i; }
+      }
+      return res.json({
+        found: false,
+        symbol, stockCurrency, targetCurrency: ccy, targetPrice,
+        closest: {
+          date:  priceArray[bestIdx].date,
+          price: Math.round(priceArray[bestIdx].price * 100) / 100,
+          delta: Math.round(bestDelta * 1000) / 10,
+        },
+      });
+    }
+
+    // 7. Collect splits from found date onwards
+    const foundDate = priceArray[foundIdx].date;
+    const splits = Object.values(events.splits ?? {})
+      .map(s => ({
+        date:        new Date(s.date * 1000).toISOString().slice(0, 10),
+        numerator:   s.numerator,
+        denominator: s.denominator,
+        ratio:       `${s.numerator}:${s.denominator}`,
+      }))
+      .filter(s => s.date >= foundDate)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // 8. History from found date → today
+    const history = priceArray.slice(foundIdx).map(p => [p.date, Math.round(p.price * 100) / 100]);
+
+    res.json({
+      found:         true,
+      symbol,
+      date:          foundDate,
+      matchedPrice:  Math.round(priceArray[foundIdx].price * 100) / 100,
+      targetPrice,
+      tolerancePct:  Math.round(usedTol * 100),
+      stockCurrency,
+      targetCurrency: ccy,
+      fxRateOnDate:  Math.round(getFxRate(foundDate) * 100000) / 100000,
+      splits,
+      history,
+    });
+  } catch(e) {
+    log.error('historic-course error:', e.message);
+    err(res, 502, e.message || 'Historic course lookup failed');
+  }
+});
+
 // GET/PUT /api/users/:id/rebalance-targets  — store per-user rebalance targets
 app.get('/api/users/:id/rebalance-targets', (req, res) => {
   const userId = parseInt(req.params.id);
