@@ -2640,6 +2640,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                            benchSymbols = [], setBenchSymbols,
                            instrOverlays = [], setInstrOverlays,
                            onSymbolsChange, onSeriesColorsChange }) {
+  const { t } = useTranslation();
   // ── Range derived from the global period toolbar ────────────────────────────
   const range       = PERIOD_TO_RANGE[period] ?? "1y";
   const periodLabel = period === "Intraday" ? "1D" : period;
@@ -2651,8 +2652,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
   //   consolidated + instruments → instruments (1 line per symbol)
   //   aggregated   + instruments → inst_by_portfolio (1 line per symbol×portfolio)
   const ANSICHT_MODES = [
-    { label:"Portfolio",   value:"portfolio",   tip:"Portfoliowert (gesamt oder je Portfolio)" },
-    { label:"Instrumente", value:"instruments", tip:"Je Instrument eine Linie"                 },
+    { label:t("chart.viewPortfolio"),   value:"portfolio",   tip:t("chart.portfolioValue") },
+    { label:t("chart.viewInstruments"), value:"instruments", tip:t("chart.perInstrument")  },
   ];
   const LINE_COLORS = [
     "#3b82f6","#34d399","#f59e0b","#ec4899","#8b5cf6",
@@ -3396,25 +3397,25 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       {/* ── Controls: only stats (loading indicator lives in toolbar) ──── */}
       <div style={{ padding:"8px 20px 6px", flexShrink:0 }}>
         {(loading || intradayLoading) && (
-          <div style={{ fontSize:10, color:THEME.text3, marginBottom:4 }}>⟳ Laden…</div>
+          <div style={{ fontSize:10, color:THEME.text3, marginBottom:4 }}>⟳ {t("perf.loading")}</div>
         )}
 
         {/* Stats */}
         {stats && (
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", marginBottom:4 }}>
             {[
-              { label:"Aktueller Wert", val: fmtV(stats.last),  color:THEME.text1 },
-              { label:"Investiert",      val: fmtV(stats.cost),  color:THEME.text2 },
-              ...(stats.glAbs != null ? [{ label:"G/L gesamt",
+              { label:t("perf.currentValue"), val: fmtV(stats.last),  color:THEME.text1 },
+              { label:t("perf.invested"),      val: fmtV(stats.cost),  color:THEME.text2 },
+              ...(stats.glAbs != null ? [{ label:t("perf.glTotal"),
                 val:`${fmtV(stats.glAbs)} (${fmtPct(stats.glPct)})`,
                 color: stats.glAbs >= 0 ? THEME.green : THEME.red }] : []),
-              { label:`Periode (${periodLabel})`,
+              { label:`${t("perf.period")} (${periodLabel})`,
                 val: stats.periodChangePct != null
                   ? `${fmtV(stats.periodChange)} (${fmtPct(stats.periodChangePct)})`
                   : fmtV(stats.periodChange),
                 color: stats.periodChange >= 0 ? THEME.green : THEME.red },
-              ...(stats.bestDay  ? [{ label:"Bester Tag",    val:`${fmtPct(stats.bestDay.pct)} · ${fmtDate(stats.bestDay.date)}`,  color:THEME.green }] : []),
-              ...(stats.worstDay ? [{ label:"Schlechtester", val:`${fmtPct(stats.worstDay.pct)} · ${fmtDate(stats.worstDay.date)}`, color:THEME.red   }] : []),
+              ...(stats.bestDay  ? [{ label:t("perf.bestDay"),  val:`${fmtPct(stats.bestDay.pct)} · ${fmtDate(stats.bestDay.date)}`,  color:THEME.green }] : []),
+              ...(stats.worstDay ? [{ label:t("perf.worstDay"), val:`${fmtPct(stats.worstDay.pct)} · ${fmtDate(stats.worstDay.date)}`, color:THEME.red   }] : []),
             ].map(s => (
               <div key={s.label}>
                 <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.05em", textTransform:"uppercase" }}>{s.label}</div>
@@ -5811,18 +5812,18 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
   // Holdings: no "single" — aggregated IS the single-portfolio merged view
   if (activeTab === "holdings") {
     var modes = [
-      { key:"consolidated", label:"Consolidated", icon:"⊞" },
-      { key:"aggregated",   label:"Aggregated",   icon:"⊕" },
+      { key:"consolidated", label:t("chart.consolidated"), icon:"⊞" },
+      { key:"aggregated",   label:t("chart.aggregated"),   icon:"⊕" },
     ];
   } else if (activeTab === "chart" || activeTab === "transactions") {
     var modes = [
-      { key:"single", label:"Combined",      icon:"□" },
-      { key:"split",  label:"Per Portfolio", icon:"⊞" },
+      { key:"single", label:t("chart.combined"),      icon:"□" },
+      { key:"split",  label:t("chart.perPortfolio"),  icon:"⊞" },
     ];
   } else if (activeTab === "performance") {
     var modes = [
-      { key:"consolidated", label:"Consolidated", icon:"⊞" },
-      { key:"aggregated",   label:"Aggregated",   icon:"⊕" },
+      { key:"consolidated", label:t("chart.consolidated"), icon:"⊞" },
+      { key:"aggregated",   label:t("chart.aggregated"),   icon:"⊕" },
     ];
   } else {
     return null;
@@ -5865,11 +5866,11 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
     <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
       background:THEME.surface, display:"flex", alignItems:"center", gap:24, flexShrink:0 }}>
       {[
-        ["Total Value",   fmtVal(totalValueUSD, currency, rates), null, "Current market value of all positions across all portfolios."],
-        ["Total Cost",    fmtVal(totalCostUSD,  currency, rates), null, "Total cost basis: sum of all purchases at their original prices converted to USD."],
-        ["Net G/L",       `${totalNetGain>=0?"+":""}${fmtVal(Math.abs(totalNetGain),currency,rates)} (${fmtPct(totalCostUSD>0?(totalNetGain/totalCostUSD)*100:null)})`,
+        [t("summary.totalValue"), fmtVal(totalValueUSD, currency, rates), null, "Current market value of all positions across all portfolios."],
+        [t("summary.totalCost"),  fmtVal(totalCostUSD,  currency, rates), null, "Total cost basis: sum of all purchases at their original prices converted to USD."],
+        [t("summary.netGl"),      `${totalNetGain>=0?"+":""}${fmtVal(Math.abs(totalNetGain),currency,rates)} (${fmtPct(totalCostUSD>0?(totalNetGain/totalCostUSD)*100:null)})`,
                           totalNetGain>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss across all portfolios. No taxes or fees deducted."],
-        [`${period==="Intraday"?"1D":period} Return`, fmtPct(portfolioPerf),
+        [`${period==="Intraday"?"1D":period} ${t("summary.return")}`, fmtPct(portfolioPerf),
                           portfolioPerf!=null?(portfolioPerf>=0?THEME.green:THEME.red):THEME.text3, `Weighted price change over the selected period (${period}).`],
       ].map(([lbl,val,color,tip]) => (
         <div key={lbl}>
@@ -5887,7 +5888,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
           <InfoTip i18nKey="tips.colourMode" side="top" width={240}/>
         <div style={{ display:"flex", background:THEME.bg, border:`1px solid ${THEME.border}`,
           borderRadius:8, padding:2, gap:2 }}>
-          {[["market","Mkt %"],["gainloss","G&L"]].map(([mode,label]) => (
+          {[["market",t("summary.mktPct")],["gainloss",t("summary.gl")]].map(([mode,label]) => (
             <button key={mode} onClick={() => onColorMode(mode)} style={{
               padding:"3px 10px", border:"none", cursor:"pointer", borderRadius:6,
               fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
@@ -5899,7 +5900,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
         {/* Legend */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
           <div style={{ fontSize:7, color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.08em" }}>
-            {colorMode==="gainloss"?"G&L %":"Mkt %"}
+            {colorMode==="gainloss"?`${t("summary.gl")} %`:t("summary.mktPct")}
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:2 }}>
             <span style={{ fontSize:7, color:THEME.text3 }}>−5%</span>
@@ -5920,6 +5921,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
 // PERIOD TOOLBAR
 // ════════════════════════════════════════════════════════════════════════════
 function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, portfolioCount, subView, onSubView, ansicht, onAnsicht, extraRight }) {
+  const { t } = useTranslation();
   const hasSubView   = activeTab === "chart" && onSubView;
   const hasViewMode  = portfolioCount > 1;
   const hasAnsicht   = activeTab === "performance" && onAnsicht;
@@ -5956,7 +5958,7 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
           background:"rgba(0,0,0,0.25)", borderRadius:9, padding:3,
           border:`1px solid ${THEME.border}`, flexShrink:0,
         }}>
-          {[["perf","Performance"],["size","By Size"]].map(([key, label]) => (
+          {[["perf",t("nav.performance")],["size",t("chart.bySize")]].map(([key, label]) => (
             <button key={key} onClick={() => onSubView(key)} style={{
               padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
               fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
@@ -5984,7 +5986,7 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
             background:"rgba(0,0,0,0.25)", borderRadius:9, padding:3,
             border:`1px solid ${THEME.border}`, flexShrink:0,
           }}>
-            {[["portfolio","Portfolio"],["instruments","Instrumente"]].map(([key, label]) => (
+            {[["portfolio",t("chart.viewPortfolio")],["instruments",t("chart.viewInstruments")]].map(([key, label]) => (
               <button key={key} onClick={() => onAnsicht(key)} style={{
                 padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
                 fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
@@ -7262,6 +7264,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                        displayMode, onToggleDisplayMode,
                        railOpen, onToggleRail }) {
   useGlobalStyles();
+  const { t } = useTranslation();
 
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
     try { return localStorage.getItem(ETF_LS_KEY) || "ARKK"; } catch { return "ARKK"; }
@@ -7448,22 +7451,22 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
           gap:2, flexShrink:0 }}>
 
           {[
-            { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"   },
-            { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart" },
-            { key:"transactions", icon:<List size={14}/>,            label:"Holdings"  },
-            { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends" },
-            { key:"historic",     icon:<Clock size={14}/>,           label:"Historic Courses" },
-          ].map(t => (
-            <button key={t.key} onClick={()=>setActiveTab(t.key)}
+            { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:t("nav.treemap")         },
+            { key:"chart",        icon:<BarChart2 size={14}/>,       label:t("nav.barChart")        },
+            { key:"transactions", icon:<List size={14}/>,            label:t("nav.holdings")        },
+            { key:"calendar",     icon:<CalendarDays size={14}/>,    label:t("nav.dividends")       },
+            { key:"historic",     icon:<Clock size={14}/>,           label:t("nav.historicCourses") },
+          ].map(tab => (
+            <button key={tab.key} onClick={()=>setActiveTab(tab.key)}
               style={{
                 display:"flex", alignItems:"center", gap:7,
                 padding:"7px 14px", border:"none", cursor:"pointer",
-                background:activeTab===t.key?"rgba(59,130,246,0.15)":"transparent",
-                color:activeTab===t.key?THEME.accent:THEME.text3,
+                background:activeTab===tab.key?"rgba(59,130,246,0.15)":"transparent",
+                color:activeTab===tab.key?THEME.accent:THEME.text3,
                 borderRadius:9, fontSize:12,
-                fontWeight:activeTab===t.key?700:500,
+                fontWeight:activeTab===tab.key?700:500,
                 fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
-              {t.icon}{t.label}
+              {tab.icon}{tab.label}
             </button>
           ))}
           {/* ETF badge */}
@@ -7517,7 +7520,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 <div style={{ width:1, height:20, background:THEME.border, margin:"0 12px" }}/>
                 <div style={{ display:"flex", gap:2, background:"rgba(0,0,0,0.25)",
                   borderRadius:9, padding:3, border:`1px solid ${THEME.border}` }}>
-                  {[["perf","Performance"],["size","By Weight"]].map(([key,label])=>(
+                  {[["perf",t("nav.performance")],["size",t("chart.byWeight")]].map(([key,label])=>(
                     <button key={key} onClick={()=>setBarSubView(key)} style={{
                       padding:"4px 11px", border:"none", cursor:"pointer",
                       borderRadius:7, fontSize:10, fontWeight:700,
@@ -7974,6 +7977,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
   useGlobalStyles();
+  const { t } = useTranslation();
   const { mode: displayMode, setMode: setDisplayMode, toggle: toggleDisplayMode } = useDisplayMode();
   // ── Auth state ────────────────────────────────────────────────────────────
   const [user,       setUser]       = useState(null);
@@ -8503,23 +8507,23 @@ export default function App() {
 
             {/* View tabs */}
             {[
-              { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"    },
-              { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart"  },
-              { key:"performance",  icon:<TrendingUp  size={14}/>,     label:"Performance"},
-              { key:"transactions", icon:<List size={14}/>,            label:"Holdings"   },
-              { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends"  },
-              { key:"historic",     icon:<Clock size={14}/>,           label:"Historic Courses" },
-            ].map(t => (
-              <button key={t.key} onClick={() => handleTab(t.key)}
+              { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:t("nav.treemap")         },
+              { key:"chart",        icon:<BarChart2 size={14}/>,       label:t("nav.barChart")        },
+              { key:"performance",  icon:<TrendingUp  size={14}/>,     label:t("nav.performance")     },
+              { key:"transactions", icon:<List size={14}/>,            label:t("nav.holdings")        },
+              { key:"calendar",     icon:<CalendarDays size={14}/>,    label:t("nav.dividends")       },
+              { key:"historic",     icon:<Clock size={14}/>,           label:t("nav.historicCourses") },
+            ].map(tab => (
+              <button key={tab.key} onClick={() => handleTab(tab.key)}
                 style={{
                   display:"flex", alignItems:"center", gap:7,
                   padding:"7px 14px", border:"none", cursor:"pointer",
-                  background: activeTab===t.key ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: activeTab===t.key ? THEME.accent : THEME.text3,
+                  background: activeTab===tab.key ? "rgba(59,130,246,0.15)" : "transparent",
+                  color: activeTab===tab.key ? THEME.accent : THEME.text3,
                   borderRadius:9, fontSize:12,
-                  fontWeight: activeTab===t.key ? 700 : 500,
+                  fontWeight: activeTab===tab.key ? 700 : 500,
                   fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
-                {t.icon}{t.label}
+                {tab.icon}{tab.label}
               </button>
             ))}
 
@@ -8528,20 +8532,20 @@ export default function App() {
 
             {/* Analytics tabs */}
             {[
-              { key:"correlation", icon:<GitFork size={14}/>, label:"Correlation" },
-              { key:"montecarlo",  icon:<Sigma size={14}/>,   label:"Monte Carlo" },
-              { key:"rebalance",   icon:<Target size={14}/>,  label:"Rebalance"   },
-            ].map(t => (
-              <button key={t.key} onClick={() => handleTab(t.key)}
+              { key:"correlation", icon:<GitFork size={14}/>, label:t("nav.correlation") },
+              { key:"montecarlo",  icon:<Sigma size={14}/>,   label:t("nav.monteCarlo")  },
+              { key:"rebalance",   icon:<Target size={14}/>,  label:t("nav.rebalance")   },
+            ].map(tab => (
+              <button key={tab.key} onClick={() => handleTab(tab.key)}
                 style={{
                   display:"flex", alignItems:"center", gap:7,
                   padding:"7px 14px", border:"none", cursor:"pointer",
-                  background: activeTab===t.key ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: activeTab===t.key ? THEME.accent : THEME.text3,
+                  background: activeTab===tab.key ? "rgba(59,130,246,0.15)" : "transparent",
+                  color: activeTab===tab.key ? THEME.accent : THEME.text3,
                   borderRadius:9, fontSize:12,
-                  fontWeight: activeTab===t.key ? 700 : 500,
+                  fontWeight: activeTab===tab.key ? 700 : 500,
                   fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
-                {t.icon}{t.label}
+                {tab.icon}{tab.label}
               </button>
             ))}
 
@@ -8627,7 +8631,7 @@ export default function App() {
                       {perfSymbols.length > 0 && (
                         <>
                           <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
-                            textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>Instrumente</div>
+                            textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>{t("chart.viewInstruments")}</div>
                           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                             {perfSymbols.map((sym, i) => {
                               const active = instrOverlays.includes(sym);

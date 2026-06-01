@@ -64,7 +64,30 @@
     "portfolioValue": "Portfoliowert (gesamt oder je Portfolio)",
     "perInstrument": "Je Instrument eine Linie",
     "consolidated": "Konsolidiert",
-    "aggregated": "Aggregiert"
+    "aggregated": "Aggregiert",
+    "combined": "Kombiniert",
+    "perPortfolio": "Je Portfolio",
+    "viewPortfolio": "Portfolio",
+    "viewInstruments": "Instrumente",
+    "bySize": "Nach Größe",
+    "byWeight": "Nach Gewicht"
+  },
+  "summary": {
+    "totalValue": "Gesamtwert",
+    "totalCost": "Gesamtkosten",
+    "netGl": "G/V Gesamt",
+    "return": "Rendite",
+    "mktPct": "Mkt %",
+    "gl": "G/V"
+  },
+  "perf": {
+    "currentValue": "Aktueller Wert",
+    "invested": "Investiert",
+    "glTotal": "G/V Gesamt",
+    "period": "Periode",
+    "bestDay": "Bester Tag",
+    "worstDay": "Schlechtester",
+    "loading": "Laden…"
   },
   "tx": {
     "one": "Transaktion",
