@@ -1,5 +1,5 @@
 /**
- * Portfolio Tracker v3 — Multi-User / Multi-Portfolio
+ * Portfolio Pal — Multi-User / Multi-Portfolio
  * React + D3 + Lucide Icons
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -10,29 +10,35 @@ import {
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
-  Gauge, Armchair, Info, Clock, FileText,
+  Gauge, Armchair, Info, Clock, FileText, Sun, Moon, Globe,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
+import { useTranslation, I18nextProvider } from "react-i18next";
+import i18n from "./i18n/index.js";
+import deFlagUrl from "round-flag-icons/flags/de.svg?url";
+import gbFlagUrl from "round-flag-icons/flags/gb.svg?url";
 
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
+// All values are CSS custom properties — actual colours defined in useGlobalStyles.
+// Switching themes updates :root / [data-theme] at the CSS level; no re-render needed.
 const THEME = {
-  bg:       "#0d0e12",
-  surface:  "#13141a",
-  surface2: "#1a1b23",
-  border:   "rgba(255,255,255,0.10)",
-  border2:  "rgba(255,255,255,0.06)",
-  text1:    "#f0f1f5",
-  text2:    "#b4bfcc",
-  text3:    "#8896a8",
-  accent:   "#3b82f6",
-  green:    "#4ade80",
-  red:      "#f87171",
-  yellow:   "#fbbf24",
-  font:     "'Syne', sans-serif",
-  mono:     "'JetBrains Mono', monospace",
-  serif:    "'DM Serif Display', Georgia, serif",
+  bg:       "var(--bg)",
+  surface:  "var(--surface)",
+  surface2: "var(--surface-2)",
+  border:   "var(--border)",
+  border2:  "var(--border-2)",
+  text1:    "var(--fg-1)",
+  text2:    "var(--fg-2)",
+  text3:    "var(--fg-3)",
+  accent:   "var(--accent)",
+  green:    "var(--green)",
+  red:      "var(--red)",
+  yellow:   "var(--yellow)",
+  font:     "var(--font-sans)",
+  mono:     "var(--font-mono)",
+  serif:    "var(--font-serif)",
 };
 
 const RAIL_COLLAPSED = 52;
@@ -53,7 +59,7 @@ function useGlobalStyles() {
     if (document.getElementById("ptv3-global")) return;
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=DM+Serif+Display:ital@0;1&display=swap";
+    link.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=DM+Serif+Display:ital@0;1&family=Fira+Sans:wght@400;500;600;700&display=swap";
     document.head.appendChild(link);
     const s = document.createElement("style");
     s.id = "ptv3-global";
@@ -61,20 +67,59 @@ function useGlobalStyles() {
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html { height: 100%; }
       body { height: 100%; overflow: hidden; }
-      
+
+      /* ── CSS Custom Properties — Dark theme (default) ── */
+      :root, [data-theme="dark"] {
+        --bg:        #0d0e12;
+        --surface:   #13141a;
+        --surface-2: #1a1b23;
+        --border:    rgba(255,255,255,0.10);
+        --border-2:  rgba(255,255,255,0.06);
+        --fg-1:      #f0f1f5;
+        --fg-2:      #b4bfcc;
+        --fg-3:      #8896a8;
+        --accent:    #3b82f6;
+        --green:     #4ade80;
+        --red:       #f87171;
+        --yellow:    #fbbf24;
+        --font-sans:  'Syne', sans-serif;
+        --font-mono:  'JetBrains Mono', monospace;
+        --font-serif: 'DM Serif Display', Georgia, serif;
+        --scrollbar-thumb: rgba(255,255,255,0.12);
+      }
+
+      /* ── CSS Custom Properties — Light theme ── */
+      [data-theme="light"] {
+        --bg:        #f7f7f5;
+        --surface:   #ffffff;
+        --surface-2: #f0f0ed;
+        --border:    rgba(15,17,22,0.10);
+        --border-2:  rgba(15,17,22,0.06);
+        --fg-1:      #15171c;
+        --fg-2:      #45505d;
+        --fg-3:      #7a8493;
+        --accent:    #3b82f6;
+        --green:     #16a34a;
+        --red:       #dc2626;
+        --yellow:    #d97706;
+        --font-sans:  'Fira Sans', sans-serif;
+        --font-mono:  'JetBrains Mono', monospace;
+        --font-serif: 'DM Serif Display', Georgia, serif;
+        --scrollbar-thumb: rgba(15,17,22,0.15);
+      }
+
+      /* ── Theme transition ── */
+      body { transition: background-color 0.2s ease, color 0.2s ease; }
+
       /* ── Pro mode (default): compact information density ── */
       :root { --fs-base: 13px; --fs-scale: 1; }
       body {
-        background: #0d0e12; color: #f0f1f5; font-family: 'Syne', sans-serif;
+        background: var(--bg); color: var(--fg-1); font-family: var(--font-sans);
         font-size: var(--fs-base); -webkit-font-smoothing: antialiased;
-        transition: font-size 0.25s ease;
+        transition: font-size 0.25s ease, background-color 0.2s ease, color 0.2s ease;
       }
-      
+
       /* ── Comfort mode: WCAG AA compliant scaling ── */
-      /* Zoom applied to body so ALL content scales uniformly:
-         - ETF Explorer, Portfolio View, Login, Modals — everything
-         - CSS zoom scales all px dimensions (inline styles, SVG, D3, etc.)
-         - width/height compensation prevents scrollbars from appearing */
       body[data-mode="comfort"] {
         --fs-base: 16px;
         zoom: 1.18;
@@ -82,16 +127,16 @@ function useGlobalStyles() {
         height: calc(100vh / 1.18);
         overflow: hidden;
       }
-      
+
       button { font-family: inherit; }
-      .mono { font-family: 'JetBrains Mono', monospace; }
+      .mono { font-family: var(--font-mono); }
       .spin { display: inline-block; animation: ptv3spin 0.9s linear infinite; }
       @keyframes ptv3spin { to { transform: rotate(360deg); } }
       @keyframes ptv3pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
       .pulse { animation: ptv3pulse 1.4s ease-in-out infinite; }
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+      ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
       input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
       /* Rail button hover */
       .rail-btn:hover { background: rgba(59,130,246,0.08) !important; color: #3b82f6 !important; }
@@ -105,6 +150,20 @@ function useGlobalStyles() {
       button { transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease; }
       /* Tab active indicator slide animation */
       .tab-pill { transition: background 0.3s ease, color 0.3s ease, font-weight 0.15s; }
+      /* Rail language / theme toggle rows */
+      .rail-toggle-row { display:flex; gap:5px; padding: 0 8px; }
+      .rail-toggle-btn {
+        flex:1; padding:6px 0; border-radius:8px; border:1.5px solid var(--border);
+        background:transparent; color:var(--fg-3); font-size:10px; font-weight:700;
+        font-family:inherit; cursor:pointer; display:flex; align-items:center;
+        justify-content:center; gap:5px; transition:border-color 0.2s, background 0.2s, color 0.2s;
+      }
+      .rail-toggle-btn.active {
+        border-color: var(--accent);
+        background: rgba(59,130,246,0.15);
+        color: var(--accent);
+      }
+      .rail-toggle-btn:hover:not(.active) { border-color: var(--border); background: rgba(59,130,246,0.06); color: var(--fg-2); }
     `;
     document.head.appendChild(s);
   }, []);
@@ -711,6 +770,7 @@ function LoginScreen({ onLogin, onEtfMode }) {
 // RENAME PORTFOLIO MODAL
 // ════════════════════════════════════════════════════════════════════════════
 function RenamePortfolioModal({ portfolio, onClose, onRename }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(portfolio.name);
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState(null);
@@ -721,7 +781,7 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
     try {
       await onRename(portfolio.id, name.trim());
       onClose();
-    } catch(e) { setErr(e.message || "Fehler beim Umbenennen"); }
+    } catch(e) { setErr(e.message || t("portfolio.errRename")); }
     setBusy(false);
   };
 
@@ -732,7 +792,7 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
       <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`,
         borderRadius:16, padding:24, width:340, fontFamily:THEME.font }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-          <span style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>Portfolio umbenennen</span>
+          <span style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>{t("portfolio.rename")}</span>
           <button onClick={onClose} style={{ background:"none", border:"none", color:THEME.text3, cursor:"pointer" }}>
             <X size={18}/>
           </button>
@@ -750,14 +810,14 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
           <button onClick={onClose}
             style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1px solid ${THEME.border}`,
               background:"transparent", color:THEME.text2, fontSize:13, fontFamily:THEME.font, cursor:"pointer" }}>
-            Abbrechen
+            {t("common.cancel")}
           </button>
           <button onClick={handleSave} disabled={!name.trim() || busy}
             style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
               background:THEME.accent, color:"#fff", fontSize:13, fontWeight:600,
               fontFamily:THEME.font, cursor: name.trim() ? "pointer" : "not-allowed",
               opacity: name.trim() ? 1 : 0.5 }}>
-            {busy ? "…" : "Speichern"}
+            {busy ? "…" : t("portfolio.renameBtn")}
           </button>
         </div>
       </div>
@@ -1010,7 +1070,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
           {tab === "import" && !previewData && !result && (
             <div>
               {portSelectJsx}
-              {/* Template */}}
+              {/* Template */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                 padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
                 border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
@@ -1435,7 +1495,10 @@ function Rail({
   onImportExport,
   onEtfExplorer,
   displayMode, onToggleDisplayMode,
+  uiTheme, onToggleTheme,
+  uiLanguage, onChangeLanguage,
 }) {
+  const { t } = useTranslation();
   const w = open ? RAIL_EXPANDED : RAIL_COLLAPSED;
 
 
@@ -1557,20 +1620,20 @@ function Rail({
               fontFamily:THEME.font, cursor:"pointer", marginBottom:2,
               transition:"background 0.12s",
             }}>
-            <Plus size={13}/> Add Transaction
+            <Plus size={13}/> {t("rail.addTransaction")}
           </button>
         ) : (
-          <RailBtn open={open} icon={<Plus size={16}/>} label="Add Transaction"
+          <RailBtn open={open} icon={<Plus size={16}/>} label={t("rail.addTransaction")}
             color={THEME.accent} onClick={() => onTab("_addtx")}/>
         )}
         <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:"flex"}}><RefreshCw size={16}/></span> : <RefreshCw size={16}/>}
-          label="Refresh Quotes" onClick={onRefresh}/>
+          label={t("rail.refreshQuotes")} onClick={onRefresh}/>
         {onRecalcFX && (
           <RailBtn open={open} icon={<span style={{fontSize:12}}>⟳$</span>} label="Recalc FX Costs"
             onClick={onRecalcFX}
             color={THEME.yellow ?? "#fbbf24"}/>
         )}
-        <RailBtn open={open} icon={<FileDown size={16}/>} label="Import / Export"
+        <RailBtn open={open} icon={<FileDown size={16}/>} label={t("rail.importExport")}
           onClick={onImportExport}/>
 
 
@@ -1656,7 +1719,7 @@ function Rail({
           </div>
         )}
         {/* Data source settings (small, collapsed-friendly) */}
-        <RailBtn open={open} icon={<Settings size={14}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
+        <RailBtn open={open} icon={<Settings size={14}/>} label={t("rail.settings")}
           onClick={onSettings}/>
 
         {/* ── ETF Screener link ── */}
@@ -1699,7 +1762,7 @@ function Rail({
                 <div style={{ display:"flex", gap:2, padding:"2px",
                   borderRadius:6, background:"rgba(0,0,0,0.25)",
                   border:`1px solid ${THEME.border}` }}>
-                  {[["pro",<Gauge size={13}/>, "Pro mode"],["comfort",<Armchair size={13}/>, "Comfort mode"]].map(([m, lbl]) => (
+                  {[["pro",<Gauge size={13}/>, t("rail.compact")],["comfort",<Armchair size={13}/>, t("rail.relaxed")]].map(([m, lbl]) => (
                     <button key={m} onClick={() => onToggleDisplayMode(m)}
                       title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
                       style={{
@@ -1730,7 +1793,59 @@ function Rail({
           </div>
         )}
 
-        <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out" onClick={onLogout} color={THEME.text3}/>
+        {/* ── Theme toggle ── */}
+        <div style={{ padding: open ? "4px 10px" : "4px 4px" }}>
+          {open ? (
+            <div className="rail-toggle-row">
+              <button className={`rail-toggle-btn${uiTheme === "dark" ? " active" : ""}`}
+                onClick={() => onToggleTheme && onToggleTheme()}
+                title={t("rail.darkMode")}>
+                <Moon size={12}/> <span>{t("rail.darkMode")}</span>
+              </button>
+              <button className={`rail-toggle-btn${uiTheme === "light" ? " active" : ""}`}
+                onClick={() => onToggleTheme && onToggleTheme()}
+                title={t("rail.lightMode")}>
+                <Sun size={12}/> <span>{t("rail.lightMode")}</span>
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => onToggleTheme && onToggleTheme()}
+              title={uiTheme === "dark" ? t("rail.lightMode") : t("rail.darkMode")}
+              style={{ width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
+                background:"transparent", borderRadius:7, display:"flex",
+                justifyContent:"center", alignItems:"center", color:THEME.text3 }}>
+              {uiTheme === "dark" ? <Sun size={15}/> : <Moon size={15}/>}
+            </button>
+          )}
+        </div>
+
+        {/* ── Language switcher ── */}
+        <div style={{ padding: open ? "4px 10px 8px" : "4px 4px 8px" }}>
+          {open ? (
+            <div className="rail-toggle-row">
+              {[["de", deFlagUrl, t("rail.langDe")], ["en", gbFlagUrl, t("rail.langEn")]].map(([lang, flag, label]) => (
+                <button key={lang}
+                  className={`rail-toggle-btn${uiLanguage === lang ? " active" : ""}`}
+                  onClick={() => onChangeLanguage && onChangeLanguage(lang)}
+                  title={label}>
+                  <img src={flag} width={13} height={13} style={{ borderRadius:"50%", flexShrink:0 }} alt={label}/>
+                  <span>{lang.toUpperCase()}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              onClick={() => onChangeLanguage && onChangeLanguage(uiLanguage === "de" ? "en" : "de")}
+              title={uiLanguage === "de" ? t("rail.langEn") : t("rail.langDe")}
+              style={{ width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
+                background:"transparent", borderRadius:7, display:"flex",
+                justifyContent:"center", alignItems:"center", color:THEME.text3 }}>
+              <Globe size={15}/>
+            </button>
+          )}
+        </div>
+
+        <RailBtn open={open} icon={<LogOut size={16}/>} label={t("rail.logout")} onClick={onLogout} color={THEME.text3}/>
       </div>
     </div>
   );
@@ -3739,6 +3854,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
 // ── EditPlanModal ─────────────────────────────────────────────────────────────
 function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }) {
+  const { t } = useTranslation();
   const portfolio = portfolios.find(p => p.id === plan.portfolio_id);
   const [endDate,      setEndDate]      = useState(plan.end_date);
   const [periodicity,  setPeriodicity]  = useState(plan.periodicity);
@@ -3786,10 +3902,10 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
   const handleSave = async () => {
     const priceN  = parseFloat(price);
     const budgetN = parseFloat(budget);
-    if (!endDate) { setError("Enddatum erforderlich"); return; }
-    if (isNaN(budgetN) || budgetN <= 0) { setError("Budget muss eine positive Zahl sein"); return; }
+    if (!endDate) { setError(t("savingsPlan.errEndDate")); return; }
+    if (isNaN(budgetN) || budgetN <= 0) { setError(t("savingsPlan.errBudget")); return; }
     if (newPastDates.length > 0 && (isNaN(priceN) || priceN <= 0)) {
-      setError("Preis für neue Käufe erforderlich"); return;
+      setError(t("savingsPlan.errPrice")); return;
     }
     setBusy(true);
     try {
@@ -3822,7 +3938,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
   const cSym = CCY_SYM[currency] ?? (currency + " ");
 
   return (
-    <Modal title="Sparplan bearbeiten" onClose={onClose}>
+    <Modal title={t("savingsPlan.edit")} onClose={onClose}>
       {/* Plan summary */}
       <div style={{ display:"flex", gap:8, marginBottom:16, padding:"10px 12px",
         background:"rgba(59,130,246,0.07)", borderRadius:10, border:"1px solid rgba(59,130,246,0.18)",
@@ -3861,7 +3977,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
           <select value={periodicity} onChange={e => setPeriodicity(e.target.value)}
             style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
-            {PERIODICITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label} — {o.description}</option>)}
+            {PERIODICITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>)}
           </select>
         </div>
       </div>
@@ -3966,7 +4082,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
         <button onClick={onClose}
           style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
             background:"transparent", color:THEME.text2, cursor:"pointer", fontSize:12 }}>
-          Abbrechen
+          {t("common.cancel")}
         </button>
         <button onClick={handleSave}
           disabled={busy || !endDate || !budget}
@@ -3974,7 +4090,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
             background: newPastDates.length > 0 ? THEME.accent : "rgba(59,130,246,0.4)",
             color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700,
             opacity: (busy || !endDate || !budget) ? 0.5 : 1 }}>
-          {busy ? "Speichern…"
+          {busy ? t("savingsPlan.saving")
             : newPastDates.length > 0
               ? `✓ ${newPastDates.length} Kauf${newPastDates.length!==1?"käufe":""} + Plan speichern`
               : "Plan speichern"}
@@ -4851,12 +4967,12 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 // ════════════════════════════════════════════════════════════════════════════
 
 const PERIODICITY_OPTIONS = [
-  { value: "daily",         label: "Täglich",         description: "Jeden Tag"      },
-  { value: "weekly",        label: "Wöchentlich",     description: "Alle 7 Tage"    },
-  { value: "monthly",       label: "Monatlich",       description: "Jeden Monat"    },
-  { value: "quarterly",     label: "Vierteljährlich", description: "Alle 3 Monate"  },
-  { value: "semi-annually", label: "Halbjährlich",    description: "Alle 6 Monate"  },
-  { value: "annually",      label: "Jährlich",        description: "Einmal pro Jahr" },
+  { value: "daily",         labelKey: "periodicity.daily",      descKey: "periodicityDesc.daily"      },
+  { value: "weekly",        labelKey: "periodicity.weekly",     descKey: "periodicityDesc.weekly"     },
+  { value: "monthly",       labelKey: "periodicity.monthly",    descKey: "periodicityDesc.monthly"    },
+  { value: "quarterly",     labelKey: "periodicity.quarterly",  descKey: "periodicityDesc.quarterly"  },
+  { value: "semi-annually", labelKey: "periodicity.semiannual", descKey: "periodicityDesc.semiannual" },
+  { value: "annually",      labelKey: "periodicity.annual",     descKey: "periodicityDesc.annual"     },
 ];
 
 function generatePeriodDates(startDate, endDate, periodicity) {
@@ -4886,6 +5002,7 @@ function generatePeriodDates(startDate, endDate, periodicity) {
 }
 
 function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, initialTx, editMode, onSavePlan, userId }) {
+  const { t } = useTranslation();
   const [portfolioId, setPortfolioId] = useState(initialTx?.portfolio_id ?? defaultPortfolioId ?? portfolios[0]?.id);
   const [type,        setType]        = useState(initialTx?.type?.toLowerCase() || "buy");
   const [symbol,      setSymbol]      = useState(initialTx?.symbol || "");
@@ -5020,7 +5137,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
     if (purchaseMode === "recurring") {
       const budgetN = parseFloat(budget);
       if (isNaN(budgetN) || budgetN <= 0) { setError("Budget must be a positive number"); return; }
-      if (pastRecurDates.length === 0) { setError("Keine vergangenen Kauftermine — Start Date in der Vergangenheit setzen"); return; }
+      if (pastRecurDates.length === 0) { setError(t("savingsPlan.noPastDates")); return; }
       setBusy(true);
       try {
         // Use start-date FX rate for all transactions (one API call instead of N)
@@ -5153,12 +5270,12 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             cursor: pdfLoading ? "wait" : "pointer", opacity: pdfLoading ? 0.7 : 1,
             display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", flexShrink:0 }}>
           {pdfLoading
-            ? <><span style={{ fontSize:13 }}>⏳</span> Analysiere…</>
-            : <><FileText size={12}/> PDF laden</>}
+            ? <><span style={{ fontSize:13 }}>⏳</span> {t("pdf.loading")}</>
+            : <><FileText size={12}/> {t("pdf.btn")}</>}
         </button>
         {pdfBanner === "ok" && (
           <span style={{ fontSize:11, color:"#22c55e" }}>
-            ✓ Felder vorausgefüllt — bitte prüfen
+            ✓ {t("pdf.ok")}
           </span>
         )}
         {pdfBanner?.startsWith("error:") && (
@@ -5169,7 +5286,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           </span>
         )}
         {!pdfBanner && !pdfLoading && (
-          <span style={{ fontSize:10, color:THEME.text3 }}>Comdirect, Flatex, …</span>
+          <span style={{ fontSize:10, color:THEME.text3 }}>{t("pdf.hint")}</span>
         )}
       </div>
 
@@ -5200,7 +5317,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               <FLabel>Periodicity</FLabel>
               <FSelect value={periodicity} onChange={e => setPeriodicity(e.target.value)}>
                 {PERIODICITY_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label} — {o.description}</option>
+                  <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>
                 ))}
               </FSelect>
             </div>
@@ -5540,6 +5657,7 @@ function AddPortfolioModal({ onClose, onAdd }) {
 // ════════════════════════════════════════════════════════════════════════════
 function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage,
   aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey, userId }) {
+  const { t } = useTranslation();
   const used = avUsage?.today ?? 0;
   const limit = 25;
   const pct   = Math.min(100, (used/limit)*100);
@@ -5558,10 +5676,10 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
   }, [userId, aiEndpoint, aiModel, aiApiKey]);
 
   return (
-    <Modal title="Data Source Settings" onClose={onClose}>
+    <Modal title={t("settings.title")} onClose={onClose}>
       <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
         <div>
-          <FLabel>Quote Data Source</FLabel>
+          <FLabel>{t("settings.quoteSource")}</FLabel>
           <div style={{ display:"flex", gap:8, marginTop:6 }}>
             {[["yahoo","Yahoo Finance"],["alphavantage","Alpha Vantage"]].map(([val,label]) => (
               <button key={val} onClick={() => setDataSource(val)} style={{
@@ -5595,13 +5713,13 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         )}
         {/* ── KI-Modell für PDF-Import ─────────────────────────────────── */}
         <div style={{ borderTop:`1px solid ${THEME.border}`, paddingTop:16 }}>
-          <FLabel style={{ display:"block", marginBottom:8 }}>KI-Modell für PDF-Import</FLabel>
+          <FLabel style={{ display:"block", marginBottom:8 }}>{t("settings.aiSection")}</FLabel>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:10 }}>
             {[
               ["lmstudio",   "LM Studio"],
               ["ollama",     "Ollama"],
               ["openrouter", "OpenRouter"],
-              ["disabled",   "Deaktiviert"],
+              ["disabled",   t("settings.disabled")],
             ].map(([val, label]) => (
               <button key={val}
                 onClick={() => {
@@ -5622,15 +5740,15 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
             ))}
           </div>
           {aiProvider !== "disabled" && (<>
-            <FLabel>Endpoint URL</FLabel>
+            <FLabel>{t("settings.endpointUrl")}</FLabel>
             <FInput value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
               placeholder="http://localhost:1234"/>
-            <FLabel>Modell-Name</FLabel>
+            <FLabel>{t("settings.modelName")}</FLabel>
             <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
-              placeholder="z.B. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
+              placeholder="e.g. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
             {aiProvider === "openrouter" && (<>
-              <FLabel>API Key</FLabel>
+              <FLabel>{t("settings.apiKey")}</FLabel>
               <FInput value={aiApiKey} onChange={e => setAiApiKey(e.target.value)}
                 style={{ fontFamily:THEME.mono, fontSize:11 }}
                 placeholder="sk-or-..."/>
@@ -5648,13 +5766,13 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
                   display:"flex", alignItems:"center", gap:6,
                 }}>
                 {aiTestState === "testing"
-                  ? <><span className="spin" style={{ display:"inline-block" }}>⟳</span> Testing…</>
-                  : "⚡ Test Connection"}
+                  ? <><span className="spin" style={{ display:"inline-block" }}>⟳</span> {t("settings.testing")}</>
+                  : `⚡ ${t("settings.testConn")}`}
               </button>
               {aiTestState && aiTestState !== "testing" && (
                 aiTestState.ok
                   ? <span style={{ fontSize:11, color:"#22c55e" }}>
-                      ✓ Connected — {aiTestState.latencyMs}ms
+                      ✓ {t("settings.connOk")} — {aiTestState.latencyMs}ms
                       {aiTestState.model && aiTestState.model !== "unknown" && (
                         <span style={{ color:THEME.text3 }}> ({aiTestState.model})</span>
                       )}
@@ -5670,7 +5788,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
 
         <button onClick={onSave} style={{ padding:"11px 0", borderRadius:10, border:"none",
           background:THEME.accent, color:"#fff", cursor:"pointer",
-          fontSize:13, fontWeight:700 }}>Save Settings</button>
+          fontSize:13, fontWeight:700 }}>{t("settings.save")}</button>
       </div>
     </Modal>
   );
@@ -6726,7 +6844,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 <div style={{ display:"flex", gap:2, padding:"2px",
                   borderRadius:6, background:"rgba(0,0,0,0.25)",
                   border:`1px solid ${THEME.border}` }}>
-                  {[["pro",<Gauge size={13}/>, "Pro mode"],["comfort",<Armchair size={13}/>, "Comfort mode"]].map(([m, lbl]) => (
+                  {[["pro",<Gauge size={13}/>, t("rail.compact")],["comfort",<Armchair size={13}/>, t("rail.relaxed")]].map(([m, lbl]) => (
                     <button key={m} onClick={() => onToggleDisplayMode(m)}
                       title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
                       style={{
@@ -7898,6 +8016,21 @@ export default function App() {
   const [initialized,     setInitialized]     = useState(false);
   // chartDataMap removed — globalChartCache handles this now (shared with ETF)
 
+  // ── Theme + Language state ─────────────────────────────────────────────────
+  const [uiTheme, setUiTheme] = useState(() => localStorage.getItem("pp-theme") || "dark");
+  useEffect(() => {
+    document.body.setAttribute("data-theme", uiTheme);
+    localStorage.setItem("pp-theme", uiTheme);
+  }, [uiTheme]);
+  const toggleTheme = useCallback(() => setUiTheme(t => t === "dark" ? "light" : "dark"), []);
+
+  const [uiLanguage, setUiLanguage] = useState(() => localStorage.getItem("pp-lang") || "en");
+  const changeLanguage = useCallback(async (lang) => {
+    i18n.changeLanguage(lang);
+    setUiLanguage(lang);
+    localStorage.setItem("pp-lang", lang);
+  }, []);
+
   const tooltipTimer = useRef(null);
 
   // ── Login handler ─────────────────────────────────────────────────────────
@@ -7915,6 +8048,13 @@ export default function App() {
       setAiEndpoint(userData.settings.api_keys?.ai?.endpoint  ?? "http://localhost:1234");
       setAiModel(   userData.settings.api_keys?.ai?.model     ?? "");
       setAiApiKey(  userData.settings.api_keys?.ai?.key       ?? "");
+      // Restore saved language preference
+      const savedLang = userData.settings?.ui_language ?? null;
+      if (savedLang) {
+        i18n.changeLanguage(savedLang);
+        setUiLanguage(savedLang);
+        localStorage.setItem("pp-lang", savedLang);
+      }
     }
     // Load FX
     try {
@@ -8334,6 +8474,8 @@ export default function App() {
           onEtfExplorer={() => setEtfMode(true)}
           displayMode={displayMode}
           onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
+          uiTheme={uiTheme} onToggleTheme={toggleTheme}
+          uiLanguage={uiLanguage} onChangeLanguage={changeLanguage}
         />
 
         {/* ── MAIN CONTENT ───────────────────────────────────────────── */}

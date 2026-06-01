@@ -1,0 +1,123 @@
+{
+  "nav": {
+    "treemap": "TreeMap",
+    "barChart": "Balkendiagramm",
+    "performance": "Performance",
+    "holdings": "Positionen",
+    "dividends": "Dividenden",
+    "historicCourses": "Historische Kurse",
+    "correlation": "Korrelation",
+    "monteCarlo": "Monte Carlo",
+    "rebalance": "Rebalancing"
+  },
+  "rail": {
+    "lightMode": "Hell",
+    "darkMode": "Dunkel",
+    "compact": "Kompakt",
+    "relaxed": "Entspannt",
+    "addTransaction": "Transaktion hinzufügen",
+    "refreshQuotes": "Kurse aktualisieren",
+    "importExport": "Import / Export",
+    "settings": "Einstellungen",
+    "logout": "Abmelden",
+    "langDe": "Deutsch",
+    "langEn": "Englisch"
+  },
+  "portfolio": {
+    "rename": "Portfolio umbenennen",
+    "renameBtn": "Speichern",
+    "createNew": "＋ Neues Portfolio anlegen…",
+    "namePlaceholder": "Name des neuen Portfolios",
+    "errCreate": "Portfolio konnte nicht erstellt werden",
+    "errRename": "Fehler beim Umbenennen",
+    "explorer": "Portfolio Explorer",
+    "viewTogglePortfolio": "Portfolio",
+    "viewToggleInstruments": "Instrumente"
+  },
+  "savingsPlan": {
+    "edit": "Sparplan bearbeiten",
+    "add": "Sparplan hinzufügen",
+    "errEndDate": "Enddatum erforderlich",
+    "errBudget": "Budget muss eine positive Zahl sein",
+    "errPrice": "Preis für neue Käufe erforderlich",
+    "saving": "Speichern…",
+    "noPastDates": "Keine vergangenen Kauftermine — Start Date in der Vergangenheit setzen"
+  },
+  "periodicity": {
+    "daily": "Täglich",
+    "weekly": "Wöchentlich",
+    "monthly": "Monatlich",
+    "quarterly": "Vierteljährlich",
+    "semiannual": "Halbjährlich",
+    "annual": "Jährlich"
+  },
+  "periodicityDesc": {
+    "daily": "Jeden Tag",
+    "weekly": "Alle 7 Tage",
+    "monthly": "Jeden Monat",
+    "quarterly": "Alle 3 Monate",
+    "semiannual": "Alle 6 Monate",
+    "annual": "Einmal pro Jahr"
+  },
+  "chart": {
+    "total": "Gesamt",
+    "portfolioValue": "Portfoliowert (gesamt oder je Portfolio)",
+    "perInstrument": "Je Instrument eine Linie",
+    "consolidated": "Konsolidiert",
+    "aggregated": "Aggregiert"
+  },
+  "tx": {
+    "one": "Transaktion",
+    "many": "Transaktionen",
+    "dividends": "Dividenden",
+    "add": "Transaktion hinzufügen",
+    "edit": "Transaktion bearbeiten"
+  },
+  "pdf": {
+    "btn": "PDF laden",
+    "loading": "Analysiere…",
+    "ok": "Felder aus PDF vorausgefüllt — bitte prüfen",
+    "error": "Fehler beim Lesen — bitte manuell ausfüllen",
+    "hint": "Comdirect, Flatex, …"
+  },
+  "settings": {
+    "title": "Datenquellen-Einstellungen",
+    "save": "Einstellungen speichern",
+    "testConn": "Verbindung testen",
+    "testing": "Teste…",
+    "connOk": "Verbunden",
+    "aiSection": "KI-Modell für PDF-Import",
+    "endpointUrl": "Endpoint URL",
+    "modelName": "Modell-Name",
+    "apiKey": "API Key",
+    "disabled": "Deaktiviert",
+    "quoteSource": "Kursdatenquelle"
+  },
+  "tips": {
+    "refresh": "Live-Kurse für alle Positionen aktualisieren",
+    "colourMode": "Zwischen Markt-% und absolutem Gewinn/Verlust wechseln",
+    "consolidated": "Alle Portfolios in einer zusammengeführten Ansicht zeigen",
+    "yAxis": "Zwischen absolutem Wert, Dollar-Delta (±$) und prozentualem Wechsel (±%) umschalten",
+    "pdfImport": "Broker-Abrechnung als PDF hochladen, um das Formular automatisch auszufüllen (Comdirect, Flatex u.a.)",
+    "isinSearch": "Yahoo Finance Ticker-Symbol anhand der ISIN suchen",
+    "getPrice": "Historischen Schlusskurs für dieses Datum von Yahoo Finance abrufen",
+    "recurrence": "Wie oft ein wiederkehrender Kaufauftrag ausgeführt werden soll",
+    "avKey": "Optionale Ersatzquelle für Kursdaten — kostenloser Key auf alphavantage.co",
+    "aiEndpoint": "OpenAI-kompatibler Base-URL für KI-gestützte PDF-Textextraktion",
+    "aiModel": "Modellname für die API-Anfrage (z.B. llama-3.1-8b-instruct)",
+    "buyPrice": "Kaufpreis je Aktie zum Ausführungszeitpunkt in der Original-Transaktionswährung",
+    "currency": "Original-Transaktionswährung — wird für FX-Umrechnung zur Anzeige-Währung verwendet",
+    "isin": "Internationale Wertpapierkennnummer (optional, ermöglicht automatische Symbol-Suche)"
+  },
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "close": "Schließen",
+    "loading": "Laden…",
+    "error": "Fehler",
+    "ok": "OK",
+    "total": "Gesamt"
+  }
+}
