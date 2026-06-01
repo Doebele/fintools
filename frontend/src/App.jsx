@@ -222,6 +222,7 @@ const quotesApi = {
   historyMultiIntraday:(symbols)            => apiFetch("/quotes/history-multi-intraday", { method:"POST", body: JSON.stringify({ symbols }) }),
   dividendsMulti: (symbols, range="2y") => apiFetch("/quotes/dividends-multi", { method:"POST", body: JSON.stringify({ symbols, range }) }),
   historicCourse: (symbol, targetPrice, currency) => apiFetch("/quotes/historic-course", { method:"POST", body: JSON.stringify({ symbol, targetPrice, currency }) }),
+  isin:           (symbol)                        => apiFetch(`/quotes/isin/${encodeURIComponent(symbol)}`),
 };
 const fxApi = {
   all:        ()               => apiFetch("/fx/all"),
@@ -2246,6 +2247,12 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginTop:2, maxWidth:190,
                 whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                 {data.longName || data.name}
+              </div>
+            )}
+            {data.isin && (
+              <div style={{ fontSize:9, color:"rgba(255,255,255,0.38)", marginTop:2,
+                fontFamily:"'JetBrains Mono',monospace", letterSpacing:"0.04em" }}>
+                {data.isin}
               </div>
             )}
           </div>
@@ -4598,9 +4605,13 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
                     </div>
                   </td>
-                  {/* Name */}
+                  {/* Name + ISIN */}
                   <td style={tdStyle(TX_COLS_DEFAULT[2])}>
-                    <span style={{ fontSize:11, color:THEME.text2 }}>{tx.name || ""}</span>
+                    <div style={{ fontSize:11, color:THEME.text2 }}>{tx.name || ""}</div>
+                    {tx.isin && (
+                      <div style={{ fontSize:9, color:THEME.text3, fontFamily:THEME.mono,
+                        letterSpacing:"0.04em", marginTop:2 }}>{tx.isin}</div>
+                    )}
                   </td>
                   {/* Date */}
                   <td style={tdStyle(TX_COLS_DEFAULT[3])}>
@@ -4866,6 +4877,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   const [qty,         setQty]         = useState(initialTx?.quantity ?? "");
   const [price,       setPrice]       = useState(initialTx?.price ?? "");
   const [currency,    setCurrency]    = useState(initialTx?.currency || "USD");
+  const [isin,        setIsin]        = useState(initialTx?.isin || "");
   const [busy,        setBusy]        = useState(false);
   const [lookupBusy,  setLookupBusy]  = useState(false);
   const [lookupMsg,   setLookupMsg]   = useState("");
@@ -4917,6 +4929,19 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
     return () => clearTimeout(lookupTimer.current);
   }, [symbol, date, doLookup]);
 
+  // Auto-fetch ISIN when symbol changes (non-blocking, best-effort)
+  useEffect(() => {
+    const sym = symbol.trim().toUpperCase();
+    if (sym.length < 2 || isin) return; // skip if already set
+    const t = setTimeout(async () => {
+      try {
+        const res = await quotesApi.isin(sym);
+        if (res.isin) setIsin(res.isin);
+      } catch { /* silent */ }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [symbol]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleAdd = async () => {
     const sym    = symbol.trim().toUpperCase();
     const priceN = parseFloat(price);
@@ -4938,7 +4963,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         }
         const qtyN = budgetN / priceN;
         for (const d of pastRecurDates) {
-          await onAdd(portfolioId, { symbol:sym, name:name||sym, quantity:qtyN, price:priceN, price_usd, date:d, type, currency });
+          await onAdd(portfolioId, { symbol:sym, name:name||sym, isin:isin||null, quantity:qtyN, price:priceN, price_usd, date:d, type, currency });
         }
         // Persist the savings plan (rule) if we have a callback
         if (onSavePlan) {
@@ -4964,7 +4989,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           try { const hist = await fxApi.historical(date, currency, "USD"); price_usd = priceN * (hist?.rate ?? (1/(rates[currency]??1))); }
           catch { price_usd = priceN / (rates[currency]??1); }
         }
-        await onAdd(portfolioId, { symbol:sym, name:name||sym, quantity:qtyN, price:priceN, price_usd, date, type, currency });
+        await onAdd(portfolioId, { symbol:sym, name:name||sym, isin:isin||null, quantity:qtyN, price:priceN, price_usd, date, type, currency });
         onClose();
       } catch(e) { setError(e.message); }
       setBusy(false);
@@ -5102,6 +5127,18 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             )}
           </FLabel>
           <FInput placeholder="Auto-filled from symbol…" value={name} onChange={e => setName(e.target.value)}/>
+        </div>
+        {/* ISIN */}
+        <div>
+          <FLabel>ISIN <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span></FLabel>
+          <FInput placeholder="e.g. US0378331005" value={isin}
+            style={{ fontFamily:THEME.mono, letterSpacing:"0.05em" }}
+            onChange={e => setIsin(e.target.value.toUpperCase().trim())}/>
+          <div style={{ fontSize:10, color:THEME.text3, marginTop:3 }}>
+            Find on your broker's site or{' '}
+            <a href="https://www.isin.org" target="_blank" rel="noreferrer"
+               style={{ color:THEME.accent, textDecoration:"none" }}>isin.org</a>
+          </div>
         </div>
         {/* Row 3: Quantity (single) OR Budget per period (recurring) */}
         {purchaseMode === "single" ? (
@@ -7335,12 +7372,8 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
     <div style={{ flex:1, overflow:"auto", padding:"28px 32px", display:"flex", flexDirection:"column", gap:20 }}>
       {/* Header */}
       <div>
-        <h2 style={{ margin:0, fontFamily:THEME.serif, fontSize:24, color:THEME.text1, fontWeight:400 }}>
-          Historic Courses
-        </h2>
-        <p style={{ margin:"6px 0 0", fontSize:13, color:THEME.text3 }}>
-          Find the earliest date a stock traded at a given price level
-        </p>
+        <div style={{ fontSize:16, fontWeight:700, color:THEME.text1, marginBottom:4 }}>Historic Courses</div>
+        <div style={{ fontSize:12, color:THEME.text3 }}>Find the earliest date a stock traded at a given price level</div>
       </div>
 
       {/* Input card */}
@@ -7392,6 +7425,15 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
       {/* Result summary */}
       {result?.found && (
         <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+          {/* Company name header */}
+          <div style={{ marginBottom:18 }}>
+            <div style={{ fontSize:18, fontWeight:700, color:THEME.text1 }}>
+              {result.companyName ?? result.symbol}
+            </div>
+            <div style={{ fontSize:11, color:THEME.text3, fontFamily:THEME.mono, marginTop:2 }}>
+              {result.symbol} · {result.stockCurrency}
+            </div>
+          </div>
           <div style={{ display:"flex", gap:28, flexWrap:"wrap" }}>
             {[
               { label:"Earliest Match",
@@ -7659,7 +7701,7 @@ export default function App() {
       const map = {};
       for (const tx of txs) {
         const sym = tx.symbol;
-        if (!map[sym]) map[sym] = { symbol:sym, name:tx.name, qty:0, costUSD:0, portfolioId:pid };
+        if (!map[sym]) map[sym] = { symbol:sym, name:tx.name, isin:tx.isin||null, qty:0, costUSD:0, portfolioId:pid };
         const qty = tx.type==="BUY" ? tx.quantity : -tx.quantity;
         map[sym].qty     += qty;
         map[sym].costUSD += tx.type==="BUY" ? tx.quantity * (tx.price_usd||tx.price) : 0;
@@ -8122,8 +8164,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Period toolbar — hide for analytics tabs */}
-          {!["correlation","montecarlo","rebalance","calendar"].includes(activeTab) && (
+          {/* Period toolbar — hide for analytics + standalone tabs */}
+          {!["correlation","montecarlo","rebalance","calendar","historic"].includes(activeTab) && (
             <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView} ansicht={ansicht} onAnsicht={setAnsicht}
               extraRight={activeTab === "performance" ? (
                 <div style={{ position:"relative" }} ref={vergleichRef}>
@@ -8206,7 +8248,7 @@ export default function App() {
           )}
 
           {/* Summary bar */}
-          {allNodes.length > 0 && !["correlation","montecarlo","rebalance","calendar"].includes(activeTab) && (
+          {allNodes.length > 0 && !["correlation","montecarlo","rebalance","calendar","historic"].includes(activeTab) && (
             <SummaryBar
               nodes={allNodes}
               totalValueUSD={totalValueUSD} totalCostUSD={totalCostUSD}

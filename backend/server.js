@@ -186,6 +186,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tx_date      ON transactions(date);
   CREATE INDEX IF NOT EXISTS idx_portfolios_user ON portfolios(user_id);
   CREATE INDEX IF NOT EXISTS idx_plans_portfolio ON savings_plans(portfolio_id);
+
+  CREATE TABLE IF NOT EXISTS symbol_isin (
+    symbol     TEXT     PRIMARY KEY,
+    isin       TEXT,
+    source     TEXT     DEFAULT 'yahoo',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ── Migrations: add columns to existing DBs that predate schema version ────────
@@ -198,6 +205,10 @@ try {
   if (!txCols.includes('notes')) {
     db.prepare('ALTER TABLE transactions ADD COLUMN notes TEXT').run();
     log.info('Migration: added notes to transactions table');
+  }
+  if (!txCols.includes('isin')) {
+    db.prepare('ALTER TABLE transactions ADD COLUMN isin TEXT').run();
+    log.info('Migration: added isin to transactions table');
   }
 } catch(e) { log.warn('Migration check failed:', e.message); }
 
@@ -362,14 +373,14 @@ app.delete('/api/portfolios/:id', (req, res) => {
 
 app.get('/api/portfolios/:id/transactions', (req, res) => {
   const rows = db.prepare(`
-    SELECT id, portfolio_id, symbol, name, quantity, price, price_usd, date, type, currency, notes, created_at
+    SELECT id, portfolio_id, symbol, name, isin, quantity, price, price_usd, date, type, currency, notes, created_at
     FROM transactions WHERE portfolio_id = ? ORDER BY date DESC, created_at DESC
   `).all(req.params.id);
   res.json(rows);
 });
 
 app.post('/api/portfolios/:id/transactions', async (req, res) => {
-  const { symbol, name, quantity, price, price_usd, date, type, currency, notes } = req.body;
+  const { symbol, name, isin, quantity, price, price_usd, date, type, currency, notes } = req.body;
   if (!symbol||!quantity||!price||!date||!type) return err(res, 400, 'symbol, quantity, price, date, type required');
 
   // Compute price_usd server-side when currency is not USD and frontend didn't provide it (or sent 0)
@@ -406,16 +417,19 @@ app.post('/api/portfolios/:id/transactions', async (req, res) => {
   }
 
   const result = db.prepare(`
-    INSERT INTO transactions (portfolio_id, symbol, name, quantity, price, price_usd, date, type, currency, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.params.id, symbol.toUpperCase(), name||null, quantity, price, finalPriceUSD, date, type.toUpperCase(), ccy, notes||null);
+    INSERT INTO transactions (portfolio_id, symbol, name, isin, quantity, price, price_usd, date, type, currency, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.params.id, symbol.toUpperCase(), name||null, isin||null, quantity, price, finalPriceUSD, date, type.toUpperCase(), ccy, notes||null);
+  // Cache the ISIN so other callers can reuse it without a network hit
+  if (isin) db.prepare(`INSERT OR REPLACE INTO symbol_isin (symbol, isin, source, updated_at)
+    VALUES (?, ?, 'user', CURRENT_TIMESTAMP)`).run(symbol.toUpperCase(), isin);
   const tx = db.prepare('SELECT * FROM transactions WHERE id=?').get(result.lastInsertRowid);
   log.info(`TX saved: ${symbol} price=${price} ${ccy} → price_usd=${finalPriceUSD.toFixed(4)}`);
   res.status(201).json(tx);
 });
 
 app.put('/api/transactions/:id', async (req, res) => {
-  const { symbol, name, quantity, price, price_usd, date, type, currency, notes } = req.body;
+  const { symbol, name, isin, quantity, price, price_usd, date, type, currency, notes } = req.body;
   let finalPriceUSD = price_usd && price_usd > 0 ? price_usd : price;
   const ccy = (currency || 'USD').toUpperCase();
   if (ccy !== 'USD' && !(price_usd > 0)) {
@@ -444,9 +458,11 @@ app.put('/api/transactions/:id', async (req, res) => {
     }
   }
   db.prepare(`
-    UPDATE transactions SET symbol=?, name=?, quantity=?, price=?, price_usd=?, date=?, type=?, currency=?, notes=?
+    UPDATE transactions SET symbol=?, name=?, isin=?, quantity=?, price=?, price_usd=?, date=?, type=?, currency=?, notes=?
     WHERE id=?
-  `).run(symbol?.toUpperCase(), name||null, quantity, price, finalPriceUSD, date, type?.toUpperCase(), ccy, notes||null, req.params.id);
+  `).run(symbol?.toUpperCase(), name||null, isin??null, quantity, price, finalPriceUSD, date, type?.toUpperCase(), ccy, notes||null, req.params.id);
+  if (isin) db.prepare(`INSERT OR REPLACE INTO symbol_isin (symbol, isin, source, updated_at)
+    VALUES (?, ?, 'user', CURRENT_TIMESTAMP)`).run(symbol?.toUpperCase(), isin);
   res.json(db.prepare('SELECT * FROM transactions WHERE id=?').get(req.params.id));
 });
 
@@ -2290,6 +2306,25 @@ app.post('/api/quotes/dividends-multi', async (req, res) => {
   res.json({ results });
 });
 
+// ── Helper: resolve ISIN for a ticker ────────────────────────────────────────
+// Returns the ISIN string if a user has previously stored one, otherwise null.
+// No network auto-resolve: no free public API reliably maps ticker → ISIN.
+// Users enter ISINs manually via the AddTxModal; they are cached in symbol_isin
+// with source='user' and propagated here on subsequent lookups.
+function resolveIsin(symbol) {
+  const sym = symbol.toUpperCase();
+  const cached = db.prepare('SELECT isin FROM symbol_isin WHERE symbol=?').get(sym);
+  return cached?.isin ?? null;
+}
+
+// GET /api/quotes/isin/:symbol — look up stored ISIN for a ticker (cache-only)
+app.get('/api/quotes/isin/:symbol', (req, res) => {
+  const sym = req.params.symbol.toUpperCase().trim();
+  if (!sym) return err(res, 400, 'symbol required');
+  const isin = resolveIsin(sym);
+  res.json({ symbol: sym, isin });
+});
+
 // ── Helper: Frankfurter FX time-series ──────────────────────────────────────
 // Returns { "YYYY-MM-DD": rate, ... } for the full range from startDate to today.
 // Stored in quotes_cache (needs a JSON blob, not just a single rate).
@@ -2442,6 +2477,7 @@ app.post('/api/quotes/historic-course', async (req, res) => {
     res.json({
       found:         true,
       symbol,
+      companyName:   meta.longName ?? meta.shortName ?? symbol,
       date:          foundDate,
       matchedPrice:  Math.round(priceArray[foundIdx].price * 100) / 100,
       targetPrice,
