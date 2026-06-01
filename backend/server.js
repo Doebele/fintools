@@ -22,6 +22,7 @@ const fetch       = require('node-fetch');
 const path        = require('path');
 const fs          = require('fs');
 const ExcelJS     = require('exceljs');
+const pdfParse    = require('pdf-parse');
 // yahoo-finance2 v3: must be instantiated (was a default export in v2)
 const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
@@ -587,6 +588,149 @@ app.put('/api/users/:userId/settings', (req, res) => {
       updated_at=CURRENT_TIMESTAMP
   `).run(req.params.userId, data_source||'yahoo', JSON.stringify(api_keys||{}), display_ccy||'USD');
   res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// PDF TOOLS
+// ════════════════════════════════════════════════════════════════════════════
+
+// multer instance for PDF uploads (defined here; the xlsx upload instance
+// is defined later near the import endpoint)
+const multerPdf = require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// Deutsche Zahlenformatierung: "5.100,00" → 5100.0, "16,85" → 16.85
+function parseDeGerman(str) {
+  if (!str) return NaN;
+  return parseFloat(str.replace(/\./g, '').replace(',', '.'));
+}
+
+// Regex-Fallback für Comdirect-Wertpapierabrechnungen
+// Note: pdf-parse omits spaces between words in PDFs; regexes must tolerate concatenation.
+function tryComdirectRegex(text) {
+  const typeM = text.match(/Wertpapier(kauf|verkauf)/i);
+  // Date: "Geschäftstag: 08.05.2026" (sometimes concatenated as "Geschäftstag:08.05.2026")
+  const dateM = text.match(/Gesch[äa]ftstag[:\s]+(\d{2}\.\d{2}\.\d{4})/i);
+  // ISIN: always 12 chars, capital letters + digits
+  const isinM = text.match(/\b([A-Z]{2}[A-Z0-9]{9}[0-9])\b/);
+  // Quantity: "St. 300" or "St.300" (concatenated with EUR in pdf-parse output)
+  const qtyM  = text.match(/St[.\s]\s*([\d.]+)/);
+  // Price per share: appears on same line as quantity — "St.300EUR16,85" or "St. 300 EUR 16,85"
+  // Also try "ZumKursvon...EUR16,85" pattern (spaces removed)
+  const kursM = text.match(/St[.\s]\s*[\d.]+\s*EUR\s*([\d.,]+)/i)
+             || text.match(/Zum\s*Kurs\s*von[\s\S]{0,20}EUR\s*([\d.,]+)/i);
+  // Currency from Kurswert line
+  const ccyM  = text.match(/Kurswert[:\s]+(EUR|USD|GBP|CHF)/i);
+
+  if (!typeM || !dateM || !isinM || !qtyM || !kursM) return null;
+
+  // Try to extract name: the line after "Wertpapier-Bezeichnung"
+  // In concatenated form: "Wertpapier-BezeichnungWPKNR/ISIN\nCompanyNameWKN\nSubtitleISIN"
+  const nameBlock = text.match(/Wertpapier-Bezeichnung[^\n]*\n([^\n]{5,})\n/);
+  let name = '';
+  if (nameBlock) {
+    // Strip the WKN (6 alphanumeric chars) from the end if present
+    name = nameBlock[1].replace(/[A-Z0-9]{6}$/, '').trim();
+    // Re-space common concatenation artifacts (e.g. "ScottishMortgage" → keep as-is, AI will clean up)
+  }
+
+  const [d, m, y] = dateM[1].split('.');
+  return {
+    type:     typeM[1].toLowerCase() === 'kauf' ? 'BUY' : 'SELL',
+    date:     `${y}-${m}-${d}`,
+    name,
+    isin:     isinM[1],
+    quantity: parseDeGerman(qtyM[1].replace(/\./g, '')),
+    price:    parseDeGerman(kursM[1]),
+    currency: ccyM ? ccyM[1] : 'EUR',
+  };
+}
+
+// POST /api/tools/parse-pdf — extract transaction data from a broker PDF
+// Multipart: field "file" = PDF binary.  Header: x-user-id
+app.post('/api/tools/parse-pdf', multerPdf.single('file'), async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!req.file) return err(res, 400, 'No PDF file uploaded');
+
+  // 1. Extract text from PDF
+  let pdfText;
+  try {
+    const data = await pdfParse(req.file.buffer);
+    pdfText = data.text;
+  } catch(e) {
+    return err(res, 422, 'PDF konnte nicht gelesen werden: ' + e.message);
+  }
+
+  // 2. Load AI settings for this user
+  const settingsRow = db.prepare('SELECT api_keys FROM settings WHERE user_id=?').get(userId);
+  const apiKeys = JSON.parse(settingsRow?.api_keys || '{}');
+  const ai = apiKeys.ai || {};
+
+  // 3. No AI configured → try Comdirect regex fallback
+  if (!ai.provider || ai.provider === 'disabled') {
+    const parsed = tryComdirectRegex(pdfText);
+    if (parsed) return res.json({ ...parsed, source: 'regex' });
+    return err(res, 422, 'Kein KI-Modell konfiguriert und kein unterstütztes PDF-Format erkannt.');
+  }
+
+  // 4. Build structured extraction prompt
+  const prompt = `Du bist ein Finanz-Dokumentenparser. Extrahiere die Transaktionsdaten aus diesem Broker-Abrechnungs-PDF und gib NUR gültiges JSON zurück, keine Erklärung.
+
+Pflichtfelder:
+- type: "BUY" bei Kauf, "SELL" bei Verkauf
+- date: Handelsdatum (Geschäftstag) als "YYYY-MM-DD"
+- name: vollständige Wertpapierbezeichnung
+- isin: ISIN-Code (12 Zeichen, z.B. "DE000EXAMPLE00")
+- quantity: Stückzahl als Zahl (kein Tausenderpunkt)
+- price: Kurs/Preis pro Stück als Dezimalzahl (Punkt als Dezimaltrennzeichen)
+- currency: 3-stelliger Währungscode ("EUR", "USD", etc.)
+
+Deutsche Zahlenformatierung: "5.000" = 5000 (Tausendertrennzeichen), "16,85" = 16.85 (Komma = Dezimalzeichen).
+
+PDF-Inhalt:
+${pdfText.slice(0, 4000)}`;
+
+  // 5. Call AI model via OpenAI-compat API
+  const endpoint = (ai.endpoint || 'http://localhost:1234').replace(/\/$/, '');
+  const aiUrl    = `${endpoint}/v1/chat/completions`;
+
+  try {
+    const aiHeaders = { 'Content-Type': 'application/json' };
+    if (ai.key) aiHeaders['Authorization'] = `Bearer ${ai.key}`;
+
+    const aiResp = await fetch(aiUrl, {
+      method:  'POST',
+      headers: aiHeaders,
+      body: JSON.stringify({
+        model:    ai.model || 'default',
+        messages: [
+          { role: 'system', content: 'You are a precise financial document parser. Return only valid JSON, no explanation.' },
+          { role: 'user',   content: prompt },
+        ],
+        temperature: 0.1,
+        max_tokens:  500,
+      }),
+      timeout: 30000,
+    });
+
+    if (!aiResp.ok) {
+      const body = await aiResp.text();
+      throw new Error(`KI-Fehler ${aiResp.status}: ${body.slice(0, 200)}`);
+    }
+
+    const aiJson    = await aiResp.json();
+    const rawContent = aiJson.choices?.[0]?.message?.content || '';
+    // Strip markdown code fences if the model adds them
+    const jsonStr   = rawContent.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim();
+    const parsed    = JSON.parse(jsonStr);
+
+    return res.json({ ...parsed, source: 'ai' });
+  } catch(e) {
+    // AI failed → regex fallback before giving up
+    const fallback = tryComdirectRegex(pdfText);
+    if (fallback) return res.json({ ...fallback, source: 'regex_fallback' });
+    return err(res, 502, 'KI-Extraktion fehlgeschlagen: ' + e.message);
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════

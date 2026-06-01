@@ -10,7 +10,7 @@ import {
   User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
-  Gauge, Armchair, Info, Clock,
+  Gauge, Armchair, Info, Clock, FileText,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
@@ -229,6 +229,16 @@ const fxApi = {
   historical: (date, from, to) => apiFetch(`/fx/historical/${date}/${from}/${to}`),
 };
 const avApi = { usage: () => apiFetch("/av/usage") };
+const toolsApi = {
+  parsePdf: (file, userId) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return apiFetch("/tools/parse-pdf", {
+      method: "POST", body: fd, isForm: true,
+      headers: { "x-user-id": String(userId) },
+    });
+  },
+};
 
 // ─── Global Dividend Cache ────────────────────────────────────────────────────
 // Singleton shared between Portfolio and ETF Explorer — avoids duplicate fetches.
@@ -4868,7 +4878,7 @@ function generatePeriodDates(startDate, endDate, periodicity) {
   return dates;
 }
 
-function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, initialTx, editMode, onSavePlan }) {
+function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, initialTx, editMode, onSavePlan, userId }) {
   const [portfolioId, setPortfolioId] = useState(initialTx?.portfolio_id ?? defaultPortfolioId ?? portfolios[0]?.id);
   const [type,        setType]        = useState(initialTx?.type?.toLowerCase() || "buy");
   const [symbol,      setSymbol]      = useState(initialTx?.symbol || "");
@@ -4883,7 +4893,33 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   const [lookupMsg,   setLookupMsg]   = useState("");
   const [priceEdited, setPriceEdited] = useState(!!initialTx?.price);
   const [error,       setError]       = useState("");
+  const [pdfLoading,  setPdfLoading]  = useState(false);
+  const [pdfBanner,   setPdfBanner]   = useState(null); // null | "ok" | "error:..."
   const lookupTimer = useRef(null);
+  const pdfInputRef = useRef(null);
+
+  // PDF import handler
+  const handlePdfFile = useCallback(async (file) => {
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) return;
+    if (!userId) { setPdfBanner("error:Anmeldung erforderlich"); return; }
+    setPdfLoading(true);
+    setPdfBanner(null);
+    try {
+      const data = await toolsApi.parsePdf(file, userId);
+      if (data.type)     setType(data.type.toLowerCase());
+      if (data.date)     setDate(data.date);
+      if (data.name)     setName(data.name);
+      if (data.isin)     setIsin(data.isin);
+      if (data.quantity != null) setQty(String(data.quantity));
+      if (data.price    != null) { setPrice(String(data.price)); setPriceEdited(true); }
+      if (data.currency) setCurrency(data.currency);
+      setPdfBanner("ok");
+    } catch(e) {
+      setPdfBanner("error:" + e.message);
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [userId]);
 
   // Recurring purchase state
   const [purchaseMode, setPurchaseMode] = useState("single"); // "single" | "recurring"
@@ -5071,6 +5107,39 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           ))}
         </div>
       )}
+
+      {/* PDF-Import Bar */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4,
+        padding:"9px 12px", borderRadius:10, background:"rgba(59,130,246,0.06)",
+        border:`1px solid ${THEME.border}` }}>
+        <input ref={pdfInputRef} type="file" accept=".pdf" style={{ display:"none" }}
+          onChange={e => { const f = e.target.files?.[0]; if(f) handlePdfFile(f); e.target.value=''; }}/>
+        <button onClick={() => pdfInputRef.current?.click()}
+          disabled={pdfLoading}
+          style={{ padding:"6px 13px", borderRadius:8, border:"none",
+            background:THEME.accent, color:"#fff", fontSize:11, fontWeight:700,
+            cursor: pdfLoading ? "wait" : "pointer", opacity: pdfLoading ? 0.7 : 1,
+            display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", flexShrink:0 }}>
+          {pdfLoading
+            ? <><span style={{ fontSize:13 }}>⏳</span> Analysiere…</>
+            : <><FileText size={12}/> PDF laden</>}
+        </button>
+        {pdfBanner === "ok" && (
+          <span style={{ fontSize:11, color:"#22c55e" }}>
+            ✓ Felder vorausgefüllt — bitte prüfen
+          </span>
+        )}
+        {pdfBanner?.startsWith("error:") && (
+          <span style={{ fontSize:11, color:THEME.red, flex:1, overflow:"hidden",
+            textOverflow:"ellipsis", whiteSpace:"nowrap" }}
+            title={pdfBanner.slice(6)}>
+            ⚠ {pdfBanner.slice(6)}
+          </span>
+        )}
+        {!pdfBanner && !pdfLoading && (
+          <span style={{ fontSize:10, color:THEME.text3 }}>Comdirect, Flatex, …</span>
+        )}
+      </div>
 
       <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
         {/* Row 1: Date | Symbol  — date first so lookup fires with correct date */}
@@ -5374,7 +5443,8 @@ function AddPortfolioModal({ onClose, onAdd }) {
 // ════════════════════════════════════════════════════════════════════════════
 // SETTINGS MODAL
 // ════════════════════════════════════════════════════════════════════════════
-function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage }) {
+function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage,
+  aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey }) {
   const used = avUsage?.today ?? 0;
   const limit = 25;
   const pct   = Math.min(100, (used/limit)*100);
@@ -5416,6 +5486,51 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
             </div>
           </div>
         )}
+        {/* ── KI-Modell für PDF-Import ─────────────────────────────────── */}
+        <div style={{ borderTop:`1px solid ${THEME.border}`, paddingTop:16 }}>
+          <FLabel style={{ display:"block", marginBottom:8 }}>KI-Modell für PDF-Import</FLabel>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:10 }}>
+            {[
+              ["lmstudio",   "LM Studio"],
+              ["ollama",     "Ollama"],
+              ["openrouter", "OpenRouter"],
+              ["disabled",   "Deaktiviert"],
+            ].map(([val, label]) => (
+              <button key={val}
+                onClick={() => {
+                  setAiProvider(val);
+                  if (val === "lmstudio")   setAiEndpoint("http://localhost:1234");
+                  if (val === "ollama")     setAiEndpoint("http://localhost:11434");
+                  if (val === "openrouter") setAiEndpoint("https://openrouter.ai/api/v1");
+                }}
+                style={{
+                  padding:"9px 0", borderRadius:8, fontSize:11, fontWeight:700,
+                  border:`1.5px solid ${aiProvider===val ? THEME.accent : THEME.border}`,
+                  background: aiProvider===val ? "rgba(59,130,246,0.15)" : "transparent",
+                  color: aiProvider===val ? THEME.accent : THEME.text3,
+                  cursor:"pointer",
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {aiProvider !== "disabled" && (<>
+            <FLabel>Endpoint URL</FLabel>
+            <FInput value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)}
+              style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
+              placeholder="http://localhost:1234"/>
+            <FLabel>Modell-Name</FLabel>
+            <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
+              placeholder="z.B. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
+            {aiProvider === "openrouter" && (<>
+              <FLabel>API Key</FLabel>
+              <FInput value={aiApiKey} onChange={e => setAiApiKey(e.target.value)}
+                style={{ fontFamily:THEME.mono, fontSize:11 }}
+                placeholder="sk-or-..."/>
+            </>)}
+          </>)}
+        </div>
+
         <button onClick={onSave} style={{ padding:"11px 0", borderRadius:10, border:"none",
           background:THEME.accent, color:"#fff", cursor:"pointer",
           fontSize:13, fontWeight:700 }}>Save Settings</button>
@@ -7634,6 +7749,10 @@ export default function App() {
   const [ratesSource,     setRatesSource]     = useState("live");
   const [dataSource,      setDataSource]      = useState("yahoo");
   const [avApiKey,        setAvApiKey]        = useState("");
+  const [aiProvider,      setAiProvider]      = useState("disabled");
+  const [aiEndpoint,      setAiEndpoint]      = useState("http://localhost:1234");
+  const [aiModel,         setAiModel]         = useState("");
+  const [aiApiKey,        setAiApiKey]        = useState("");
   const [avUsage,         setAvUsage]         = useState(null);
   const [fetchStatus,     setFetchStatus]     = useState("");
   const [fetchErrors,     setFetchErrors]     = useState({});
@@ -7655,6 +7774,10 @@ export default function App() {
       setDataSource(userData.settings.data_source ?? "yahoo");
       setAvApiKey(userData.settings.api_keys?.alphavantage ?? "");
       setCurrency(userData.settings.display_ccy ?? "USD");
+      setAiProvider(userData.settings.api_keys?.ai?.provider  ?? "disabled");
+      setAiEndpoint(userData.settings.api_keys?.ai?.endpoint  ?? "http://localhost:1234");
+      setAiModel(   userData.settings.api_keys?.ai?.model     ?? "");
+      setAiApiKey(  userData.settings.api_keys?.ai?.key       ?? "");
     }
     // Load FX
     try {
@@ -7964,7 +8087,7 @@ export default function App() {
     try {
       await userApi.saveSettings(user.id, {
         data_source: dataSource,
-        api_keys: { alphavantage: avApiKey },
+        api_keys: { alphavantage: avApiKey, ai: { provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
         display_ccy: currency,
       });
       setShowSettings(false);
@@ -8444,7 +8567,7 @@ export default function App() {
           <AddTxModal onClose={() => setShowAddTx(false)} onAdd={handleAddTx}
             rates={rates} portfolios={activePortfolios}
             defaultPortfolioId={activePortfolioIds[0]}
-            onSavePlan={handleSavePlan}/>
+            onSavePlan={handleSavePlan} userId={user?.id}/>
         )}
         {editTx && (
           <AddTxModal onClose={() => setEditTx(null)}
@@ -8452,7 +8575,7 @@ export default function App() {
             rates={rates} portfolios={activePortfolios}
             defaultPortfolioId={editTx.portfolioId}
             initialTx={{ ...editTx.tx, portfolio_id:editTx.portfolioId }}
-            editMode/>
+            editMode userId={user?.id}/>
         )}
         {editPlan && (
           <EditPlanModal
@@ -8500,7 +8623,11 @@ export default function App() {
           <SettingsModal onClose={() => setShowSettings(false)}
             dataSource={dataSource} setDataSource={setDataSource}
             avApiKey={avApiKey} setAvApiKey={setAvApiKey}
-            onSave={handleSaveSettings} avUsage={avUsage}/>
+            onSave={handleSaveSettings} avUsage={avUsage}
+            aiProvider={aiProvider}   setAiProvider={setAiProvider}
+            aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
+            aiModel={aiModel}         setAiModel={setAiModel}
+            aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}/>
         )}
       </div>
     </>
