@@ -1434,6 +1434,32 @@ const STATIC_HOLDINGS = {
   ],
 };
 
+// ── Yahoo Finance ETF holdings fetch (quoteSummary.topHoldings) ──────────────
+// Free, no API key required. Returns up to ~10 top holdings for most ETFs.
+async function fetchYahooEtfHoldings(ticker) {
+  try {
+    const data = await yahooFinance.quoteSummary(
+      ticker,
+      { modules: ['topHoldings'] },
+      { validateResult: false }
+    );
+    const raw = data?.topHoldings?.holdings;
+    if (!Array.isArray(raw) || raw.length < 2) return null;
+    return raw
+      .map(h => ({
+        symbol: h.symbol,
+        name:   h.holdingName || h.symbol,
+        weight: Math.round((parseFloat(h.holdingPercent || 0) * 10000)) / 100, // 0.1095 → 10.95%
+        source: 'yahoo',
+      }))
+      .filter(h => h.symbol && h.weight > 0)
+      .sort((a, b) => b.weight - a.weight);
+  } catch(e) {
+    log.warn(`Yahoo topHoldings failed for ${ticker}:`, e.message);
+    return null;
+  }
+}
+
 // ── Alpha Vantage ETF holdings fetch ─────────────────────────────────────────
 async function fetchAvEtfHoldings(ticker) {
   const AV_KEY = process.env.AV_API_KEY || process.env.ALPHAVANTAGE_API_KEY || '';
@@ -1556,25 +1582,44 @@ app.get('/api/etf/:ticker/holdings', async (req, res) => {
   if (cached) {
     const ageH = (Date.now() - new Date(cached.fetched_at).getTime()) / 3600000;
     if (ageH < CACHE_TTL_HOURS) {
+      const cachedHoldings = JSON.parse(cached.holdings);
       return res.json({
-        ticker, holdings: JSON.parse(cached.holdings),
+        ticker, holdings: cachedHoldings,
         fetched_at: cached.fetched_at, from_cache: true,
+        data_source: cachedHoldings[0]?.source || 'unknown',
       });
     }
   }
 
-  const etfMeta = PREDEFINED_ETFS.find(e => e.ticker === ticker);
-  const source  = etfMeta?.source || 'av';
-  let holdings  = null;
+  let holdings = null;
+  let dataSource = 'unknown';
 
-  if (source === 'static') {
-    // European ETFs — use static data (no free API)
+  // 1) Yahoo Finance topHoldings — free, no key, works for most ETFs globally
+  holdings = await fetchYahooEtfHoldings(ticker);
+  if (holdings && holdings.length >= 2) {
+    dataSource = 'yahoo';
+  }
+
+  // 2) Alpha Vantage ETF_PROFILE — needs AV_API_KEY, returns up to 50 holdings
+  //    Use when Yahoo returns < 10 holdings AND AV key is available
+  const AV_KEY_AVAILABLE = !!(process.env.AV_API_KEY || process.env.ALPHAVANTAGE_API_KEY);
+  if ((!holdings || holdings.length < 10) && AV_KEY_AVAILABLE) {
+    const avHoldings = await fetchAvEtfHoldings(ticker);
+    avCountIncrement(1);
+    if (avHoldings && avHoldings.length > (holdings?.length || 0)) {
+      holdings = avHoldings;
+      dataSource = 'alphavantage';
+    }
+  }
+
+  // 3) Static data — European ETFs with hardcoded holdings (fallback)
+  if (!holdings || holdings.length < 2) {
     const key = ticker.replace('.DE','').replace('.SW','');
-    holdings = STATIC_HOLDINGS[key] || STATIC_HOLDINGS[ticker] || null;
-  } else {
-    // US ETFs — Alpha Vantage ETF_PROFILE
-    holdings = await fetchAvEtfHoldings(ticker);
-    avCountIncrement(1); // track AV usage
+    const staticH = STATIC_HOLDINGS[key] || STATIC_HOLDINGS[ticker] || null;
+    if (staticH && staticH.length > 0) {
+      holdings = staticH.map(h => ({ ...h, source: 'static' }));
+      dataSource = 'static';
+    }
   }
 
   if (!holdings || !holdings.length) {
@@ -1599,7 +1644,7 @@ app.get('/api/etf/:ticker/holdings', async (req, res) => {
     VALUES (?, ?, ?)
   `).run(ticker, JSON.stringify(holdings), now);
 
-  res.json({ ticker, holdings, fetched_at: now, from_cache: false });
+  res.json({ ticker, holdings, fetched_at: now, from_cache: false, data_source: dataSource });
 });
 
 // ── GET /api/quotes/dividend/:symbol — annual dividend rate + next ex-date ────

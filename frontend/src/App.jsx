@@ -6638,7 +6638,9 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                    fetching, onRefreshQuotes,
                    user, savedEtfs, onSaveEtf, onRemoveEtf, onSwitchToPortfolio,
                    onBack, onSignOut,
-                   displayMode, onToggleDisplayMode }) {
+                   displayMode, onToggleDisplayMode,
+                   uiTheme, onToggleTheme,
+                   uiLanguage, onChangeLanguage }) {
   const { t } = useTranslation();
   const [search,      setSearch]      = useState("");
   const [searching,   setSearching]   = useState(false);
@@ -6751,7 +6753,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         </div>
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          title="Remove ETF"
+          title={t("etf.removeEtf")}
           style={{
             flexShrink:0, background:"none", border:"none",
             cursor:"pointer", color: THEME.red ?? "#ef4444",
@@ -6786,7 +6788,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               ETF<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
             </div>
             <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.10em", marginTop:-2 }}>Screener</div>
+              letterSpacing:"0.10em", marginTop:-2 }}>{t("etf.screener").replace("ETF ","").replace("ETF-","")}</div>
           </div>
         )}
         {/* Mode switcher — removed, navigation via sidebar bottom */}
@@ -6814,7 +6816,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               ref={inputRef}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Ticker or name…"
+              placeholder={t("etf.searchPlaceholder")}
               style={{
                 width:"100%", padding:"7px 28px 7px 28px",
                 background:"rgba(255,255,255,0.05)", border:`1px solid ${inSearch ? THEME.accent+"44" : THEME.border}`,
@@ -6850,7 +6852,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <div style={{ padding:"12px 8px", display:"flex", alignItems:"center",
             gap:8, color:THEME.text3, fontSize:11 }}>
             <span className="spin" style={{ display:"flex" }}><RefreshCw size={12}/></span>
-            Searching Yahoo Finance…
+            {t("etf.searching")}
           </div>
         )}
         {/* ── Error ── */}
@@ -6864,7 +6866,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         {open && inSearch && !searching && !searchErr && results.length === 0 && (
           <div style={{ padding:"14px 8px", textAlign:"center", color:THEME.text3,
             fontSize:11, lineHeight:1.5 }}>
-            No ETFs found for<br/>
+            {t("etf.noResults")}<br/>
             <span style={{ fontFamily:"'JetBrains Mono',monospace",
               color:THEME.text2 }}>"{search}"</span>
           </div>
@@ -6874,7 +6876,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         {open && (
           <>
             <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.08em", padding:"4px 4px 6px" }}>Presets</div>
+              letterSpacing:"0.08em", padding:"4px 4px 6px" }}>{t("etf.presets")}</div>
             {(inSearch ? presetResults : PREDEFINED_ETFS_CLIENT).map(etf => (
               <EtfItem key={etf.ticker} etf={etf} isActive={selectedTicker===etf.ticker}/>
             ))}
@@ -6886,7 +6888,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>Saved</div>
+                letterSpacing:"0.08em" }}>{t("etf.saved")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{savedEtfs.length}</div>
             </div>
@@ -6903,7 +6905,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>Custom</div>
+                letterSpacing:"0.08em" }}>{t("etf.custom")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{customEtfs.length}</div>
             </div>
@@ -6951,8 +6953,8 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                     transition:"all 0.15s",
                   }}>
                   {savingCustom
-                    ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={12}/></span> Saving…</>
-                    : <><span style={{fontSize:14}}>☁</span> Save {unsaved.length === 1 ? "to" : `${unsaved.length} to`} profile</>}
+                    ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={12}/></span> {t("etf.saving")}</>
+                    : <><span style={{fontSize:14}}>☁</span> {unsaved.length > 1 ? `${unsaved.length} ` : ""}{t("etf.saveToProfile")}</>}
                 </button>
               );
             })()}
@@ -6964,7 +6966,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>Search results</div>
+                letterSpacing:"0.08em" }}>{t("etf.searchResults")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{liveResults.length}</div>
             </div>
@@ -6987,7 +6989,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                       );
                       handleSelect(etf.ticker);
                     }}
-                    title={added ? "Added to list" : "Add to Custom list"}
+                    title={added ? t("etf.addedToList") : t("etf.addToList")}
                     style={{
                       flexShrink:0, background:"none", border:"none",
                       cursor: added ? "default" : "pointer",
@@ -7084,7 +7086,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       {/* Currency */}
       {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
         textTransform:"uppercase", letterSpacing:"0.10em",
-        padding:"6px 12px 4px", opacity:0.7, flexShrink:0 }}>Currency</div>}
+        padding:"6px 12px 4px", opacity:0.7, flexShrink:0 }}>{t("etf.currency")}</div>}
       <div style={{ padding: open?"2px 8px 6px":"2px 4px 6px", display:"flex",
         flexDirection:"column", gap:2, flexShrink:0 }}>
         {Object.keys(CCY_SYM).map(c => {
@@ -7126,11 +7128,11 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 6px 8px", flexShrink:0 }}>
         {/* Refresh row */}
         <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:'flex'}}><RefreshCw size={15}/></span> : <RefreshCw size={15}/>}
-          label="Refresh Quotes" onClick={onRefreshQuotes}/>
+          label={t("etf.refreshQuotes")} onClick={onRefreshQuotes}/>
         <div style={{ height:1, background:THEME.border, margin:"4px 0" }}/>
         {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
           textTransform:"uppercase", letterSpacing:"0.10em",
-          padding:"4px 6px 4px", opacity:0.7 }}>Account</div>}
+          padding:"4px 6px 4px", opacity:0.7 }}>{t("etf.account")}</div>}
         {user ? (
           <>
             {open && (
@@ -7175,7 +7177,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           </>
         ) : (
           onBack && (
-            <RailBtn open={open} icon={<User size={16}/>} label="Sign In"
+            <RailBtn open={open} icon={<User size={16}/>} label={t("etf.signIn")}
               onClick={onBack} color={THEME.accent}/>
           )
         )}
@@ -7188,7 +7190,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 padding:"6px 10px", borderRadius:8,
                 background:"rgba(255,255,255,0.04)",
                 border:`1px solid ${THEME.border}` }}>
-                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
+                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>{t("etf.viewMode")}</span>
                 <div style={{ display:"flex", gap:2, padding:"2px",
                   borderRadius:6, background:"var(--toggle-pill-bg)",
                   border:`1px solid ${THEME.border}` }}>
@@ -7223,8 +7225,43 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           </div>
         )}
         {/* Sign Out — always last */}
+        {/* Language + Theme toggles — same as Portfolio Rail */}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["de", deFlagUrl, "DE"], ["en", gbFlagUrl, "EN"]].map(([lang, flag, lbl]) => (
+              <button key={lang}
+                className={"rail-density-btn" + ((uiLanguage||"en")===lang ? " active" : "")}
+                onClick={() => onChangeLanguage && onChangeLanguage(lang)}
+                title={lang==="de" ? t("rail.langDe") : t("rail.langEn")}>
+                <img src={flag} width={13} height={13} style={{ borderRadius:"50%", flexShrink:0 }} alt={lbl}/>
+                <span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false} icon={<Globe size={15}/>}
+            label={(uiLanguage||"en").toUpperCase()}
+            onClick={() => onChangeLanguage && onChangeLanguage((uiLanguage||"en")==="de" ? "en" : "de")}/>
+        )}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["light", <Sun size={13}/>, t("rail.lightMode")], ["dark", <Moon size={13}/>, t("rail.darkMode")]].map(([th, icon, lbl]) => (
+              <button key={th}
+                className={"rail-density-btn" + ((uiTheme||"dark")===th ? " active" : "")}
+                onClick={() => onToggleTheme && onToggleTheme()}
+                title={lbl}>
+                {icon}<span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false}
+            icon={(uiTheme||"dark")==="dark" ? <Moon size={15}/> : <Sun size={15}/>}
+            label={(uiTheme||"dark")==="dark" ? t("rail.darkMode") : t("rail.lightMode")}
+            onClick={() => onToggleTheme && onToggleTheme()}/>
+        )}
         {onSignOut && user && (
-          <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out"
+          <RailBtn open={open} icon={<LogOut size={16}/>} label={t("etf.signOut")}
             onClick={onSignOut} color={THEME.text3}/>
         )}
       </div>
@@ -7252,6 +7289,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
 
 // ── ETF Summary Bar ───────────────────────────────────────────────────────────
 function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
+  const { t } = useTranslation();
   const valid   = nodes.filter(n => n.perf != null);
   const totalW  = valid.reduce((s,n) => s+n.weight, 0) || 1;
   const avgPerf = valid.length
@@ -7267,14 +7305,14 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
       gap:24, flexShrink:0, flexWrap:"wrap" }}>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>ETF</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.screener").replace(" Screener","").replace("-Screener","")}</div>
         <div style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
           {etfMeta?.name ?? "—"}
         </div>
       </div>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>Avg Perf (weighted)</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.avgPerfWeighted")}</div>
         <div className="mono" style={{ fontSize:13, fontWeight:700,
           color: avgPerf==null?THEME.text3:avgPerf>=0?THEME.green:THEME.red }}>
           {avgPerf!=null ? `${avgPerf>=0?"+":""}${avgPerf.toFixed(2)}%` : "—"}
@@ -7282,7 +7320,7 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
       </div>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>Gainers / Losers</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.gainersLosers")}</div>
         <div className="mono" style={{ fontSize:13, fontWeight:700 }}>
           <span style={{ color:THEME.green }}>{gainers}↑</span>
           <span style={{ color:THEME.text3, margin:"0 4px" }}>/</span>
@@ -7291,7 +7329,7 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
       </div>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>Holdings</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.topHoldings")}</div>
         <div className="mono" style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
           Top {nodes.length}
         </div>
@@ -7376,6 +7414,7 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
 function EtfHoldingsTable({ holdings, quotes, currency, rates,
                             onRefreshHoldings, refreshing, fetchedAt, period, onPeriod,
                             divCache, onFetchDiv }) {
+  const { t } = useTranslation();
   const rate = rates[currency] ?? 1;
   const cSym = CCY_SYM[currency] ?? "$";
 
@@ -7443,8 +7482,8 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
         <div style={{ flex:1 }}/>
         {/* Holdings count + last update */}
         <div style={{ fontSize:10, color:THEME.text3, marginRight:8, textAlign:"right" }}>
-          {holdings.length} holdings
-          {lastUpdated && <span style={{ marginLeft:8 }}>· Updated {lastUpdated}</span>}
+          {holdings.length} {t("etf.holdingsCount")}
+          {lastUpdated && <span style={{ marginLeft:8 }}>· {t("etf.updated")} {lastUpdated}</span>}
         </div>
         {/* Refresh Holdings */}
         <button onClick={onRefreshHoldings}
@@ -7457,7 +7496,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
               ? <span className="spin" style={{ display:"flex" }}><RefreshCw size={12}/></span>
               : <RefreshCw size={12}/>}
           </span>
-          Refresh Holdings
+          {t("etf.refreshHoldings")}
         </button>
       </div>
 
@@ -7596,7 +7635,9 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 // ── ETF Explorer main component ───────────────────────────────────────────────
 function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut,
                        displayMode, onToggleDisplayMode,
-                       railOpen, onToggleRail }) {
+                       railOpen, onToggleRail,
+                       uiTheme, onToggleTheme,
+                       uiLanguage, onChangeLanguage }) {
   useGlobalStyles();
   const { t } = useTranslation();
 
@@ -7799,6 +7840,8 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         onSignOut={onSignOut || (onSwitchToPortfolio ? () => { onBack(); } : null)}
         displayMode={displayMode}
         onToggleDisplayMode={onToggleDisplayMode}
+        uiTheme={uiTheme} onToggleTheme={onToggleTheme}
+        uiLanguage={uiLanguage} onChangeLanguage={onChangeLanguage}
       />
 
       <div style={{ flex:1, display:"flex", flexDirection:"column",
@@ -7904,7 +7947,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 <RefreshCw size={24}/>
               </span>
               <div style={{ color:THEME.text3, fontSize:13 }}>
-                Loading {selectedTicker} holdings…
+                {selectedTicker} — {t("etf.loadingHoldings")}
               </div>
             </div>
           ) : activeTab==="holdings" ? (
@@ -7922,7 +7965,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                       background:"transparent", color:THEME.text3, fontSize:11,
                       cursor:"pointer", fontFamily:"inherit", display:"flex",
                       alignItems:"center", gap:6 }}>
-                    <RefreshCw size={12}/> Retry
+                    <RefreshCw size={12}/> {t("etf.retry")}
                   </button>
                 </div>
               ) : nodes.length === 0 ? (
@@ -7930,20 +7973,18 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                   height:"100%", flexDirection:"column", gap:16 }}>
                   <div style={{ fontSize:36, opacity:0.25 }}>📊</div>
                   <div style={{ color:THEME.text2, fontSize:14, fontWeight:600 }}>
-                    No Holdings Data for {selectedTicker}
+                    {t("etf.noHoldingsTitle")} — {selectedTicker}
                   </div>
                   <div style={{ fontSize:11, color:THEME.text3, maxWidth:300,
                     textAlign:"center", lineHeight:1.7 }}>
-                    Holdings data is not available for this ETF via Alpha Vantage.
-                    Try switching to the <strong style={{color:THEME.text2}}>Holdings</strong> tab
-                    for more detail, or select a different ETF.
+                    {t("etf.noHoldingsHint")}
                   </div>
                   <button onClick={()=>loadHoldings(selectedTicker,true)}
                     style={{ marginTop:4, padding:"7px 18px", borderRadius:8,
                       border:`1px solid ${THEME.border}`, background:"transparent",
                       color:THEME.text3, fontSize:11, cursor:"pointer",
                       fontFamily:"inherit", display:"flex", alignItems:"center", gap:6 }}>
-                    <RefreshCw size={12}/> Retry
+                    <RefreshCw size={12}/> {t("etf.retry")}
                   </button>
                 </div>
               ) : (
@@ -8813,6 +8854,10 @@ export default function App() {
       onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
       railOpen={railOpen}
       onToggleRail={() => setRailOpen(v => !v)}
+      uiTheme={uiTheme}
+      onToggleTheme={toggleTheme}
+      uiLanguage={uiLanguage}
+      onChangeLanguage={changeLanguage}
     />
   );
   if (!user) return <LoginScreen onLogin={handleLogin} onEtfMode={() => setEtfMode(true)}/>;
