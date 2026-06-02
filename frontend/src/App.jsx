@@ -12,6 +12,7 @@ import {
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
   Gauge, Armchair, Info, Clock, FileText, Sun, Moon, Globe,
+  Pin, PinOff,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
@@ -4397,6 +4398,60 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     });
   }, []);
 
+  // ── Column show/hide (persisted to localStorage) ──
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { const s = localStorage.getItem("ptv3-hidden-cols"); return new Set(s ? JSON.parse(s) : []); }
+    catch { return new Set(); }
+  });
+
+  // ── Column pinning — "type" always first, persisted ──
+  const [pinnedCols, setPinnedCols] = useState(() => {
+    try { const s = localStorage.getItem("ptv3-pinned-cols"); return JSON.parse(s || '[]'); }
+    catch { return []; }
+  });
+
+  // ── Column settings panel open/close ──
+  const [colPanelOpen, setColPanelOpen] = useState(false);
+  const colPanelRef = useRef(null);
+
+  // Close panel on outside click
+  useEffect(() => {
+    if (!colPanelOpen) return;
+    const handler = (e) => {
+      if (colPanelRef.current && !colPanelRef.current.contains(e.target)) {
+        setColPanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [colPanelOpen]);
+
+  const toggleHidden = (key) => {
+    if (key === "type" || key === "actions") return;
+    setHiddenCols(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      localStorage.setItem("ptv3-hidden-cols", JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const togglePinned = (key) => {
+    if (key === "type") return;
+    setPinnedCols(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      localStorage.setItem("ptv3-pinned-cols", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const resetColSettings = () => {
+    setHiddenCols(new Set());
+    setPinnedCols([]);
+    localStorage.removeItem("ptv3-hidden-cols");
+    localStorage.removeItem("ptv3-pinned-cols");
+  };
+
   // Flatten all transactions with portfolio info
   const allTxFlat = useMemo(() => {
     const rows = [];
@@ -4534,6 +4589,29 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     return out;
   }, [sorted, groupingMode, compact, expandedGroups]);
 
+  // ── Derived column lists ──────────────────────────────────────────────────
+  // "type" is always the first pinned column
+  const effectivePinned = ["type", ...pinnedCols.filter(k => k !== "type")];
+
+  // All visible cols (not hidden), in order: pinned first, then rest
+  const visibleCols = TX_COLS_DEFAULT.filter(c => !hiddenCols.has(c.key));
+  const pinnedVisible = effectivePinned.filter(k => visibleCols.some(c => c.key === k));
+  const orderedCols = [
+    ...pinnedVisible.map(k => TX_COLS_DEFAULT.find(c => c.key === k)),
+    ...visibleCols.filter(c => !effectivePinned.includes(c.key)),
+  ];
+
+  const getPinnedLeft = (colKey) => {
+    let left = 0;
+    for (const k of pinnedVisible) {
+      if (k === colKey) break;
+      left += colWidths[k] ?? (TX_COLS_DEFAULT.find(c => c.key === k)?.width ?? 0);
+    }
+    return left;
+  };
+
+  const isLastPinned = (colKey) => pinnedVisible[pinnedVisible.length - 1] === colKey;
+
   // Column resize drag
   const startResize = (e, key) => {
     e.preventDefault();
@@ -4576,16 +4654,26 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.07em",
     whiteSpace:"nowrap", userSelect:"none", cursor:col.sortable?"pointer":"default",
     width:colWidths[col.key], minWidth:colWidths[col.key], maxWidth:colWidths[col.key],
-    position:"relative", overflow:"hidden",
+    position: pinnedVisible.includes(col.key) ? "sticky" : "relative",
+    left: pinnedVisible.includes(col.key) ? getPinnedLeft(col.key) : undefined,
+    zIndex: pinnedVisible.includes(col.key) ? 3 : undefined,
+    overflow:"hidden",
     borderRight:`1px solid ${THEME.border2}`,
-    background: sortKey===col.key?"rgba(59,130,246,0.06)":"transparent",
+    background: pinnedVisible.includes(col.key) ? THEME.surface
+      : sortKey===col.key ? "rgba(59,130,246,0.06)" : THEME.surface,
+    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
   });
 
-  const tdStyle = (col, extra={}) => ({
+  const tdStyle = (col, solidBg = THEME.surface, extra={}) => ({
     padding:"0 10px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
     width:colWidths[col.key], minWidth:colWidths[col.key], maxWidth:colWidths[col.key],
     borderRight:`1px solid ${THEME.border2}`,
-    background: sortKey===col.key?"rgba(59,130,246,0.03)":"transparent",
+    position: pinnedVisible.includes(col.key) ? "sticky" : undefined,
+    left: pinnedVisible.includes(col.key) ? getPinnedLeft(col.key) : undefined,
+    zIndex: pinnedVisible.includes(col.key) ? 2 : undefined,
+    background: pinnedVisible.includes(col.key) ? solidBg
+      : sortKey===col.key ? "rgba(59,130,246,0.03)" : "transparent",
+    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.14)" : undefined,
     ...extra,
   });
 
@@ -4631,6 +4719,91 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               cursor:"pointer", fontFamily:THEME.font, transition:"all 0.15s",
             }}
           >{groupingMode ? "⊕ Grouped" : "≡ Flat"}</button>
+
+          {/* Column settings button */}
+          <div style={{ position:"relative" }} ref={colPanelRef}>
+            <button
+              onClick={() => setColPanelOpen(v => !v)}
+              style={{
+                display:"flex", alignItems:"center", gap:5,
+                padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
+                background: colPanelOpen ? "var(--accent-15)" : "var(--surface-2)",
+                color: colPanelOpen ? "var(--accent)" : THEME.text3,
+                border:`1px solid ${colPanelOpen ? "var(--accent-35)" : THEME.border}`,
+                cursor:"pointer", fontFamily:"var(--font-sans)",
+              }}
+            >
+              <Settings size={11}/> Columns
+              {hiddenCols.size > 0 && (
+                <span style={{ background:"var(--accent)", color:"#fff", borderRadius:9, fontSize:8, fontWeight:700, padding:"0 4px", marginLeft:2 }}>
+                  {hiddenCols.size}
+                </span>
+              )}
+            </button>
+
+            {colPanelOpen && createPortal(
+              (() => {
+                const btnRect = colPanelRef.current?.getBoundingClientRect();
+                return (
+                  <div style={{
+                    position:"fixed",
+                    top: (btnRect?.bottom ?? 0) + 6,
+                    left: Math.min(btnRect?.left ?? 0, window.innerWidth - 276),
+                    width: 268, maxHeight: 420, overflowY:"auto",
+                    background:"var(--surface)", border:`1px solid ${THEME.border}`,
+                    borderRadius:10, padding:8,
+                    boxShadow:"var(--shadow-modal)", zIndex:9999,
+                  }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
+                      letterSpacing:"0.06em", padding:"0 4px 6px", borderBottom:`1px solid ${THEME.border2}`, marginBottom:6 }}>
+                      Columns
+                    </div>
+                    {TX_COLS_DEFAULT.filter(c => c.key !== "actions").map(col => {
+                      const hidden = hiddenCols.has(col.key);
+                      const pinned = effectivePinned.includes(col.key);
+                      const alwaysOn = col.key === "type";
+                      const label = col.key === "prdPct" ? `${period==="Intraday"?"1D":period} %`
+                                  : col.key === "prdAbs" ? `${period==="Intraday"?"1D":period} $`
+                                  : col.label || col.key;
+                      return (
+                        <div key={col.key}
+                          style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 6px", borderRadius:6,
+                            opacity: alwaysOn ? 0.5 : 1 }}
+                          onMouseEnter={e => !alwaysOn && (e.currentTarget.style.background = "var(--surface-2)")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                          <input type="checkbox" checked={!hidden} disabled={alwaysOn}
+                            onChange={() => toggleHidden(col.key)}
+                            style={{ accentColor:"var(--accent)", width:13, height:13, flexShrink:0, cursor: alwaysOn ? "default" : "pointer" }}/>
+                          <span style={{ flex:1, fontSize:12, color:"var(--fg-2)", cursor: alwaysOn ? "default" : "pointer" }}
+                            onClick={() => !alwaysOn && toggleHidden(col.key)}>
+                            {label}
+                            {alwaysOn && <span style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>always visible</span>}
+                          </span>
+                          <button
+                            onClick={() => togglePinned(col.key)}
+                            disabled={alwaysOn || hidden}
+                            title={pinned && !alwaysOn ? "Unpin column" : "Pin column to left"}
+                            style={{ background:"none", border:"none", cursor: (alwaysOn || hidden) ? "default" : "pointer",
+                              padding:"1px 3px", borderRadius:3, display:"flex", alignItems:"center",
+                              color: pinned ? "var(--accent)" : "var(--fg-3)", opacity: (alwaysOn || hidden) ? 0.3 : 1 }}>
+                            {pinned && !alwaysOn ? <PinOff size={11}/> : <Pin size={11}/>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button onClick={resetColSettings}
+                      style={{ width:"100%", marginTop:8, padding:"5px 8px", borderRadius:6,
+                        border:`1px solid ${THEME.border}`, background:"none", cursor:"pointer",
+                        fontSize:11, color:THEME.text3, fontFamily:"var(--font-sans)" }}>
+                      Reset to defaults
+                    </button>
+                  </div>
+                );
+              })(),
+              document.body
+            )}
+          </div>
+
           <span style={{fontSize:10,color:THEME.text3}}>Drag column edges to resize · Click headers to sort</span>
         </div>
       </div>
@@ -4638,14 +4811,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 
       {/* Table wrapper */}
       <div style={{ flex:1, overflow:"auto", position:"relative" }}>
-        <table style={{ borderCollapse:"collapse", width:"max-content", minWidth:"100%", tableLayout:"fixed" }}>
+        <table style={{ borderCollapse:"separate", borderSpacing:0, width:"max-content", minWidth:"100%", tableLayout:"fixed" }}>
           <colgroup>
-            {TX_COLS_DEFAULT.map(col=><col key={col.key} style={{width:colWidths[col.key]}}/>)}
+            {orderedCols.map(col=><col key={col.key} style={{width:colWidths[col.key]}}/>)}
           </colgroup>
           {/* Header */}
           <thead>
             <tr style={{ height:34, background:THEME.surface, position:"sticky", top:0, zIndex:10 }}>
-              {TX_COLS_DEFAULT.map(col=>(
+              {orderedCols.map(col=>(
                 <th key={col.key} style={thStyle(col)} onClick={()=>col.sortable&&handleSort(col.key)}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
                     {col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
@@ -4678,14 +4851,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                 const grp = row;
                 const isExpanded = expandedGroups.has(grp._key);
                 const isBuy = grp.type === "BUY";
-                const rowBg = i%2===0?"transparent":"rgba(255,255,255,0.015)";
-                return (
-                  <tr key={grp._key}
-                    style={{ height:36, background:rowBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
-                    onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
-                    onMouseLeave={e=>e.currentTarget.style.background=rowBg}
-                  >
-                    <td style={tdStyle(TX_COLS_DEFAULT[0])}>
+                const rawBg = i%2===0 ? THEME.surface : "rgba(255,255,255,0.025)";
+
+                const renderGroupCell = (col) => {
+                  switch (col.key) {
+                    case "type": return (
                       <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                         <button onClick={()=>toggleGroup(grp._key)}
                           style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
@@ -4704,14 +4874,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                                            : isBuy ? "rgba(74,222,128,0.2)" : "rgba(248,113,113,0.2)"}`,
                         }}>{grp.type==="MIX" ? "MIX" : grp.type}</span>
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[1])}>
+                    );
+                    case "symbol": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <div style={{ width:6, height:6, borderRadius:"50%", background:grp.portfolioColor, flexShrink:0 }}/>
                         <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{grp.symbol}</span>
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[2])}>
+                    );
+                    case "name": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <span style={{ fontSize:11, color:THEME.text2 }}>{grp.name || ""}</span>
                         {grp._txs.length > 1 && (
@@ -4721,105 +4891,77 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                           </span>
                         )}
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[3])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{grp.date}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[4])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{grp.quantity}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[5])}>
-                      {grp._avgBuyPriceUSD != null ? (
-                        <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
-                          <span style={{ fontSize:9, color:THEME.text3, marginRight:2 }}>avg</span>
-                          ${grp._avgBuyPriceUSD.toFixed(2)}
-                        </span>
-                      ) : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[6])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._cost)}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[7])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(grp._curPriceUSD)}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[8])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._curValue)}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[9])}>
-                      {grp._glPct != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glPct>=0?THEME.green:THEME.red }}>
-                            {grp._glPct>=0?"+":""}{grp._glPct.toFixed(1)}%
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[10])}>
-                      {grp._glAbs != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glAbs>=0?THEME.green:THEME.red }}>
-                            {grp._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._glAbs))}
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[11])}>
-                      {grp._prdPct != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdPct>=0?THEME.green:THEME.red }}>
-                            {grp._prdPct>=0?"+":""}{grp._prdPct.toFixed(1)}%
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[12])}>
-                      {grp._prdAbs != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdAbs>=0?THEME.green:THEME.red }}>
-                            {grp._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._prdAbs))}
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[13])}>
-                      {(() => {
-                        const q = quotes[grp.symbol];
-                        const pe = q?.trailingPE ?? q?.forwardPE ?? null;
-                        return pe != null
-                          ? <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.accent }}>{pe.toFixed(1)}</span>
-                          : <span style={{color:THEME.text3}}>—</span>;
-                      })()}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[14])}>
-                      {grp._div === undefined
-                        ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                        : grp._div?.yieldPct != null
-                          ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:"#fbbf24" }}>{grp._div.yieldPct.toFixed(2)}%</span>
-                          : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[15])}>
-                      {grp._div === undefined ? (
-                        <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                      ) : grp._div?.exDate ? (
-                        <div>
-                          <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>{grp._div.exDate}</span>
-                          {grp._div.nextExDate && (
-                            <div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>→ {grp._div.nextExDate}</div>
-                          )}
-                        </div>
-                      ) : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                    );
+                    case "date": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{grp.date}</span>);
+                    case "quantity": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{grp.quantity}</span>);
+                    case "price": return grp._avgBuyPriceUSD != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
+                        <span style={{ fontSize:9, color:THEME.text3, marginRight:2 }}>avg</span>
+                        ${grp._avgBuyPriceUSD.toFixed(2)}
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._cost)}</span>);
+                    case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(grp._curPriceUSD)}</span>);
+                    case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._curValue)}</span>);
+                    case "glPct": return grp._glPct != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glPct>=0?THEME.green:THEME.red }}>
+                        {grp._glPct>=0?"+":""}{grp._glPct.toFixed(1)}%
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "glAbs": return grp._glAbs != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glAbs>=0?THEME.green:THEME.red }}>
+                        {grp._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._glAbs))}
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "prdPct": return grp._prdPct != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdPct>=0?THEME.green:THEME.red }}>
+                        {grp._prdPct>=0?"+":""}{grp._prdPct.toFixed(1)}%
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "prdAbs": return grp._prdAbs != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdAbs>=0?THEME.green:THEME.red }}>
+                        {grp._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._prdAbs))}
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "pe": {
+                      const q = quotes[grp.symbol];
+                      const pe = q?.trailingPE ?? q?.forwardPE ?? null;
+                      return pe != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.accent }}>{pe.toFixed(1)}</span>
+                        : <span style={{color:THEME.text3}}>—</span>;
+                    }
+                    case "divYield": return grp._div === undefined
+                      ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                      : grp._div?.yieldPct != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:"#fbbf24" }}>{grp._div.yieldPct.toFixed(2)}%</span>
+                        : <span style={{color:THEME.text3}}>—</span>;
+                    case "exDate": return grp._div === undefined ? (
+                      <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                    ) : grp._div?.exDate ? (
+                      <div>
+                        <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>{grp._div.exDate}</span>
+                        {grp._div.nextExDate && (<div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>→ {grp._div.nextExDate}</div>)}
+                      </div>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "links": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <a href={`https://finance.yahoo.com/quote/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
                           style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
-                            background:"rgba(100,160,255,0.08)",border:`1px solid rgba(100,160,255,0.18)`,
+                            background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
                             color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                           onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                         >Y!</a>
                         <a href={`https://www.perplexity.ai/finance/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
                           style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
-                            background:"rgba(168,120,255,0.08)",border:`1px solid rgba(168,120,255,0.18)`,
+                            background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
                             color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
                           onMouseLeave={e=>e.currentTarget.style.background="rgba(168,120,255,0.08)"}
                         >Px</a>
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                    );
+                    case "actions": return (
                       <button onClick={()=>onRefreshSymbol && onRefreshSymbol(grp.symbol)}
                         title={`Refresh ${grp.symbol}`}
                         style={{ background:"none",border:"none",cursor:"pointer",color:THEME.text3,
@@ -4827,222 +4969,149 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><RefreshCw size={12}/></button>
-                    </td>
+                    );
+                    default: return null;
+                  }
+                };
+
+                return (
+                  <tr key={grp._key}
+                    style={{ height:36, background:rawBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
+                    onMouseLeave={e=>e.currentTarget.style.background=rawBg}
+                  >
+                    {orderedCols.map(col => (
+                      <td key={col.key} style={tdStyle(col, rawBg)}>
+                        {renderGroupCell(col)}
+                      </td>
+                    ))}
                   </tr>
                 );
               }
 
               // ── FLAT or SUB-ROW ────────────────────────────────────────────
               const tx = row;
-              const isBuy = tx.type === "BUY";
-              const rowBg = isSubrow
-                ? "rgba(59,130,246,0.04)"
-                : i%2===0?"transparent":"rgba(255,255,255,0.015)";
-              return (
-                <tr key={isSubrow ? `sub-${tx.id}` : tx.id}
-                  style={{ height:36, background:rowBg, borderBottom:`1px solid ${THEME.border2}`,
-                    transition:"background 0.08s" }}
-                  onMouseEnter={e=>{
-                    e.currentTarget.style.background="rgba(59,130,246,0.06)";
-                    Array.from(e.currentTarget.cells).forEach(c=>{
-                      if(c.style.background.includes("rgba(59,130,246,0.03)"))
-                        c.style.background="rgba(59,130,246,0.09)";
-                    });
-                  }}
-                  onMouseLeave={e=>{
-                    e.currentTarget.style.background=rowBg;
-                    Array.from(e.currentTarget.cells).forEach((c,ci)=>{
-                      if(TX_COLS_DEFAULT[ci]&&sortKey===TX_COLS_DEFAULT[ci].key)
-                        c.style.background="rgba(59,130,246,0.03)";
-                      else c.style.background="transparent";
-                    });
-                  }}
-                >
-                  {/* Type — click to refresh this symbol's quote */}
-                  <td style={{ ...tdStyle(TX_COLS_DEFAULT[0]), ...(isSubrow ? { borderLeft:`2px solid rgba(59,130,246,0.3)`, paddingLeft:8, opacity:0.85 } : {}) }}>
+              const txIsBuy = tx.type === "BUY";
+              const rawBg = isSubrow ? "rgba(59,130,246,0.06)" : i%2===0 ? THEME.surface : "rgba(255,255,255,0.025)";
+
+              const renderSubrowCell = (col) => {
+                switch (col.key) {
+                  case "type": return (
                     <button
                       onClick={() => onRefreshSymbol && onRefreshSymbol(tx.symbol)}
                       title={`Refresh ${tx.symbol} quote`}
                       style={{
                         padding:"2px 7px", borderRadius:5, fontSize:9, fontWeight:700,
-                        background:isBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
-                        color:isBuy?THEME.green:THEME.red,
-                        border:`1px solid ${isBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
+                        background:txIsBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
+                        color:txIsBuy?THEME.green:THEME.red,
+                        border:`1px solid ${txIsBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
                         cursor:"pointer", fontFamily:THEME.font,
                         transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s",
                         display:"flex", alignItems:"center", gap:4,
                       }}
                       onMouseEnter={e=>{
-                        e.currentTarget.style.background=isBuy?"rgba(74,222,128,0.25)":"rgba(248,113,113,0.25)";
-                        e.currentTarget.style.boxShadow=`0 0 0 2px ${isBuy?"rgba(74,222,128,0.3)":"rgba(248,113,113,0.3)"}`;
+                        e.currentTarget.style.background=txIsBuy?"rgba(74,222,128,0.25)":"rgba(248,113,113,0.25)";
+                        e.currentTarget.style.boxShadow=`0 0 0 2px ${txIsBuy?"rgba(74,222,128,0.3)":"rgba(248,113,113,0.3)"}`;
                       }}
                       onMouseLeave={e=>{
-                        e.currentTarget.style.background=isBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)";
+                        e.currentTarget.style.background=txIsBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)";
                         e.currentTarget.style.boxShadow="none";
                       }}
                     >
                       {tx.type}
                       <span style={{ fontSize:8, opacity:0.6 }}>⟳</span>
                     </button>
-                  </td>
-                  {/* Symbol */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[1])}>
+                  );
+                  case "symbol": return (
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                       <div style={{ width:6, height:6, borderRadius:"50%", background:tx.portfolioColor, flexShrink:0 }}/>
                       <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
                     </div>
-                  </td>
-                  {/* Name + ISIN */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[2])}>
-                    <div style={{ fontSize:11, color:THEME.text2 }}>{tx.name || ""}</div>
-                    {tx.isin && (
-                      <div style={{ fontSize:9, color:THEME.text3, fontFamily:THEME.mono,
-                        letterSpacing:"0.04em", marginTop:2 }}>{tx.isin}</div>
-                    )}
-                  </td>
-                  {/* Date */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[3])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{tx.date}</span>
-                  </td>
-                  {/* Qty */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[4])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{tx.quantity}</span>
-                  </td>
-                  {/* Buy Price — show in original transaction currency */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[5])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
-                      {CCY_SYM[tx.currency] ?? (tx.currency + " ")}{parseFloat(tx.price).toFixed(2)}
-                    </span>
-                    {tx.currency && tx.currency !== "USD" && tx.price_usd > 0 && (
-                      <span style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>
-                        (${parseFloat(tx.price_usd).toFixed(2)})
+                  );
+                  case "name": return (
+                    <div>
+                      <div style={{ fontSize:11, color:THEME.text2 }}>{tx.name || ""}</div>
+                      {tx.isin && (
+                        <div style={{ fontSize:9, color:THEME.text3, fontFamily:THEME.mono, letterSpacing:"0.04em", marginTop:2 }}>{tx.isin}</div>
+                      )}
+                    </div>
+                  );
+                  case "date": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{tx.date}</span>);
+                  case "quantity": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{tx.quantity}</span>);
+                  case "price": return (
+                    <span>
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
+                        {CCY_SYM[tx.currency] ?? (tx.currency + " ")}{parseFloat(tx.price).toFixed(2)}
                       </span>
-                    )}
-                  </td>
-                  {/* Cost */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[6])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._cost)}</span>
-                  </td>
-                  {/* Cur. Price (in USD) */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[7])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curPriceUSD)}</span>
-                  </td>
-                  {/* Cur. Value */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[8])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curValue)}</span>
-                  </td>
-                  {/* G/L % */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[9])}>
-                    {tx._glPct != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glPct>=0?THEME.green:THEME.red }}>
-                          {tx._glPct>=0?"+":""}{tx._glPct.toFixed(1)}%
+                      {tx.currency && tx.currency !== "USD" && tx.price_usd > 0 && (
+                        <span style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>
+                          (${parseFloat(tx.price_usd).toFixed(2)})
                         </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* G/L $ */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[10])}>
-                    {tx._glAbs != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glAbs>=0?THEME.green:THEME.red }}>
-                          {tx._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._glAbs))}
-                        </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* Period G/L % */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[11])}>
-                    {tx._prdPct != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
-                          color:tx._prdPct>=0?THEME.green:THEME.red }}>
-                          {tx._prdPct>=0?"+":""}{tx._prdPct.toFixed(1)}%
-                        </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* Period G/L $ */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[12])}>
-                    {tx._prdAbs != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
-                          color:tx._prdAbs>=0?THEME.green:THEME.red }}>
-                          {tx._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._prdAbs))}
-                        </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* P/E Ratio */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[13])}>
-                    {(() => {
-                      const q = quotes[tx.symbol];
-                      const pe = q?.trailingPE ?? q?.forwardPE ?? null;
-                      return pe != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11,
-                            color:THEME.accent }}>{pe.toFixed(1)}</span>
-                        : <span style={{color:THEME.text3}}>—</span>;
-                    })()}
-                  </td>
-                  {/* Div. Yield */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[14])}>
-                    {tx._div === undefined
-                      ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                      : tx._div?.yieldPct != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
-                            color:"#fbbf24" }}>{tx._div.yieldPct.toFixed(2)}%</span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                  </td>
-                  {/* Ex-Date */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[15])}>
-                    {tx._div === undefined ? (
-                      <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                    ) : tx._div?.exDate ? (
-                      <div>
-                        <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>
-                          {tx._div.exDate}
-                        </span>
-                        {tx._div.nextExDate && (
-                          <div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>
-                            → {tx._div.nextExDate}
-                          </div>
-                        )}
-                      </div>
-                    ) : <span style={{color:THEME.text3}}>—</span>}
-                  </td>
-                  {/* Links */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                      )}
+                    </span>
+                  );
+                  case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._cost)}</span>);
+                  case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curPriceUSD)}</span>);
+                  case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curValue)}</span>);
+                  case "glPct": return tx._glPct != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glPct>=0?THEME.green:THEME.red }}>
+                        {tx._glPct>=0?"+":""}{tx._glPct.toFixed(1)}%
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "glAbs": return tx._glAbs != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glAbs>=0?THEME.green:THEME.red }}>
+                        {tx._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._glAbs))}
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "prdPct": return tx._prdPct != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._prdPct>=0?THEME.green:THEME.red }}>
+                        {tx._prdPct>=0?"+":""}{tx._prdPct.toFixed(1)}%
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "prdAbs": return tx._prdAbs != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._prdAbs>=0?THEME.green:THEME.red }}>
+                        {tx._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._prdAbs))}
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "pe": {
+                    const q = quotes[tx.symbol];
+                    const pe = q?.trailingPE ?? q?.forwardPE ?? null;
+                    return pe != null
+                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.accent }}>{pe.toFixed(1)}</span>
+                      : <span style={{color:THEME.text3}}>—</span>;
+                  }
+                  case "divYield": return tx._div === undefined
+                    ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                    : tx._div?.yieldPct != null
+                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:"#fbbf24" }}>{tx._div.yieldPct.toFixed(2)}%</span>
+                      : <span style={{color:THEME.text3}}>—</span>;
+                  case "exDate": return tx._div === undefined ? (
+                    <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                  ) : tx._div?.exDate ? (
+                    <div>
+                      <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>{tx._div.exDate}</span>
+                      {tx._div.nextExDate && (<div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>→ {tx._div.nextExDate}</div>)}
+                    </div>
+                  ) : <span style={{color:THEME.text3}}>—</span>;
+                  case "links": return (
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-                      <a href={`https://finance.yahoo.com/quote/${tx.symbol}`}
-                        target="_blank" rel="noopener noreferrer"
-                        title="Yahoo Finance"
-                        style={{
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          width:22, height:22, borderRadius:5,
-                          background:"rgba(100,160,255,0.08)",
-                          border:`1px solid rgba(100,160,255,0.18)`,
-                          color:"#6ca0ff", fontSize:9, fontWeight:800,
-                          textDecoration:"none", fontFamily:THEME.mono,
-                          transition:"background 0.12s",
-                        }}
+                      <a href={`https://finance.yahoo.com/quote/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
+                          color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                         onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                       >Y!</a>
-                      <a href={`https://www.perplexity.ai/finance/${tx.symbol}`}
-                        target="_blank" rel="noopener noreferrer"
-                        title="Perplexity Finance"
-                        style={{
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          width:22, height:22, borderRadius:5,
-                          background:"rgba(168,120,255,0.08)",
-                          border:`1px solid rgba(168,120,255,0.18)`,
-                          color:"#a878ff", fontSize:8, fontWeight:800,
-                          textDecoration:"none", fontFamily:THEME.mono,
-                          transition:"background 0.12s",
-                        }}
+                      <a href={`https://www.perplexity.ai/finance/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
+                          color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
                         onMouseLeave={e=>e.currentTarget.style.background="rgba(168,120,255,0.08)"}
                       >Px</a>
                     </div>
-                  </td>
-                  {/* Actions */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                  );
+                  case "actions": return (
                     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                       <button onClick={()=>onEdit(tx.portfolioId, tx)}
                         style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
@@ -5060,7 +5129,23 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><Trash2 size={12}/></button>
                     </div>
-                  </td>
+                  );
+                  default: return null;
+                }
+              };
+
+              return (
+                <tr key={isSubrow ? `sub-${tx.id}` : tx.id}
+                  style={{ height:36, background:rawBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=rawBg}
+                >
+                  {orderedCols.map(col => (
+                    <td key={col.key}
+                      style={tdStyle(col, rawBg, col.key==="type" && isSubrow ? { borderLeft:"2px solid rgba(59,130,246,0.3)", paddingLeft:8, opacity:0.85 } : {})}>
+                      {renderSubrowCell(col)}
+                    </td>
+                  ))}
                 </tr>
               );
             })}
@@ -5068,8 +5153,8 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
           {/* Footer totals */}
           <tfoot>
             <tr style={{ height:36, background:THEME.surface, borderTop:`2px solid ${THEME.border}` }}>
-              {TX_COLS_DEFAULT.map((col,ci)=>(
-                <td key={col.key} style={{ ...tdStyle(col), fontFamily:THEME.mono, fontSize:11, fontWeight:700, color:THEME.text2 }}>
+              {orderedCols.map((col,ci)=>(
+                <td key={col.key} style={{ ...tdStyle(col, THEME.surface), fontFamily:THEME.mono, fontSize:11, fontWeight:700, color:THEME.text2 }}>
                   {ci===0&&<span style={{color:THEME.text3,fontFamily:THEME.font,fontSize:10}}>TOTAL</span>}
                   {col.key==="cost"    && `${cSym}${(totalCost*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`}
                   {col.key==="curValue"&& (totalValue>0?`${cSym}${(totalValue*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`:"")}
