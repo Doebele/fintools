@@ -2080,7 +2080,7 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
 }
 
 function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLeave }) {
-  const { cw, ch, perf, glPerf, symbol, currentPriceUSD, valueUSD, shortName } = cell;
+  const { cw, ch, perf, glPerf, symbol, currentPriceUSD, valueUSD, shortName, weight, isEtf } = cell;
   const activePerf = colorMode === "gainloss" ? glPerf : perf;
   const bg   = getPerfColor(activePerf);
   const rate = rates[currency] ?? 1;
@@ -2130,7 +2130,9 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
       {small > 70 && (
         <div style={{ fontFamily:THEME.mono, fontSize:Math.max(8,Math.min(10,small*0.10)),
           color:"rgba(255,255,255,0.45)", marginTop:1 }}>
-          {cSym}{((valueUSD??0)*rate).toLocaleString("en-US",{maximumFractionDigits:0})}
+          {isEtf
+            ? `${(weight ?? 0).toFixed(2)}%`
+            : `${cSym}${((valueUSD??0)*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`}
         </div>
       )}
     </div>
@@ -2259,7 +2261,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
   const animBars = useRef({});
   const [, forceRender] = useState(0);
 
-  const valid = useMemo(() => nodes.filter(n => n.currentPriceUSD > 0), [nodes]);
+  const valid = useMemo(() => nodes.filter(n => n.currentPriceUSD > 0 || (n.isEtf && (n.valueUSD ?? 0) > 0)), [nodes]);
   const sortedPerf = useMemo(() => [...valid].sort((a,b) => {
     const pa = colorMode==="gainloss" ? (a.glPerf??-Infinity) : (a.perf??-Infinity);
     const pb = colorMode==="gainloss" ? (b.glPerf??-Infinity) : (b.perf??-Infinity);
@@ -2601,23 +2603,28 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
 
       <div style={{ padding:"10px 14px" }}>
         {[
-          ["Price",       `${cSym}${price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`],
-          ...(data.valueUSD != null ? [
-            ["Market Value",`${cSym}${value.toLocaleString("en-US",{maximumFractionDigits:0})}`],
-            ["Cost Basis",  `${cSym}${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`],
-            ["Avg Cost/Share", data.qty > 0 ? `${cSym}${(cost/data.qty).toFixed(2)}` : "—"],
-            ["Shares",         data.qty > 0 ? data.qty.toLocaleString("en-US",{maximumFractionDigits:4}) : "—"],
-            [null],
-            ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
-            ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
-          ...(data.trailingPE != null || data.forwardPE != null ? [
-            [null],
-            ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1), THEME.accent]] : []),
-            ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1),  THEME.accent]] : []),
-          ] : []),
+          ...(data.isEtf ? [
+            // ── ETF holding ─────────────────────────────────────────────────
+            ...(price > 0 ? [["Price", `${cSym}${price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`, perf != null ? (perf >= 0 ? THEME.green : THEME.red) : THEME.text1]] : []),
+            ...(perf != null ? [["Period Perf.", `${perf >= 0 ? "+" : ""}${perf.toFixed(2)}%`, perf >= 0 ? THEME.green : THEME.red]] : []),
+            ["ETF Weight",  `${data.weight.toFixed(2)}%`],
           ] : [
-            // ETF holding — show weight only
-            ...(data.weight ? [["ETF Weight", `${data.weight.toFixed(2)}%`]] : []),
+            // ── Portfolio holding ────────────────────────────────────────────
+            ["Price",       `${cSym}${price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`],
+            ...(data.valueUSD != null ? [
+              ["Market Value",`${cSym}${value.toLocaleString("en-US",{maximumFractionDigits:0})}`],
+              ["Cost Basis",  `${cSym}${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`],
+              ["Avg Cost/Share", data.qty > 0 ? `${cSym}${(cost/data.qty).toFixed(2)}` : "—"],
+              ["Shares",         data.qty > 0 ? data.qty.toLocaleString("en-US",{maximumFractionDigits:4}) : "—"],
+              [null],
+              ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
+              ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
+              ...(data.trailingPE != null || data.forwardPE != null ? [
+                [null],
+                ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1), THEME.accent]] : []),
+                ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1),  THEME.accent]] : []),
+              ] : []),
+            ] : []),
           ]),
           // Dividend data rows (only if available)
           ...(divData && divData.yieldPct != null ? [
@@ -6302,6 +6309,60 @@ const PREDEFINED_ETFS_CLIENT = [
   { ticker:"EXS1.DE", name:"iShares Core DAX",           provider:"iShares"     },
 ];
 
+// ── Extract price + period refs from raw Yahoo chart data ────────────────────
+// Used to populate quotes state as chart data arrives (avoids second batch call).
+function extractQuoteFromRaw(raw) {
+  const result = raw?.chart?.result?.[0];
+  if (!result) return null;
+  const meta = result.meta;
+  const price = meta.regularMarketPrice ?? meta.previousClose ?? null;
+  if (!price) return null;
+
+  const timestamps = result.timestamp ?? [];
+  const closes     = result.indicators?.quote?.[0]?.close ?? [];
+  const refs       = {};
+
+  if (timestamps.length >= 2) {
+    const now = timestamps[timestamps.length - 1];
+    const findRef = (targetTs) => {
+      // find rightmost index ≤ targetTs
+      let idx = 0;
+      for (let i = 0; i < timestamps.length; i++) {
+        if (timestamps[i] <= targetTs) idx = i; else break;
+      }
+      for (let d = 0; d < 5; d++) {
+        if (idx - d >= 0 && closes[idx - d] != null) return closes[idx - d];
+        if (idx + d < closes.length && closes[idx + d] != null) return closes[idx + d];
+      }
+      return null;
+    };
+
+    // YTD: Jan 1st of current year
+    const ytdStart = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
+    const ytdRef   = findRef(ytdStart);
+    if (ytdRef) refs['YTD'] = ytdRef;
+
+    // Fixed periods (only if data goes back that far)
+    const DAYS = { '1W':7, '1M':30, '3M':91, '6M':182, '1Y':365, '2Y':730 };
+    for (const [key, days] of Object.entries(DAYS)) {
+      const targetTs = now - days * 86400;
+      if (timestamps[0] <= targetTs) {
+        const ref = findRef(targetTs);
+        if (ref) refs[key] = ref;
+      }
+    }
+  }
+
+  return {
+    price,
+    changePct: meta.regularMarketChangePercent ?? null,
+    shortName: meta.shortName ?? null,
+    name:      meta.longName ?? meta.shortName ?? null,
+    currency:  meta.currency ?? "USD",
+    refs:      Object.keys(refs).length > 0 ? refs : undefined,
+  };
+}
+
 function buildEtfNodes(holdings, quotes, period) {
   return holdings.map(h => {
     const q   = quotes[h.symbol];
@@ -6320,16 +6381,20 @@ function buildEtfNodes(holdings, quotes, period) {
       return q.changePct ?? null;
     })();
     return {
+      isEtf:           true,
       symbol:          h.symbol,
       name:            q?.name || h.name || h.symbol,
+      shortName:       q?.shortName ?? null,
       weight:          h.weight,
       currentPriceUSD: q?.price ?? 0,
-      valueUSD:        h.weight * 10,
-      costUSD:         h.weight * 10,
-      gainLossUSD:     0,
+      // valueUSD = weight (0–100) used by d3/BarChart for proportional sizing.
+      // costUSD is null → Tooltip takes the ETF branch (no fake cost/market value).
+      valueUSD:        h.weight,
+      costUSD:         null,
+      gainLossUSD:     null,
       perf,
       glPerf:          null,
-      quantity:        h.weight,
+      qty:             null,
       currency:        q?.currency ?? "USD",
     };
   });
@@ -7588,13 +7653,14 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
 
   useEffect(() => {
     if (selectedTicker) {
-        setHoldings([]);             // clear old holdings immediately
+      setHoldings([]);    // clear old holdings immediately
+      setQuotes({});      // clear quotes so stale prices don't bleed through
       loadHoldings(selectedTicker);
     }
   }, [selectedTicker, loadHoldings]);
 
   // Fetch quotes — use batch endpoint (returns parsed price/changePct/refs like portfolio mode)
-  const fetchQuotes = useCallback(async () => {
+  const fetchQuotes = useCallback(async (force = false) => {
     if (!holdings.length) return;
     setFetching(true); setFetchErrors({});
     try {
@@ -7602,7 +7668,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
       const res = await fetch(`${ETF_BASE}/quotes/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbols, source: "yahoo", force: !!force }),
+        body: JSON.stringify({ symbols, source: "yahoo", force }),
       }).then(r => r.json());
       setQuotes(prev => ({ ...prev, ...(res.results || {}) }));
       setFetchErrors(res.errors || {});
@@ -7627,19 +7693,44 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   useEffect(() => {
     if (!holdings.length) return;
     fetchQuotes();
-    // Preload dividend data — useDivCache hook handles this automatically
+    // Seed quotes from already-cached chart data (symbols loaded in a previous session/tab)
+    const seeded = {};
+    holdings.forEach(h => {
+      const cached = globalChartCache.get(h.symbol);
+      if (cached) {
+        const q = extractQuoteFromRaw(cached);
+        if (q) seeded[h.symbol] = q;
+      }
+    });
+    if (Object.keys(seeded).length > 0) {
+      setQuotes(prev => ({ ...seeded, ...prev }));
+    }
     // Preload chart data for holdings — staggered to avoid flooding Yahoo/rate-limit.
     // Only fetch symbols not already cached. Max 3 concurrent, 300ms between batches.
+    // Also extract price + refs from each chart response and update quotes state so that
+    // price/YTD show up progressively in the Holdings table and TreeMap/BarChart views,
+    // even if the batch endpoint hasn't resolved yet.
     const toFetch = holdings.filter(h => !globalChartCache.has(h.symbol));
     const CONCURRENCY = 3;
     const fetchBatch = async (items) => {
       for (let i = 0; i < items.length; i += CONCURRENCY) {
         const batch = items.slice(i, i + CONCURRENCY);
-        await Promise.all(batch.map(h =>
+        const results = await Promise.all(batch.map(h =>
           quotesApi.raw(h.symbol)
-            .then(d => { if (d) globalChartCache.set(h.symbol, d); })
-            .catch(()=>{})
+            .then(d => {
+              if (!d) return null;
+              globalChartCache.set(h.symbol, d);
+              const q = extractQuoteFromRaw(d);
+              return q ? { symbol: h.symbol, q } : null;
+            })
+            .catch(() => null)
         ));
+        // Merge extracted quotes into state (batch endpoint results take precedence via prev spread)
+        const extracted = {};
+        results.forEach(r => { if (r) extracted[r.symbol] = r.q; });
+        if (Object.keys(extracted).length > 0) {
+          setQuotes(prev => ({ ...extracted, ...prev })); // batch results win if already present
+        }
         if (i + CONCURRENCY < items.length) {
           await new Promise(r => setTimeout(r, 300)); // 300ms pause between batches
         }
@@ -7684,7 +7775,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         open={railOpen} onToggle={onToggleRail}
         selectedTicker={selectedTicker} onSelect={setSelectedTicker}
         currency={currency} onCurrency={setCurrency}
-        fetching={fetching} onRefreshQuotes={fetchQuotes}
+        fetching={fetching} onRefreshQuotes={() => fetchQuotes(true)}
         user={user}
         savedEtfs={savedEtfs}
         onSaveEtf={(etf, directList) => {
