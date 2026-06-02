@@ -1433,26 +1433,39 @@ const InfoTip = ({ text, i18nKey, title, width=220, side="top" }) => {
   const { t } = useTranslation();
   const resolvedText = i18nKey ? t(i18nKey) : text;
   const [vis, setVis] = useState(false);
-  const posStyle = side === "bottom"
-    ? { top:"calc(100% + 6px)", bottom:"auto" }
-    : { bottom:"calc(100% + 6px)", top:"auto" };
+  const [pos, setPos] = useState({ x:0, y:0 });
+  const spanRef = useRef(null);
+
+  const handleEnter = () => {
+    if (spanRef.current) {
+      const r = spanRef.current.getBoundingClientRect();
+      setPos({ x: r.left + r.width / 2, y: side === "bottom" ? r.bottom + 6 : r.top - 6 });
+    }
+    setVis(true);
+  };
+
+  const tipStyle = side === "bottom"
+    ? { top: pos.y }
+    : { bottom: window.innerHeight - pos.y };
+
   return (
-    <span style={{ position:"relative", display:"inline-flex", alignItems:"center", marginLeft:3 }}
-      onMouseEnter={() => setVis(true)}
+    <span ref={spanRef}
+      style={{ position:"relative", display:"inline-flex", alignItems:"center", marginLeft:3 }}
+      onMouseEnter={handleEnter}
       onMouseLeave={() => setVis(false)}>
-      <Info size={11} style={{ color:"rgba(255,255,255,0.28)", cursor:"help", flexShrink:0 }}/>
-      {vis && (
+      <Info size={11} style={{ color:"var(--fg-3)", cursor:"help", flexShrink:0, opacity:0.55 }}/>
+      {vis && createPortal(
         <div style={{
-          position:"absolute", left:"50%", ...posStyle,
-          transform:"translateX(-50%)", width, zIndex:200,
+          position:"fixed", left:pos.x, ...tipStyle,
+          transform:"translateX(-50%)", width, zIndex:9999,
           background:"var(--surface-2)", border:`1px solid ${THEME.border}`,
           borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-          boxShadow:"0 6px 24px rgba(0,0,0,0.5)",
-          transition:"opacity 0.15s",
+          boxShadow:"var(--shadow-modal)",
         }}>
-          {title && <div style={{ fontSize:10, color:THEME.text1, fontWeight:700, marginBottom:4 }}>{title}</div>}
-          <div style={{ fontSize:10, color:THEME.text2, lineHeight:1.55 }}>{resolvedText}</div>
-        </div>
+          {title && <div style={{ fontSize:10, color:"var(--fg-1)", fontWeight:700, marginBottom:4 }}>{title}</div>}
+          <div style={{ fontSize:10, color:"var(--fg-2)", lineHeight:1.55 }}>{resolvedText}</div>
+        </div>,
+        document.body
       )}
     </span>
   );
@@ -4594,10 +4607,10 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
       }}>
         {[
           [groupingMode ? "Positions" : "Transactions", groupingMode ? groupedData.length : allTxFlat.length, null, null],
-          ["Total Cost",    `$${(totalCost/1000).toFixed(1)}K`, null, "Total cost basis across all positions in USD at purchase-date FX rates."],
-          ["Current Value", `$${(totalValue/1000).toFixed(1)}K`, null, "Current market value of all positions in USD."],
-          ["Total G/L",     `${totalGL>=0?"+":"−"}$${(Math.abs(totalGL)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss: current value minus total cost basis. Does not account for taxes or transaction fees."],
-          ...(hasPrdGL?[[`${period==="Intraday"?"1D":period} G/L`, `${totalPrdGL>=0?"+":"−"}$${(Math.abs(totalPrdGL)/1000).toFixed(1)}K`, totalPrdGL>=0?THEME.green:THEME.red, `Gain/Loss over the selected ${period} period, based on period-start reference prices.`]]:[]),
+          ["Total Cost",    `${cSym}${((totalCost*rate)/1000).toFixed(1)}K`, null, "Total cost basis across all positions at purchase-date FX rates."],
+          ["Current Value", `${cSym}${((totalValue*rate)/1000).toFixed(1)}K`, null, "Current market value of all positions."],
+          ["Total G/L",     `${totalGL>=0?"+":"−"}${cSym}${(Math.abs(totalGL*rate)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss: current value minus total cost basis. Does not account for taxes or transaction fees."],
+          ...(hasPrdGL?[[`${period==="Intraday"?"1D":period} G/L`, `${totalPrdGL>=0?"+":"−"}${cSym}${(Math.abs(totalPrdGL*rate)/1000).toFixed(1)}K`, totalPrdGL>=0?THEME.green:THEME.red, `Gain/Loss over the selected ${period} period, based on period-start reference prices.`]]:[]),
         ].map(([l,v,c,tip])=>(
           <div key={l}>
             <div style={{fontSize:9,color:THEME.text3,textTransform:"uppercase",letterSpacing:".07em",marginBottom:2,display:"flex",alignItems:"center",gap:2}}>
@@ -5058,11 +5071,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               {TX_COLS_DEFAULT.map((col,ci)=>(
                 <td key={col.key} style={{ ...tdStyle(col), fontFamily:THEME.mono, fontSize:11, fontWeight:700, color:THEME.text2 }}>
                   {ci===0&&<span style={{color:THEME.text3,fontFamily:THEME.font,fontSize:10}}>TOTAL</span>}
-                  {col.key==="cost"    && `$${totalCost.toLocaleString("en-US",{maximumFractionDigits:0})}`}
-                  {col.key==="curValue"&& (totalValue>0?`$${totalValue.toLocaleString("en-US",{maximumFractionDigits:0})}`:"")}
+                  {col.key==="cost"    && `${cSym}${(totalCost*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`}
+                  {col.key==="curValue"&& (totalValue>0?`${cSym}${(totalValue*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`:"")}
                   {col.key==="prdAbs" && hasPrdGL&&totalPrdGL!==0&&(
                     <span style={{color:totalPrdGL>=0?THEME.green:THEME.red}}>
-                      {totalPrdGL>=0?"+":"−"}${Math.abs(totalPrdGL).toLocaleString("en-US",{maximumFractionDigits:0})}
+                      {totalPrdGL>=0?"+":"−"}{cSym}{Math.abs(totalPrdGL*rate).toLocaleString("en-US",{maximumFractionDigits:0})}
                     </span>
                   )}
                   {col.key==="prdPct" && hasPrdGL&&totalPrdGL!==0&&totalValue>0&&(
@@ -5072,7 +5085,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   )}
                   {col.key==="glAbs"  && totalGL!==0&&(
                     <span style={{color:totalGL>=0?THEME.green:THEME.red}}>
-                      {totalGL>=0?"+":"−"}${Math.abs(totalGL).toLocaleString("en-US",{maximumFractionDigits:0})}
+                      {totalGL>=0?"+":"−"}{cSym}{Math.abs(totalGL*rate).toLocaleString("en-US",{maximumFractionDigits:0})}
                     </span>
                   )}
                   {col.key==="glPct"  && totalCost>0&&totalGL!==0&&(
