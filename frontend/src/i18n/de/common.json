@@ -136,6 +136,13 @@
     "currency": "Original-Transaktionswährung — wird für FX-Umrechnung zur Anzeige-Währung verwendet",
     "isin": "Internationale Wertpapierkennnummer (optional, ermöglicht automatische Symbol-Suche)"
   },
+  "user": {
+    "portfolios_one": "Portfolio",
+    "portfolios_other": "Portfolios",
+    "switchUser": "Nutzer wechseln",
+    "logout": "Abmelden",
+    "confirmLogout": "Wirklich abmelden?"
+  },
   "common": {
     "save": "Speichern",
     "cancel": "Abbrechen",

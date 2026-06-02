@@ -136,6 +136,13 @@
     "currency": "Original transaction currency — used for FX conversion to your display currency",
     "isin": "International Securities Identification Number (optional but enables auto symbol lookup)"
   },
+  "user": {
+    "portfolios_one": "portfolio",
+    "portfolios_other": "portfolios",
+    "switchUser": "Switch user",
+    "logout": "Log out",
+    "confirmLogout": "Are you sure you want to log out?"
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",

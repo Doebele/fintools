@@ -3,11 +3,12 @@
  * React + D3 + Lucide Icons
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import * as d3 from "d3";
 import {
   PanelLeft, LayoutDashboard, BarChart2, List, Layers, GitMerge,
   RefreshCw, Settings, LogOut, Plus, CheckSquare, Square, Pencil,
-  User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
+  User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle, AlertTriangle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
   Gauge, Armchair, Info, Clock, FileText, Sun, Moon, Globe,
@@ -79,6 +80,9 @@ function useGlobalStyles() {
         --fg-2:      #b4bfcc;
         --fg-3:      #8896a8;
         --accent:    #3b82f6;
+        --accent-08: rgba(59,130,246,0.08);
+        --accent-15: rgba(59,130,246,0.15);
+        --accent-35: rgba(59,130,246,0.35);
         --green:     #4ade80;
         --red:       #f87171;
         --yellow:    #fbbf24;
@@ -86,6 +90,8 @@ function useGlobalStyles() {
         --font-mono:  'JetBrains Mono', monospace;
         --font-serif: 'DM Serif Display', Georgia, serif;
         --scrollbar-thumb: rgba(255,255,255,0.12);
+        --shadow-modal: 0 32px 80px rgba(0,0,0,0.60);
+        --shadow-card:  0 4px 24px rgba(0,0,0,0.35);
         /* Toggle colours */
         --toggle-pill-bg:     rgba(0,0,0,0.25);
         --toggle-neutral-bg:  rgba(255,255,255,0.12);
@@ -106,6 +112,9 @@ function useGlobalStyles() {
         --fg-2:      #45505d;
         --fg-3:      #7a8493;
         --accent:    #3b82f6;
+        --accent-08: rgba(59,130,246,0.08);
+        --accent-15: rgba(59,130,246,0.15);
+        --accent-35: rgba(59,130,246,0.35);
         --green:     #16a34a;
         --red:       #dc2626;
         --yellow:    #d97706;
@@ -113,6 +122,8 @@ function useGlobalStyles() {
         --font-mono:  'JetBrains Mono', monospace;
         --font-serif: 'DM Serif Display', Georgia, serif;
         --scrollbar-thumb: rgba(15,17,22,0.15);
+        --shadow-modal: 0 24px 64px rgba(15,17,22,0.16);
+        --shadow-card:  0 1px 2px rgba(15,17,22,0.04), 0 4px 12px rgba(15,17,22,0.06);
         /* Toggle colours — A11Y AA-compliant on light surfaces */
         --toggle-pill-bg:     rgba(15,17,22,0.07);
         --toggle-neutral-bg:  rgba(15,17,22,0.10);
@@ -152,32 +163,75 @@ function useGlobalStyles() {
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
       input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
-      /* Rail button hover */
-      .rail-btn:hover { background: rgba(59,130,246,0.08) !important; color: #3b82f6 !important; }
-      .rail-btn:hover .rail-icon { color: #3b82f6 !important; }
-      /* Currency button hover */
-      .ccy-btn:hover { background: rgba(59,130,246,0.08) !important; }
+      /* ── Rail nav button ── */
+      .rail-btn {
+        display: flex; align-items: center; gap: 9px;
+        width: 100%; padding: 5px 10px; border-radius: 6px;
+        border: none; background: transparent; color: var(--fg-2);
+        font-size: 12.5px; font-weight: 500; cursor: pointer;
+        transition: background 0.12s ease, color 0.12s ease;
+        text-align: left; font-family: var(--font-sans);
+        white-space: nowrap; min-width: 0;
+      }
+      .rail-btn:hover { background: var(--accent-08) !important; color: var(--accent) !important; }
+      .rail-btn:hover .rail-icon { color: var(--accent) !important; }
+      .rail-btn.active { background: var(--accent-15) !important; color: var(--accent) !important; font-weight: 600 !important; }
+      .rail-btn.active .rail-icon { color: var(--accent) !important; }
+      /* ── Currency button hover ── */
+      .ccy-btn:hover { background: var(--accent-08) !important; }
       .ccy-btn:hover .ccy-flag { opacity: 1 !important; }
-      .ccy-btn:hover .ccy-label { color: #3b82f6 !important; }
-      .ccy-btn:hover .ccy-name  { color: #3b82f6 !important; }
-      /* Global smooth transitions for all interactive elements */
+      .ccy-btn:hover .ccy-label { color: var(--accent) !important; }
+      .ccy-btn:hover .ccy-name  { color: var(--accent) !important; }
+      /* Global smooth transitions */
       button { transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease; }
-      /* Tab active indicator slide animation */
       .tab-pill { transition: background 0.3s ease, color 0.3s ease, font-weight 0.15s; }
-      /* Rail language / theme toggle rows */
-      .rail-toggle-row { display:flex; gap:5px; padding: 0 8px; }
-      .rail-toggle-btn {
-        flex:1; padding:6px 0; border-radius:8px; border:1.5px solid var(--border);
-        background:transparent; color:var(--fg-3); font-size:10px; font-weight:700;
-        font-family:inherit; cursor:pointer; display:flex; align-items:center;
-        justify-content:center; gap:5px; transition:border-color 0.2s, background 0.2s, color 0.2s;
+      /* ── Rail footer section ── */
+      .rail-footer-section {
+        flex-shrink: 0; border-top: 1px solid var(--border);
+        padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 3px;
       }
-      .rail-toggle-btn.active {
-        border-color: var(--accent);
-        background: rgba(59,130,246,0.15);
-        color: var(--accent);
+      /* ── Density / theme / language segmented rows (App-Pal design system) ── */
+      .rail-density-row, .rail-theme-row {
+        display: flex; gap: 3px; padding: 2px;
+        background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border);
       }
-      .rail-toggle-btn:hover:not(.active) { border-color: var(--border); background: rgba(59,130,246,0.06); color: var(--fg-2); }
+      .rail-density-btn {
+        flex: 1; display: flex; align-items: center; justify-content: center;
+        gap: 5px; padding: 5px 8px; border-radius: 6px; border: none;
+        background: transparent; color: var(--fg-3); font-size: 11px; font-weight: 600;
+        cursor: pointer; transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+        font-family: inherit; white-space: nowrap;
+      }
+      .rail-density-btn:hover { color: var(--fg-1); }
+      .rail-density-btn.active {
+        background: var(--surface); color: var(--fg-1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+      }
+      /* ── User account row ── */
+      .rail-user {
+        display: flex; align-items: center; gap: 9px;
+        padding: 6px 8px; border-radius: 8px; cursor: pointer;
+        border: 1px solid transparent;
+        transition: background 0.12s ease, border-color 0.12s ease;
+      }
+      .rail-user:hover { background: var(--surface-2); }
+      .rail-user-collapsed { justify-content: center; padding: 6px 4px; }
+      /* ── Avatar ── */
+      .avatar {
+        width: 28px; height: 28px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 11px; color: #fff;
+        background: var(--accent); flex-shrink: 0;
+      }
+      /* ── Rail collapsed tooltip ── */
+      .rail-tip {
+        position: fixed; background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600;
+        color: var(--fg-1); white-space: nowrap; pointer-events: none; z-index: 9999;
+        box-shadow: var(--shadow-card);
+        opacity: 0; transition: opacity 0.12s ease;
+      }
+      .rail-tip.visible { opacity: 1; }
     `;
     document.head.appendChild(s);
   }, []);
@@ -1422,10 +1476,10 @@ const SidebarTip = ({ children, label, open }) => {
         <div style={{
           position:"fixed", left:pos.x, top:pos.y,
           transform:"translateY(-50%)",
-          background:"#1e2030", border:`1px solid ${THEME.border}`,
+          background:"var(--surface-2)", border:"1px solid var(--border)",
           borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
-          color:THEME.text1, whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"0 4px 16px rgba(0,0,0,0.5)", pointerEvents:"none",
+          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
+          boxShadow:"var(--shadow-card)", pointerEvents:"none",
         }}>{label}</div>
       )}
     </div>
@@ -1441,7 +1495,7 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
     if (open) return;
     const rect = e.currentTarget.getBoundingClientRect();
     setTipPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
-    timerRef.current = setTimeout(() => setTip(true), 1200);
+    timerRef.current = setTimeout(() => setTip(true), 600);
   };
   const hideTip = () => {
     clearTimeout(timerRef.current);
@@ -1453,25 +1507,19 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
       <button onClick={onClick}
         onMouseEnter={showTip}
         onMouseLeave={hideTip}
-        className={active ? undefined : "rail-btn"}
+        className={"rail-btn" + (active ? " active" : "")}
         style={{
-          display:"flex", alignItems:"center", gap:10,
-          width:"100%", padding: open ? "9px 12px" : "9px 0",
           justifyContent: open ? "flex-start" : "center",
-          borderRadius:9, border:"none", cursor:"pointer",
-          background: active ? "rgba(59,130,246,0.15)" : "transparent",
-          color: active ? THEME.accent : (color || THEME.text3),
-          fontSize:12, fontWeight: active ? 700 : 500,
-          fontFamily:THEME.font, transition:"background 0.12s, color 0.12s",
-          position:"relative",
+          padding: open ? "5px 10px" : "7px 0",
+          color: active ? "var(--accent)" : (color || "var(--fg-2)"),
         }}>
         <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
-        {open && <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>}
-        {badge && (
+        {open && <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>}
+        {badge != null && open && (
           <span style={{
             marginLeft:"auto", flexShrink:0,
-            background:"rgba(59,130,246,0.2)", color:THEME.accent,
-            fontSize:9, fontWeight:700, borderRadius:4, padding:"2px 5px",
+            fontFamily:"var(--font-mono)",
+            color:"var(--fg-3)", fontSize:10, fontWeight:600,
           }}>{badge}</span>
         )}
       </button>
@@ -1479,11 +1527,10 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
         <div style={{
           position:"fixed", left:tipPos.x, top:tipPos.y,
           transform:"translateY(-50%)",
-          background:"#1e2030", border:`1px solid ${THEME.border}`,
-          borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
-          color:THEME.text1, whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
-          pointerEvents:"none",
+          background:"var(--surface-2)", border:"1px solid var(--border)",
+          borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:600,
+          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
+          boxShadow:"var(--shadow-card)", pointerEvents:"none",
         }}>{label}</div>
       )}
     </>
@@ -1498,6 +1545,113 @@ const RailSection = ({ label, open=true }) => open && (
 const Divider = () => (
   <div style={{ height:1, background:THEME.border2, margin:"6px 8px" }}/>
 );
+
+// ── User account popover (portal — anchored above the rail-user row) ──────────
+function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch }) {
+  const { t } = useTranslation();
+  const ref = useRef(null);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (
+        ref.current && !ref.current.contains(e.target) &&
+        anchorRef.current && !anchorRef.current.contains(e.target)
+      ) onClose();
+    };
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
+  }, [onClose, anchorRef]);
+
+  const rect = anchorRef.current?.getBoundingClientRect();
+  const top  = (rect?.top ?? 0) - 8;
+  const left = (rect?.right ?? 0) + 10;
+  const initials = (username || "U").slice(0, 2).toUpperCase();
+
+  return createPortal(
+    <div ref={ref} style={{
+      position:"fixed", left, top, transform:"translateY(-100%)",
+      width:240, background:"var(--surface)", border:"1px solid var(--border)",
+      borderRadius:12, boxShadow:"var(--shadow-modal)", zIndex:9999, overflow:"hidden",
+    }} onClick={e => e.stopPropagation()}>
+      {/* Header */}
+      <div style={{ padding:"14px 16px 12px", borderBottom:"1px solid var(--border)",
+        display:"flex", alignItems:"center", gap:10 }}>
+        <div className="avatar" style={{ width:34, height:34, borderRadius:9, fontSize:13, fontWeight:700 }}>
+          {initials}
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {username}
+          </div>
+          <div style={{ fontSize:10, color:"var(--fg-3)", marginTop:1 }}>
+            {portfolioCount} {t("user.portfolios", { count: portfolioCount })}
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ padding:"6px 6px" }}>
+        {/* Switch user */}
+        <button onClick={onSwitch} style={{
+          display:"flex", alignItems:"center", gap:10, width:"100%",
+          padding:"8px 10px", borderRadius:7, border:"none",
+          background:"transparent", cursor:"pointer",
+          fontFamily:"var(--font-sans)", textAlign:"left",
+          color:"var(--fg-2)", transition:"background 0.1s",
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
+        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+          <ArrowLeftRight size={14} style={{ flexShrink:0 }}/>
+          <span style={{ fontSize:12, fontWeight:500 }}>{t("user.switchUser")}</span>
+        </button>
+
+        {/* Logout — two-step */}
+        {!confirmLogout ? (
+          <button onClick={() => setConfirmLogout(true)} style={{
+            display:"flex", alignItems:"center", gap:10, width:"100%",
+            padding:"8px 10px", borderRadius:7, border:"none",
+            background:"transparent", cursor:"pointer",
+            fontFamily:"var(--font-sans)", textAlign:"left",
+            color:"var(--fg-2)", transition:"background 0.1s",
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
+          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+            <LogOut size={14} style={{ flexShrink:0 }}/>
+            <span style={{ fontSize:12, fontWeight:500 }}>{t("user.logout")}</span>
+          </button>
+        ) : (
+          <div style={{ padding:"10px 10px 8px", borderRadius:8,
+            background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)",
+            margin:"2px 0" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+              <AlertTriangle size={13} style={{ color:"#f87171", flexShrink:0 }}/>
+              <span style={{ fontSize:11, color:"var(--fg-2)", lineHeight:1.4 }}>
+                {t("user.confirmLogout")}
+              </span>
+            </div>
+            <div style={{ display:"flex", gap:6 }}>
+              <button onClick={onLogout} style={{
+                flex:1, padding:"5px 0", borderRadius:6, border:"none",
+                background:"#ef4444", color:"#fff", cursor:"pointer",
+                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:600,
+              }}>{t("user.logout")}</button>
+              <button onClick={() => setConfirmLogout(false)} style={{
+                flex:1, padding:"5px 0", borderRadius:6,
+                border:"1px solid var(--border)", background:"transparent",
+                color:"var(--fg-2)", cursor:"pointer",
+                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:500,
+              }}>{t("common.cancel")}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 function Rail({
   open, onToggle,
@@ -1518,8 +1672,11 @@ function Rail({
 }) {
   const { t } = useTranslation();
   const w = open ? RAIL_EXPANDED : RAIL_COLLAPSED;
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const userBtnRef = useRef(null);
 
-
+  const handleLogoutFromModal = () => { setUserModalOpen(false); onLogout(); };
+  const handleSwitchFromModal = () => { setUserModalOpen(false); onLogout(); };
 
   return (
     <div style={{
@@ -1715,156 +1872,115 @@ function Rail({
             })}
           </div>
 
-        {/* Separator */}
-        <div style={{ height:1, background:THEME.border2, margin:"4px 0" }}/>
+        <div style={{ height:1, background:"var(--border-2)", margin:"4px 0" }}/>
 
-        {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-          textTransform:"uppercase", letterSpacing:"0.10em",
-          padding:"6px 6px 4px", opacity:0.7 }}>Account</div>}
-        {open && user && (
-          <div style={{ padding:"2px 6px 6px", display:"flex", alignItems:"center", gap:8 }}>
-            <div style={{ width:26, height:26, borderRadius:"50%",
-              background:"rgba(59,130,246,0.2)", display:"flex",
-              alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <User size={12} style={{ color:THEME.accent }}/>
-            </div>
-            <div>
-              <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>{user.username}</div>
-              <div style={{ fontSize:9, color:THEME.text3 }}>
-                {portfolios.length} portfolio{portfolios.length!==1?"s":""}
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Data source settings (small, collapsed-friendly) */}
+        {/* Settings */}
         <RailBtn open={open} icon={<Settings size={14}/>} label={t("rail.settings")}
           onClick={onSettings}/>
 
-        {/* ── ETF Screener link ── */}
+        {/* ETF Screener */}
         {onEtfExplorer && (
-          open ? (
-            <button onClick={onEtfExplorer} style={{
-              display:"flex", alignItems:"center", gap:10,
-              width:"100%", padding:"9px 12px", borderRadius:9,
-              border:"none", cursor:"pointer", background:"transparent",
-              color:THEME.accent, fontFamily:THEME.font,
-              transition:"background 0.12s, color 0.12s",
-            }}
-            className="rail-btn">
-              <span style={{ flexShrink:0, display:"flex" }}><TrendingUp size={16}/></span>
-              <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>ETF Screener</span>
-            </button>
-          ) : (
-            <SidebarTip label="ETF Screener" open={open}>
-              <button onClick={onEtfExplorer} style={{
-                display:"flex", alignItems:"center", justifyContent:"center",
-                width:"100%", padding:"9px 0", borderRadius:9,
-                border:"none", cursor:"pointer", background:"transparent",
-                color:THEME.accent, transition:"background 0.12s",
-              }} className="rail-btn">
-                <TrendingUp size={16}/>
+          <RailBtn open={open} icon={<TrendingUp size={14}/>} label="ETF Screener"
+            onClick={onEtfExplorer} color="var(--accent)"/>
+        )}
+      </div>{/* end scrollable body */}
+
+      {/* ── Footer (pinned) ── */}
+      <div className="rail-footer-section">
+
+        {/* Compact / Relaxed */}
+        {open ? (
+          <div className="rail-density-row">
+            {[["pro", <Gauge size={13}/>, t("rail.compact")], ["comfort", <Armchair size={13}/>, t("rail.relaxed")]].map(([m, icon, lbl]) => (
+              <button key={m}
+                className={"rail-density-btn" + (displayMode===m ? " active" : "")}
+                onClick={() => onToggleDisplayMode && onToggleDisplayMode(m)}
+                title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}>
+                {icon}<span>{lbl}</span>
               </button>
-            </SidebarTip>
-          )
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false}
+            icon={displayMode==="comfort" ? <Armchair size={15}/> : <Gauge size={15}/>}
+            label={displayMode==="comfort" ? t("rail.relaxed") : t("rail.compact")}
+            onClick={() => onToggleDisplayMode && onToggleDisplayMode()}/>
         )}
 
-        {/* ── Display mode toggle ── */}
-        {onToggleDisplayMode && (
-          <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
-            {open ? (
-              <div style={{ display:"flex", alignItems:"center", gap:8,
-                padding:"6px 10px", borderRadius:8,
-                background:"rgba(255,255,255,0.04)",
-                border:`1px solid ${THEME.border}` }}>
-                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
-                <div style={{ display:"flex", gap:2, padding:"2px",
-                  borderRadius:6, background:"var(--toggle-pill-bg)",
-                  border:`1px solid ${THEME.border}` }}>
-                  {[["pro",<Gauge size={13}/>, t("rail.compact")],["comfort",<Armchair size={13}/>, t("rail.relaxed")]].map(([m, lbl]) => (
-                    <button key={m} onClick={() => onToggleDisplayMode(m)}
-                      title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
-                      style={{
-                        padding:"3px 8px", borderRadius:5, border:"none",
-                        background: displayMode===m
-                          ? (m==="comfort" ? "var(--toggle-blue-bg)" : "var(--toggle-neutral-bg)")
-                          : "transparent",
-                        color: displayMode===m ? THEME.text1 : THEME.text3,
-                        fontSize:9, fontWeight:700, cursor:"pointer",
-                        fontFamily:"inherit", transition:"all 0.15s", letterSpacing:"0.04em",
-                      }}>{lbl}</button>
-                  ))}
+        {/* DE / EN */}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["de", deFlagUrl, "DE"], ["en", gbFlagUrl, "EN"]].map(([lang, flag, lbl]) => (
+              <button key={lang}
+                className={"rail-density-btn" + (uiLanguage===lang ? " active" : "")}
+                onClick={() => onChangeLanguage && onChangeLanguage(lang)}
+                title={lang==="de" ? t("rail.langDe") : t("rail.langEn")}>
+                <img src={flag} width={13} height={13} style={{ borderRadius:"50%", flexShrink:0 }} alt={lbl}/>
+                <span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false} icon={<Globe size={15}/>}
+            label={uiLanguage.toUpperCase()}
+            onClick={() => onChangeLanguage && onChangeLanguage(uiLanguage==="de" ? "en" : "de")}/>
+        )}
+
+        {/* Light / Dark */}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["light", <Sun size={13}/>, t("rail.lightMode")], ["dark", <Moon size={13}/>, t("rail.darkMode")]].map(([th, icon, lbl]) => (
+              <button key={th}
+                className={"rail-density-btn" + (uiTheme===th ? " active" : "")}
+                onClick={() => onToggleTheme && onToggleTheme()}
+                title={lbl}>
+                {icon}<span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false}
+            icon={uiTheme==="dark" ? <Moon size={15}/> : <Sun size={15}/>}
+            label={uiTheme==="dark" ? t("rail.darkMode") : t("rail.lightMode")}
+            onClick={() => onToggleTheme && onToggleTheme()}/>
+        )}
+
+        {/* User account row */}
+        {user && (
+          <div ref={userBtnRef}
+            className={"rail-user" + (open ? "" : " rail-user-collapsed")}
+            onClick={() => setUserModalOpen(v => !v)}
+            style={{
+              border: userModalOpen ? "1px solid var(--border)" : "1px solid transparent",
+              background: userModalOpen ? "var(--surface-2)" : "transparent",
+            }}>
+            <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
+            {open && (
+              <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
+                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                  {user.username}
+                </div>
+                <div style={{ fontSize:10, color:"var(--fg-3)" }}>
+                  {portfolios.length} {t("user.portfolios", { count: portfolios.length })}
                 </div>
               </div>
-            ) : (
-              <button onClick={onToggleDisplayMode}
-                title={displayMode==="pro" ? "Switch to Comfort mode (A11Y)" : "Switch to Pro mode"}
-                style={{
-                  width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
-                  background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
-                  borderRadius:7, display:"flex", justifyContent:"center",
-                  alignItems:"center", transition:"all 0.15s",
-                  color: THEME.text3,
-                }}>
-                <span style={{ lineHeight:1, color:"inherit" }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
-              </button>
             )}
           </div>
         )}
-
-        {/* ── Theme toggle ── */}
-        <div style={{ padding: open ? "4px 10px" : "4px 4px" }}>
-          {open ? (
-            <div className="rail-toggle-row">
-              <button className={`rail-toggle-btn${uiTheme === "dark" ? " active" : ""}`}
-                onClick={() => onToggleTheme && onToggleTheme()}
-                title={t("rail.darkMode")}>
-                <Moon size={12}/> <span>{t("rail.darkMode")}</span>
-              </button>
-              <button className={`rail-toggle-btn${uiTheme === "light" ? " active" : ""}`}
-                onClick={() => onToggleTheme && onToggleTheme()}
-                title={t("rail.lightMode")}>
-                <Sun size={12}/> <span>{t("rail.lightMode")}</span>
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => onToggleTheme && onToggleTheme()}
-              title={uiTheme === "dark" ? t("rail.lightMode") : t("rail.darkMode")}
-              style={{ width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
-                background:"transparent", borderRadius:7, display:"flex",
-                justifyContent:"center", alignItems:"center", color:THEME.text3 }}>
-              {uiTheme === "dark" ? <Sun size={15}/> : <Moon size={15}/>}
-            </button>
-          )}
-        </div>
-
-        {/* ── Language switcher ── */}
-        <div style={{ padding: open ? "4px 10px 8px" : "4px 4px 8px" }}>
-          {open ? (
-            <div className="rail-toggle-row">
-              {[["de", deFlagUrl, t("rail.langDe")], ["en", gbFlagUrl, t("rail.langEn")]].map(([lang, flag, label]) => (
-                <button key={lang}
-                  className={`rail-toggle-btn${uiLanguage === lang ? " active" : ""}`}
-                  onClick={() => onChangeLanguage && onChangeLanguage(lang)}
-                  title={label}>
-                  <img src={flag} width={13} height={13} style={{ borderRadius:"50%", flexShrink:0 }} alt={label}/>
-                  <span>{lang.toUpperCase()}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <button
-              onClick={() => onChangeLanguage && onChangeLanguage(uiLanguage === "de" ? "en" : "de")}
-              title={uiLanguage === "de" ? t("rail.langEn") : t("rail.langDe")}
-              style={{ width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
-                background:"transparent", borderRadius:7, display:"flex",
-                justifyContent:"center", alignItems:"center", color:THEME.text3 }}>
-              <Globe size={15}/>
-            </button>
-          )}
-        </div>
-
-        <RailBtn open={open} icon={<LogOut size={16}/>} label={t("rail.logout")} onClick={onLogout} color={THEME.text3}/>
       </div>
+
+      {/* User modal */}
+      {userModalOpen && user && (
+        <UserModal
+          username={user.username}
+          portfolioCount={portfolios.length}
+          anchorRef={userBtnRef}
+          onClose={() => setUserModalOpen(false)}
+          onLogout={handleLogoutFromModal}
+          onSwitch={handleSwitchFromModal}
+        />
+      )}
     </div>
   );
 }
