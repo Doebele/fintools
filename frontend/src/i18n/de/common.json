@@ -121,6 +121,8 @@
   },
   "tips": {
     "noSymbolFound": "Kein Symbol für diese ISIN gefunden",
+    "period": "Zeitraum für die Auswertung wählen",
+    "viewMode": "Zwischen zusammengeführter Gesamtansicht und aufgeteilter Portfolioansicht wechseln",
     "refresh": "Live-Kurse für alle Positionen aktualisieren",
     "colourMode": "Zwischen Markt-% und absolutem Gewinn/Verlust wechseln",
     "consolidated": "Alle Portfolios in einer zusammengeführten Ansicht zeigen",

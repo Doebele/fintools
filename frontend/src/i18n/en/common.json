@@ -121,6 +121,8 @@
   },
   "tips": {
     "noSymbolFound": "No symbol found for this ISIN",
+    "period": "Select the time range shown in the chart",
+    "viewMode": "Switch between a single merged view of all portfolios and a split view per portfolio",
     "refresh": "Refresh live quotes for all positions",
     "colourMode": "Toggle between market % change and absolute gain/loss colouring",
     "consolidated": "Merge all portfolios into a single aggregated view",

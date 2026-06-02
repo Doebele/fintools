@@ -5968,22 +5968,13 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
 
   return (
     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-      <InfoTip i18nKey="tips.consolidated" side="top" width={230}/>
-      <div style={{
-        display:"flex", alignItems:"center", gap:2,
-        background:"var(--toggle-pill-bg)", borderRadius:9,
-        padding:3, border:`1px solid ${THEME.border}`,
-      }}>
+      <InfoTip i18nKey="tips.viewMode" side="bottom" width={260}/>
+      <div className="rail-density-row">
         {modes.map(m => (
-          <button key={m.key} onClick={() => onViewMode(m.key)} style={{
-            display:"flex", alignItems:"center", gap:5,
-            padding:"4px 12px", borderRadius:7, border:"none", cursor:"pointer",
-            fontSize:10, fontWeight:700, fontFamily:"inherit",
-            transition:"all 0.15s",
-            background: viewMode === m.key ? "var(--toggle-blue-bg)" : "transparent",
-            color:       viewMode === m.key ? "var(--toggle-blue-fg)" : THEME.text3,
-            letterSpacing:"0.04em",
-          }}>
+          <button key={m.key}
+            className={"rail-density-btn" + (viewMode===m.key ? " active" : "")}
+            onClick={() => onViewMode(m.key)}
+            style={{ padding:"4px 12px", gap:5 }}>
             <span style={{ fontSize:12, lineHeight:1 }}>{m.icon}</span>
             {m.label}
           </button>
@@ -6022,18 +6013,17 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
       <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
         {/* Color mode toggle */}
         <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-          <InfoTip i18nKey="tips.colourMode" side="top" width={240}/>
-        <div style={{ display:"flex", background:THEME.bg, border:`1px solid ${THEME.border}`,
-          borderRadius:8, padding:2, gap:2 }}>
-          {[["market",t("summary.mktPct")],["gainloss",t("summary.gl")]].map(([mode,label]) => (
-            <button key={mode} onClick={() => onColorMode(mode)} style={{
-              padding:"3px 10px", border:"none", cursor:"pointer", borderRadius:6,
-              fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-              background:colorMode===mode?(mode==="gainloss"?"rgba(251,191,36,0.18)":"rgba(59,130,246,0.18)"):"transparent",
-              color:colorMode===mode?(mode==="gainloss"?"#fbbf24":THEME.accent):THEME.text3,
-            }}>{label}</button>
-          ))}
-        </div>
+          <InfoTip i18nKey="tips.colourMode" side="top" width={260}/>
+          <div className="rail-density-row">
+            {[["market",t("summary.mktPct")],["gainloss",t("summary.gl")]].map(([mode,label]) => (
+              <button key={mode}
+                className={"rail-density-btn" + (colorMode===mode ? " active" : "")}
+                onClick={() => onColorMode(mode)}
+                style={{ padding:"3px 10px" }}>
+                {label}
+              </button>
+            ))}
+          </div>
         {/* Legend */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
           <div style={{ fontSize:7, color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.08em" }}>
@@ -6071,17 +6061,20 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
       borderBottom:`1px solid ${THEME.border}`, height:46,
       background:THEME.surface, flexShrink:0 }}>
 
-      {/* Period buttons */}
-      {PERIODS.map(p => (
-        <button key={p.key} onClick={() => onPeriod(p.key)} style={{
-          padding:"5px 12px", border:"none", cursor:"pointer",
-          background:period===p.key?"rgba(59,130,246,0.15)":"transparent",
-          color:period===p.key?THEME.accent:THEME.text3,
-          fontSize:11, fontWeight:700, fontFamily:"inherit",
-          borderBottom:period===p.key?`2px solid ${THEME.accent}`:"2px solid transparent",
-          borderRadius:"7px 7px 0 0",
-        }}>{p.label}</button>
-      ))}
+      {/* Period buttons — pill segmented control */}
+      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+        <InfoTip i18nKey="tips.period" side="bottom" width={220}/>
+        <div className="rail-density-row">
+          {PERIODS.map(p => (
+            <button key={p.key}
+              className={"rail-density-btn" + (period===p.key ? " active" : "")}
+              onClick={() => onPeriod(p.key)}
+              style={{ padding:"4px 10px", fontFamily:"var(--font-mono)", letterSpacing:"0.03em" }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Separator */}
       {(showSep1 || showSepOnly) && (
@@ -6090,19 +6083,14 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
 
       {/* Bar Chart sort mode */}
       {hasSubView && (
-        <div style={{
-          display:"flex", alignItems:"center", gap:2,
-          background:"var(--toggle-pill-bg)", borderRadius:9, padding:3,
-          border:`1px solid ${THEME.border}`, flexShrink:0,
-        }}>
+        <div className="rail-density-row" style={{ flexShrink:0 }}>
           {[["perf",t("nav.performance")],["size",t("chart.bySize")]].map(([key, label]) => (
-            <button key={key} onClick={() => onSubView(key)} style={{
-              padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
-              fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-              background: subView===key ? "var(--toggle-blue-bg)" : "transparent",
-              color:       subView===key ? "var(--toggle-blue-fg)" : THEME.text3,
-              letterSpacing:"0.04em",
-            }}>{label}</button>
+            <button key={key}
+              className={"rail-density-btn" + (subView===key ? " active" : "")}
+              onClick={() => onSubView(key)}
+              style={{ padding:"4px 11px" }}>
+              {label}
+            </button>
           ))}
         </div>
       )}
@@ -6117,20 +6105,15 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
       {/* Performance: Portfolio / Instrumente ansicht toggle */}
       {hasAnsicht && (
         <>
-          {hasViewMode && <div style={{ width:1, height:20, background:THEME.border, margin:"0 10px", flexShrink:0 }}/>}
-          <div style={{
-            display:"flex", alignItems:"center", gap:2,
-            background:"var(--toggle-pill-bg)", borderRadius:9, padding:3,
-            border:`1px solid ${THEME.border}`, flexShrink:0,
-          }}>
+          {hasViewMode && <div style={{ width:1, height:20, background:"var(--border)", margin:"0 10px", flexShrink:0 }}/>}
+          <div className="rail-density-row" style={{ flexShrink:0 }}>
             {[["portfolio",t("chart.viewPortfolio")],["instruments",t("chart.viewInstruments")]].map(([key, label]) => (
-              <button key={key} onClick={() => onAnsicht(key)} style={{
-                padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
-                fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-                background: ansicht===key ? "var(--toggle-orange-bg)" : "transparent",
-                color:       ansicht===key ? "var(--toggle-orange-fg)" : THEME.text3,
-                letterSpacing:"0.04em",
-              }}>{label}</button>
+              <button key={key}
+                className={"rail-density-btn" + (ansicht===key ? " active" : "")}
+                onClick={() => onAnsicht(key)}
+                style={{ padding:"4px 11px" }}>
+                {label}
+              </button>
             ))}
           </div>
         </>
