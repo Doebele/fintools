@@ -1429,8 +1429,30 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 // RAIL NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
 // ─── Delayed tooltip for collapsed sidebar icons ──────────────────────────
-// ─── Inline info tooltip (? icon with popover) ───────────────────────────────
-const InfoTip = ({ text, i18nKey, title, width=220, side="top" }) => {
+// ── Shared tooltip bubble renderer (portal, fixed, always-above with smart fallback) ──
+function _tipBubble(pos, width, title, body) {
+  // Always prefer above; fall back to below only if within 80px of viewport top
+  const above = pos.y > 80;
+  const style = above
+    ? { bottom: window.innerHeight - pos.y }
+    : { top: pos.yBelow ?? (pos.y + 12) };
+  return createPortal(
+    <div style={{
+      position:"fixed", left:pos.x, ...style,
+      transform:"translateX(-50%)", width, zIndex:9999,
+      background:"var(--surface-2)", border:`1px solid var(--border)`,
+      borderRadius:8, padding:"8px 10px", pointerEvents:"none",
+      boxShadow:"var(--shadow-modal)",
+    }}>
+      {title && <div style={{ fontSize:10, color:"var(--fg-1)", fontWeight:700, marginBottom:4 }}>{title}</div>}
+      <div style={{ fontSize:10, color:"var(--fg-2)", lineHeight:1.55 }}>{body}</div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── InfoTip — ℹ icon hover tooltip (standalone controls) ─────────────────────
+const InfoTip = ({ text, i18nKey, title, width=220 }) => {
   const { t } = useTranslation();
   const resolvedText = i18nKey ? t(i18nKey) : text;
   const [vis, setVis] = useState(false);
@@ -1440,14 +1462,10 @@ const InfoTip = ({ text, i18nKey, title, width=220, side="top" }) => {
   const handleEnter = () => {
     if (spanRef.current) {
       const r = spanRef.current.getBoundingClientRect();
-      setPos({ x: r.left + r.width / 2, y: side === "bottom" ? r.bottom + 6 : r.top - 6 });
+      setPos({ x: r.left + r.width / 2, y: r.top - 6, yBelow: r.bottom + 6 });
     }
     setVis(true);
   };
-
-  const tipStyle = side === "bottom"
-    ? { top: pos.y }
-    : { bottom: window.innerHeight - pos.y };
 
   return (
     <span ref={spanRef}
@@ -1455,19 +1473,36 @@ const InfoTip = ({ text, i18nKey, title, width=220, side="top" }) => {
       onMouseEnter={handleEnter}
       onMouseLeave={() => setVis(false)}>
       <Info size={11} style={{ color:"var(--fg-3)", cursor:"help", flexShrink:0, opacity:0.55 }}/>
-      {vis && createPortal(
-        <div style={{
-          position:"fixed", left:pos.x, ...tipStyle,
-          transform:"translateX(-50%)", width, zIndex:9999,
-          background:"var(--surface-2)", border:`1px solid ${THEME.border}`,
-          borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-          boxShadow:"var(--shadow-modal)",
-        }}>
-          {title && <div style={{ fontSize:10, color:"var(--fg-1)", fontWeight:700, marginBottom:4 }}>{title}</div>}
-          <div style={{ fontSize:10, color:"var(--fg-2)", lineHeight:1.55 }}>{resolvedText}</div>
-        </div>,
-        document.body
-      )}
+      {vis && _tipBubble(pos, width, title, resolvedText)}
+    </span>
+  );
+};
+
+// ─── LabelTip — tooltip triggered by hovering the label text (no icon) ────────
+const LabelTip = ({ children, text, i18nKey, title, width=240 }) => {
+  const { t } = useTranslation();
+  const resolvedText = i18nKey ? t(i18nKey) : text;
+  const [vis, setVis] = useState(false);
+  const [pos, setPos] = useState({ x:0, y:0 });
+  const spanRef = useRef(null);
+
+  if (!resolvedText) return <>{children}</>;
+
+  const handleEnter = () => {
+    if (spanRef.current) {
+      const r = spanRef.current.getBoundingClientRect();
+      setPos({ x: r.left + r.width / 2, y: r.top - 6, yBelow: r.bottom + 6 });
+    }
+    setVis(true);
+  };
+
+  return (
+    <span ref={spanRef}
+      style={{ cursor:"help", borderBottom:"1px dotted var(--fg-3)", display:"inline" }}
+      onMouseEnter={handleEnter}
+      onMouseLeave={() => setVis(false)}>
+      {children}
+      {vis && _tipBubble(pos, width, title, resolvedText)}
     </span>
   );
 };
@@ -4412,13 +4447,18 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 
   // ── Column settings panel open/close ──
   const [colPanelOpen, setColPanelOpen] = useState(false);
+  const [panelAnchor, setPanelAnchor] = useState({ top: 0, left: 0 });
   const colPanelRef = useRef(null);
+  const colPanelBtnRef = useRef(null);
 
-  // Close panel on outside click
+  // Close panel on outside click (panel is in a portal so check btn ref too)
   useEffect(() => {
     if (!colPanelOpen) return;
     const handler = (e) => {
-      if (colPanelRef.current && !colPanelRef.current.contains(e.target)) {
+      if (
+        colPanelRef.current && !colPanelRef.current.contains(e.target) &&
+        colPanelBtnRef.current && !colPanelBtnRef.current.contains(e.target)
+      ) {
         setColPanelOpen(false);
       }
     };
@@ -4702,7 +4742,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
         ].map(([l,v,c,tip])=>(
           <div key={l}>
             <div style={{fontSize:9,color:THEME.text3,textTransform:"uppercase",letterSpacing:".07em",marginBottom:2,display:"flex",alignItems:"center",gap:2}}>
-              {l}{tip && <InfoTip text={tip} side="bottom" width={220}/>}
+              {tip ? <LabelTip text={tip} width={220}>{l}</LabelTip> : l}
             </div>
             <div style={{fontFamily:THEME.mono,fontSize:12,fontWeight:700,color:c||THEME.text1}}>{v}</div>
           </div>
@@ -4721,9 +4761,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
           >{groupingMode ? "⊕ Grouped" : "≡ Flat"}</button>
 
           {/* Column settings button */}
-          <div style={{ position:"relative" }} ref={colPanelRef}>
+          <div style={{ position:"relative" }}>
             <button
-              onClick={() => setColPanelOpen(v => !v)}
+              ref={colPanelBtnRef}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setPanelAnchor({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - 276) });
+                setColPanelOpen(v => !v);
+              }}
               style={{
                 display:"flex", alignItems:"center", gap:5,
                 padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
@@ -4743,12 +4788,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 
             {colPanelOpen && createPortal(
               (() => {
-                const btnRect = colPanelRef.current?.getBoundingClientRect();
                 return (
-                  <div style={{
+                  <div ref={colPanelRef} style={{
                     position:"fixed",
-                    top: (btnRect?.bottom ?? 0) + 6,
-                    left: Math.min(btnRect?.left ?? 0, window.innerWidth - 276),
+                    top: panelAnchor.top,
+                    left: panelAnchor.left,
                     width: 268, maxHeight: 420, overflowY:"auto",
                     background:"var(--surface)", border:`1px solid ${THEME.border}`,
                     borderRadius:10, padding:8,
@@ -4821,10 +4865,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               {orderedCols.map(col=>(
                 <th key={col.key} style={thStyle(col)} onClick={()=>col.sortable&&handleSort(col.key)}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
-                    {col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
-                     : col.key==="prdAbs" ? `${period==="Intraday"?"1D":period} $`
-                     : col.label}
-                    {col.tip && <InfoTip text={col.tip} side="bottom" width={240}/>}
+                    {(() => {
+                      const lbl = col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
+                               : col.key==="prdAbs" ? `${period==="Intraday"?"1D":period} $`
+                               : col.label;
+                      return col.tip
+                        ? <LabelTip text={col.tip} width={240}>{lbl}</LabelTip>
+                        : lbl;
+                    })()}
                   </span>
                   <SortIcon col={col}/>
                   {/* Resize handle */}
@@ -5554,7 +5602,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               <FInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)}/>
             </div>
             <div>
-              <FLabel>Periodicity <InfoTip i18nKey="tips.recurrence" side="top" width={200}/></FLabel>
+              <FLabel><LabelTip i18nKey="tips.recurrence" width={200}>Periodicity</LabelTip></FLabel>
               <FSelect value={periodicity} onChange={e => setPeriodicity(e.target.value)}>
                 {PERIODICITY_OPTIONS.map(o => (
                   <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>
@@ -5588,7 +5636,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         </div>
         {/* ISIN */}
         <div>
-          <FLabel>ISIN <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span><InfoTip i18nKey="tips.isin" side="top" width={240}/></FLabel>
+          <FLabel><LabelTip i18nKey="tips.isin" width={240}>ISIN</LabelTip> <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span></FLabel>
           <div style={{ display:"flex", gap:6 }}>
             <FInput placeholder="e.g. US0378331005" value={isin}
               style={{ fontFamily:THEME.mono, letterSpacing:"0.05em", flex:1 }}
@@ -5712,7 +5760,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         {/* Row 4: Price | Currency */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div style={{ position:"relative" }}>
-            <FLabel>Price per Share <InfoTip i18nKey="tips.buyPrice" side="top" width={220}/></FLabel>
+            <FLabel><LabelTip i18nKey="tips.buyPrice" width={220}>Price per Share</LabelTip></FLabel>
             <FInput type="number" min="0" step="any" placeholder="0.00" value={price}
               onChange={e => { setPrice(e.target.value); setPriceEdited(true); }}/>
             {lookupOk && !priceEdited && !lookupBusy && (
@@ -5724,7 +5772,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             )}
           </div>
           <div>
-            <FLabel>Currency <InfoTip i18nKey="tips.currency" side="top" width={220}/></FLabel>
+            <FLabel><LabelTip i18nKey="tips.currency" width={220}>Currency</LabelTip></FLabel>
             <FSelect value={currency} onChange={e => setCurrency(e.target.value)}>
               {["USD","EUR","GBP","CHF","JPY","CAD","AUD","HKD","CNY","SGD","SEK","NOK","DKK"].map(c => <option key={c} value={c}>{c}</option>)}
             </FSelect>
@@ -5936,7 +5984,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         </div>
         {dataSource==="alphavantage" && (
           <div>
-            <FLabel>Alpha Vantage API Key <InfoTip i18nKey="tips.avKey" side="top" width={240}/></FLabel>
+            <FLabel><LabelTip i18nKey="tips.avKey" width={240}>Alpha Vantage API Key</LabelTip></FLabel>
             <FInput placeholder="Free key at alphavantage.co"
               value={avApiKey} onChange={e => setAvApiKey(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:12 }}/>
@@ -5982,11 +6030,11 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
             ))}
           </div>
           {aiProvider !== "disabled" && (<>
-            <FLabel>{t("settings.endpointUrl")} <InfoTip i18nKey="tips.aiEndpoint" side="top" width={240}/></FLabel>
+            <FLabel><LabelTip i18nKey="tips.aiEndpoint" width={240}>{t("settings.endpointUrl")}</LabelTip></FLabel>
             <FInput value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
               placeholder="http://localhost:1234"/>
-            <FLabel>{t("settings.modelName")} <InfoTip i18nKey="tips.aiModel" side="top" width={240}/></FLabel>
+            <FLabel><LabelTip i18nKey="tips.aiModel" width={240}>{t("settings.modelName")}</LabelTip></FLabel>
             <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
               placeholder="e.g. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
             {aiProvider === "openrouter" && (<>
@@ -6102,7 +6150,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
         <div key={lbl}>
           <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
             letterSpacing:"0.08em", marginBottom:2, display:"flex", alignItems:"center", gap:2 }}>
-            {lbl}{tip && <InfoTip text={tip} width={210} side="bottom"/>}
+            {tip ? <LabelTip text={tip} width={210}>{lbl}</LabelTip> : lbl}
           </div>
           <div className="mono" style={{ fontSize:13, fontWeight:700, color:color??THEME.text1 }}>{val}</div>
         </div>
