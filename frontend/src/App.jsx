@@ -1565,15 +1565,21 @@ function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onS
   }, [onClose, anchorRef]);
 
   const rect = anchorRef.current?.getBoundingClientRect();
-  const top  = (rect?.top ?? 0) - 8;
-  const left = (rect?.right ?? 0) + 10;
+  // Anchor the modal's BOTTOM to just above the user row — independent of modal height
+  const bottom = window.innerHeight - (rect?.top ?? 0) + 8;
+  // Position to the right of the rail; clamp so it never overflows the right viewport edge
+  const left = Math.min(
+    (rect?.right ?? 0) + 10,
+    window.innerWidth - 256
+  );
   const initials = (username || "U").slice(0, 2).toUpperCase();
 
   return createPortal(
     <div ref={ref} style={{
-      position:"fixed", left, top, transform:"translateY(-100%)",
+      position:"fixed", left, bottom, top:"auto",
       width:240, background:"var(--surface)", border:"1px solid var(--border)",
       borderRadius:12, boxShadow:"var(--shadow-modal)", zIndex:9999, overflow:"hidden",
+      maxHeight:"calc(100vh - 24px)",
     }} onClick={e => e.stopPropagation()}>
       {/* Header */}
       <div style={{ padding:"14px 16px 12px", borderBottom:"1px solid var(--border)",
