@@ -2533,12 +2533,12 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
       </div>
 
       {miniChart && (
-        <div style={{ height:76, background:"rgba(0,0,0,0.2)", position:"relative" }}>
+        <div style={{ height:76, background:"var(--surface-2)", position:"relative" }}>
           <svg width={miniChart.W} height={miniChart.H} style={{ position:"absolute", inset:0 }}>
             <defs>
               <linearGradient id={`tg-${data.symbol}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={miniChart.lineColor} stopOpacity="0.25"/>
-                <stop offset="100%" stopColor={miniChart.lineColor} stopOpacity="0"/>
+                <stop offset="0%" stopColor={miniChart.lineColor} stopOpacity="0.30"/>
+                <stop offset="100%" stopColor={miniChart.lineColor} stopOpacity="0.03"/>
               </linearGradient>
             </defs>
             <polyline points={miniChart.pts + ` ${miniChart.W},${miniChart.H} 0,${miniChart.H}`}
@@ -7160,19 +7160,21 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
   const col = isPos ? "#4ade80" : "#f87171";
 
   return (
-    <svg width={W} height={H} style={{ display:"block" }}>
-      <defs>
-        <linearGradient id={`sg-${xs[0]}-${isPos}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={col} stopOpacity="0.3"/>
-          <stop offset="100%" stopColor={col} stopOpacity="0"/>
-        </linearGradient>
-      </defs>
-      <polyline
-        points={polyPts + ` ${W},${H} 0,${H}`}
-        fill={`url(#sg-${xs[0]}-${isPos})`}/>
-      <polyline points={polyPts} fill="none" stroke={col} strokeWidth="1.2"/>
-      <circle cx={lx} cy={ly} r="2" fill={col}/>
-    </svg>
+    <div style={{ background:"var(--surface-2)", borderRadius:5, overflow:"hidden", lineHeight:0 }}>
+      <svg width={W} height={H} style={{ display:"block" }}>
+        <defs>
+          <linearGradient id={`sg-${xs[0]}-${isPos}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={col} stopOpacity="0.30"/>
+            <stop offset="100%" stopColor={col} stopOpacity="0.03"/>
+          </linearGradient>
+        </defs>
+        <polyline
+          points={polyPts + ` ${W},${H} 0,${H}`}
+          fill={`url(#sg-${xs[0]}-${isPos})`}/>
+        <polyline points={polyPts} fill="none" stroke={col} strokeWidth="1.2"/>
+        <circle cx={lx} cy={ly} r="2" fill={col}/>
+      </svg>
+    </div>
   );
 }
 
