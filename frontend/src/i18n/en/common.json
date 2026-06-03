@@ -178,7 +178,15 @@
     "avgPerfWeighted": "Avg Perf (weighted)",
     "gainersLosers": "Gainers / Losers",
     "topHoldings": "Top Holdings",
-    "viewMode": "View mode"
+    "viewMode": "View mode",
+    "colRank": "#",
+    "colSymbol": "Symbol",
+    "colName": "Name",
+    "colWeight": "Weight",
+    "colTrend": "Trend",
+    "colPrice": "Price",
+    "colDivYield": "Div. Yield",
+    "colExDate": "Ex-Date"
   },
   "common": {
     "save": "Save",

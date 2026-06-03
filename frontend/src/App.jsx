@@ -208,6 +208,19 @@ function useGlobalStyles() {
         background: var(--surface); color: var(--fg-1);
         box-shadow: 0 1px 3px rgba(0,0,0,0.18);
       }
+      /* ── Navigation tabs (top nav bar + ETF inner nav) ── */
+      .app-nav-tab {
+        display: flex; align-items: center; gap: 7px;
+        padding: 7px 14px; border: none; cursor: pointer;
+        background: transparent; color: var(--fg-3);
+        border-radius: 9px; font-size: 12px; font-weight: 500;
+        font-family: inherit;
+        transition: background 0.2s ease, color 0.2s ease, font-weight 0.12s;
+      }
+      .app-nav-tab:hover { background: var(--surface-2); color: var(--fg-1); }
+      .app-nav-tab.active {
+        background: rgba(59,130,246,0.15); color: var(--accent); font-weight: 700;
+      }
       /* ── User account row ── */
       .rail-user {
         display: flex; align-items: center; gap: 9px;
@@ -993,12 +1006,6 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     if (isValidFile(f)) { setFile(f); setPreviewData(null); setResult(null); setImportErr(null); }
   };
 
-  const btnStyle = (active) => ({
-    flex:1, padding:"8px 0", border:"none", cursor:"pointer",
-    borderRadius:8, fontSize:12, fontWeight:700, fontFamily:"inherit",
-    background: active ? THEME.accent : "rgba(255,255,255,0.05)",
-    color: active ? "#fff" : THEME.text3, transition:"all 0.15s",
-  });
 
   const handleCreatePort = async () => {
     if (!newPortName.trim() || !user) return;
@@ -1100,12 +1107,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <X size={16}/>
             </button>
           </div>
-          <div style={{ display:"flex", gap:6, padding:4, background:"rgba(0,0,0,0.3)", borderRadius:10, marginBottom:16 }}>
-            <button style={btnStyle(tab==="export")} onClick={()=>{ setTab("export"); setPreviewData(null); setResult(null); }}>
-              <FileDown size={13} style={{marginRight:5,verticalAlign:"middle"}}/> Export Excel
+          <div className="rail-density-row" style={{ marginBottom:16 }}>
+            <button className={"rail-density-btn" + (tab==="export" ? " active" : "")}
+              onClick={()=>{ setTab("export"); setPreviewData(null); setResult(null); }}>
+              <FileDown size={13}/> Export Excel
             </button>
-            <button style={btnStyle(tab==="import")} onClick={()=>{ setTab("import"); setPreviewData(null); setResult(null); }}>
-              <Upload size={13} style={{marginRight:5,verticalAlign:"middle"}}/> Import Excel
+            <button className={"rail-density-btn" + (tab==="import" ? " active" : "")}
+              onClick={()=>{ setTab("import"); setPreviewData(null); setResult(null); }}>
+              <Upload size={13}/> Import Excel
             </button>
           </div>
         </div>
@@ -1596,7 +1605,7 @@ const Divider = () => (
 );
 
 // ── User account popover (portal — anchored above the rail-user row) ──────────
-function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch }) {
+function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch, subtitle, switchLabel, switchIcon }) {
   const { t } = useTranslation();
   const ref = useRef(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -1642,7 +1651,7 @@ function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onS
             {username}
           </div>
           <div style={{ fontSize:10, color:"var(--fg-3)", marginTop:1 }}>
-            {portfolioCount} {t("user.portfolios", { count: portfolioCount })}
+            {subtitle ?? `${portfolioCount} ${t("user.portfolios", { count: portfolioCount })}`}
           </div>
         </div>
       </div>
@@ -1659,8 +1668,8 @@ function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onS
         }}
         onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-          <ArrowLeftRight size={14} style={{ flexShrink:0 }}/>
-          <span style={{ fontSize:12, fontWeight:500 }}>{t("user.switchUser")}</span>
+          {switchIcon ?? <ArrowLeftRight size={14} style={{ flexShrink:0 }}/>}
+          <span style={{ fontSize:12, fontWeight:500 }}>{switchLabel ?? t("user.switchUser")}</span>
         </button>
 
         {/* Logout — two-step */}
@@ -1856,8 +1865,6 @@ function Rail({
           <RailBtn open={open} icon={<Plus size={16}/>} label={t("rail.addTransaction")}
             color={THEME.accent} onClick={() => onTab("_addtx")}/>
         )}
-        <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:"flex"}}><RefreshCw size={16}/></span> : <RefreshCw size={16}/>}
-          label={t("rail.refreshQuotes")} onClick={onRefresh}/>
         {onRecalcFX && (
           <RailBtn open={open} icon={<span style={{fontSize:12}}>⟳$</span>} label="Recalc FX Costs"
             onClick={onRecalcFX}
@@ -1871,7 +1878,7 @@ function Rail({
       </div>  {/* end scrollable body */}
 
       {/* ─── Bottom: Currency + Account (pinned) ──────────────── */}
-      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 6px 8px", flexShrink:0 }}>
+      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 0 8px", flexShrink:0 }}>
           {/* Currency */}
           {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
             textTransform:"uppercase", letterSpacing:"0.10em",
@@ -1929,20 +1936,34 @@ function Rail({
 
         <div style={{ height:1, background:"var(--border-2)", margin:"4px 0" }}/>
 
-        {/* Settings */}
-        <RailBtn open={open} icon={<Settings size={14}/>} label={t("rail.settings")}
-          onClick={onSettings}/>
+        {/* Refresh Quotes + Settings — same 8px horizontal padding as ETF rail-footer-section */}
+        <div style={{ padding:"0 8px" }}>
+          <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:"flex"}}><RefreshCw size={16}/></span> : <RefreshCw size={16}/>}
+            label={t("rail.refreshQuotes")} onClick={onRefresh}/>
+          <RailBtn open={open} icon={<Settings size={14}/>} label={t("rail.settings")}
+            onClick={onSettings}/>
+        </div>
 
-        {/* ETF Screener */}
-        {onEtfExplorer && (
-          <RailBtn open={open} icon={<TrendingUp size={14}/>} label="ETF Screener"
-            onClick={onEtfExplorer} color="var(--accent)"/>
-        )}
-      </div>{/* end scrollable body */}
+      </div>{/* end pinned currency+actions section */}
 
       {/* ── Footer (pinned) ── */}
       <div className="rail-footer-section">
 
+        {/* App switcher: Portfolio Explorer ↔ ETF Screener */}
+        {onEtfExplorer && (
+          open ? (
+            <div className="rail-density-row">
+              <button className="rail-density-btn active" style={{ flex:1 }}>
+                <LayoutDashboard size={12}/><span>Portfolio</span>
+              </button>
+              <button className="rail-density-btn" onClick={onEtfExplorer} style={{ flex:1 }}>
+                <TrendingUp size={12}/><span>ETF</span>
+              </button>
+            </div>
+          ) : (
+            <RailBtn open={false} icon={<TrendingUp size={15}/>} label="ETF" onClick={onEtfExplorer}/>
+          )
+        )}
         {/* Compact / Relaxed */}
         {open ? (
           <div className="rail-density-row">
@@ -6637,22 +6658,24 @@ function DeleteEtfModal({ etf, onConfirm, onCancel }) {
 function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrency,
                    fetching, onRefreshQuotes,
                    user, savedEtfs, onSaveEtf, onRemoveEtf, onSwitchToPortfolio,
-                   onBack, onSignOut,
+                   onBack, onSignOut, onSettings,
                    displayMode, onToggleDisplayMode,
                    uiTheme, onToggleTheme,
                    uiLanguage, onChangeLanguage }) {
   const { t } = useTranslation();
-  const [search,      setSearch]      = useState("");
-  const [searching,   setSearching]   = useState(false);
-  const [results,     setResults]     = useState([]);
-  const [searchErr,   setSearchErr]   = useState(null);
+  const [search,        setSearch]        = useState("");
+  const [searching,     setSearching]     = useState(false);
+  const [results,       setResults]       = useState([]);
+  const [searchErr,     setSearchErr]     = useState(null);
   // Custom ETFs: found via search, staged locally until saved to profile
-  const [customEtfs,  setCustomEtfs]  = useState([]);
+  const [customEtfs,    setCustomEtfs]    = useState([]);
   // Delete confirmation: { etf, from } where from = 'custom' | 'saved'
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [savingCustom,  setSavingCustom]  = useState(false);
+  const [userModalOpen, setUserModalOpen] = useState(false);
   const searchTimer = useRef(null);
   const inputRef    = useRef(null);
+  const userBtnRef  = useRef(null);
   const w = open ? 220 : 52;
 
   // Live search with debounce
@@ -7083,149 +7106,120 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       {/* Divider */}
       <div style={{ height:1, background:THEME.border2, margin:"6px 8px", flexShrink:0 }}/>
 
-      {/* Currency */}
+      {/* Currency — same sizing/spacing as Portfolio Rail */}
       {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
         textTransform:"uppercase", letterSpacing:"0.10em",
-        padding:"6px 12px 4px", opacity:0.7, flexShrink:0 }}>{t("etf.currency")}</div>}
-      <div style={{ padding: open?"2px 8px 6px":"2px 4px 6px", display:"flex",
-        flexDirection:"column", gap:2, flexShrink:0 }}>
+        padding:"6px 6px 4px", opacity:0.7, flexShrink:0 }}>{t("etf.currency")}</div>}
+      <div style={{
+        padding: open ? "2px 4px" : "2px 0",
+        display:"flex", flexDirection:"column",
+        gap:2, alignItems: open ? "stretch" : "center", flexShrink:0,
+      }}>
         {Object.keys(CCY_SYM).map(c => {
           const isActive = currency === c;
           const code = CCY_FLAG[c];
-          const SIZE = open ? 24 : 20;
+          const SIZE = open ? 22 : 16;
           return (
-            <button key={c} onClick={() => onCurrency(c)} title={c}
-              className={isActive?undefined:"ccy-btn"}
-              style={{ display:"flex", alignItems:"center", gap:open?10:0,
-                padding:open?"6px 10px":"6px 0", border:"none", borderRadius:9,
-                background:isActive?"rgba(59,130,246,0.15)":"transparent",
-                cursor:"pointer", fontFamily:THEME.font, transition:"background 0.12s",
-                width:"100%", justifyContent:open?"flex-start":"center",
-                color:isActive?THEME.accent:THEME.text3 }}>
-              <div className="ccy-flag" style={{ width:SIZE, height:SIZE,
-                borderRadius:"50%", overflow:"hidden", flexShrink:0,
-                opacity:isActive?1:0.4, transition:"opacity 0.12s",
+            <SidebarTip key={c} label={`${c} — ${CCY_NAME[c]}`} open={open}>
+            <button onClick={() => onCurrency(c)}
+              className={isActive ? undefined : "ccy-btn"}
+              style={{
+                display:"flex", alignItems:"center",
+                gap: open ? 8 : 0,
+                padding: open ? "5px 8px" : "5px 0",
+                border:"none", borderRadius:8,
+                background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
+                cursor:"pointer", fontFamily:THEME.font,
+                transition:"background 0.12s",
+                width:"100%",
+                justifyContent: open ? "flex-start" : "center",
+              }}>
+              <div className="ccy-flag" style={{
+                width:SIZE, height:SIZE, borderRadius:"50%",
+                overflow:"hidden", flexShrink:0,
+                opacity: isActive ? 1 : 0.4, transition:"opacity 0.12s",
                 display:"flex", alignItems:"center", justifyContent:"center",
-                lineHeight:0, fontSize:0 }}>
-                {code ? <CircleFlag countryCode={code} width={SIZE} height={SIZE}/>
-                      : <span style={{ fontSize:SIZE*0.6 }}>🌐</span>}
+              }}>
+                {code
+                  ? <CircleFlag countryCode={code} width={SIZE} height={SIZE}/>
+                  : <span style={{ fontSize:SIZE*0.6, lineHeight:1 }}>🌐</span>}
               </div>
               {open && (
-                <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-                  <span className="ccy-label" style={{ fontSize:12,
-                    fontWeight:isActive?700:500,
-                    color:isActive?THEME.accent:THEME.text3 }}>{c}</span>
-                  <span className="ccy-name" style={{ fontSize:10,
-                    color:isActive?THEME.accent:THEME.text3 }}>{CCY_NAME[c]}</span>
+                <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
+                  <span className="ccy-label" style={{
+                    fontSize:11, fontWeight: isActive ? 700 : 500,
+                    color: isActive ? THEME.accent : THEME.text3,
+                  }}>{c}</span>
+                  <span className="ccy-name" style={{
+                    fontSize:9, color: isActive ? THEME.accent : THEME.text3,
+                  }}>{CCY_NAME[c]}</span>
                 </div>
               )}
             </button>
+            </SidebarTip>
           );
         })}
       </div>
 
-      {/* ─── Bottom: Account (pinned) ────────────────────────────── */}
-      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 6px 8px", flexShrink:0 }}>
-        {/* Refresh row */}
-        <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:'flex'}}><RefreshCw size={15}/></span> : <RefreshCw size={15}/>}
+      {/* ─── Bottom: pinned footer (same class + padding as Portfolio Rail) ── */}
+      <div className="rail-footer-section">
+
+        {/* Refresh quotes */}
+        <RailBtn open={open}
+          icon={fetching ? <span className="spin" style={{display:'flex'}}><RefreshCw size={15}/></span> : <RefreshCw size={15}/>}
           label={t("etf.refreshQuotes")} onClick={onRefreshQuotes}/>
-        <div style={{ height:1, background:THEME.border, margin:"4px 0" }}/>
-        {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-          textTransform:"uppercase", letterSpacing:"0.10em",
-          padding:"4px 6px 4px", opacity:0.7 }}>{t("etf.account")}</div>}
-        {user ? (
-          <>
-            {open && (
-              <div style={{ padding:"2px 6px 6px", display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ width:26, height:26, borderRadius:"50%",
-                  background:"rgba(59,130,246,0.2)", display:"flex",
-                  alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <User size={12} style={{ color:THEME.accent }}/>
-                </div>
-                <div>
-                  <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>{user.username}</div>
-                  <div style={{ fontSize:9, color:THEME.text3 }}>ETF Screener</div>
-                </div>
-              </div>
-            )}
-            {user && onSwitchToPortfolio && (
-              open ? (
-                <button onClick={onSwitchToPortfolio} style={{
-                  display:"flex", alignItems:"center", gap:10,
-                  width:"100%", padding:"9px 12px", borderRadius:9,
-                  border:"none", cursor:"pointer", background:"transparent",
-                  color:THEME.text2, fontFamily:THEME.font,
-                  transition:"background 0.12s",
-                }} className="rail-btn">
-                  <span style={{ flexShrink:0, display:"flex" }}><LayoutDashboard size={16}/></span>
-                  <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>{t("portfolio.explorer")}</span>
+
+        {/* Settings — same button as Portfolio Rail */}
+        {onSettings && (
+          <RailBtn open={open} icon={<Settings size={14}/>} label={t("rail.settings")}
+            onClick={onSettings}/>
+        )}
+
+        <div style={{ height:1, background:"var(--border-2)", margin:"2px 0" }}/>
+
+        {/* App switcher: ETF Screener (active) ↔ Portfolio Explorer */}
+        {onSwitchToPortfolio && (
+          open ? (
+            <div className="rail-density-row">
+              <button className="rail-density-btn" onClick={onSwitchToPortfolio} style={{ flex:1 }}>
+                <LayoutDashboard size={12}/><span>Portfolio</span>
+              </button>
+              <button className="rail-density-btn active" style={{ flex:1 }}>
+                <TrendingUp size={12}/><span>ETF</span>
+              </button>
+            </div>
+          ) : (
+            <RailBtn open={false} icon={<LayoutDashboard size={15}/>}
+              label={t("portfolio.explorer")} onClick={onSwitchToPortfolio}/>
+          )
+        )}
+        {!onSwitchToPortfolio && onBack && (
+          <RailBtn open={open} icon={<User size={16}/>} label={t("etf.signIn")}
+            onClick={onBack} color={THEME.accent}/>
+        )}
+
+        {/* Compact / Relaxed */}
+        {onToggleDisplayMode && (
+          open ? (
+            <div className="rail-density-row">
+              {[["pro", <Gauge size={13}/>, t("rail.compact")], ["comfort", <Armchair size={13}/>, t("rail.relaxed")]].map(([m, icon, lbl]) => (
+                <button key={m}
+                  className={"rail-density-btn" + (displayMode===m ? " active" : "")}
+                  onClick={() => onToggleDisplayMode && onToggleDisplayMode(m)}
+                  title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}>
+                  {icon}<span>{lbl}</span>
                 </button>
-              ) : (
-                <SidebarTip label={t("portfolio.explorer")} open={open}>
-                  <button onClick={onSwitchToPortfolio} style={{
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    width:"100%", padding:"9px 0", borderRadius:9,
-                    border:"none", cursor:"pointer", background:"transparent",
-                    color:THEME.text2, transition:"background 0.12s",
-                  }} className="rail-btn">
-                    <LayoutDashboard size={16}/>
-                  </button>
-                </SidebarTip>
-              )
-            )}
-            {/* Sign Out removed here — rendered once at bottom after View Mode */}
-          </>
-        ) : (
-          onBack && (
-            <RailBtn open={open} icon={<User size={16}/>} label={t("etf.signIn")}
-              onClick={onBack} color={THEME.accent}/>
+              ))}
+            </div>
+          ) : (
+            <RailBtn open={false}
+              icon={displayMode==="comfort" ? <Armchair size={15}/> : <Gauge size={15}/>}
+              label={displayMode==="comfort" ? t("rail.relaxed") : t("rail.compact")}
+              onClick={() => onToggleDisplayMode && onToggleDisplayMode()}/>
           )
         )}
 
-        {/* ── Display mode toggle (shared with portfolio rail) ── */}
-        {onToggleDisplayMode && (
-          <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
-            {open ? (
-              <div style={{ display:"flex", alignItems:"center", gap:8,
-                padding:"6px 10px", borderRadius:8,
-                background:"rgba(255,255,255,0.04)",
-                border:`1px solid ${THEME.border}` }}>
-                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>{t("etf.viewMode")}</span>
-                <div style={{ display:"flex", gap:2, padding:"2px",
-                  borderRadius:6, background:"var(--toggle-pill-bg)",
-                  border:`1px solid ${THEME.border}` }}>
-                  {[["pro",<Gauge size={13}/>, t("rail.compact")],["comfort",<Armchair size={13}/>, t("rail.relaxed")]].map(([m, lbl]) => (
-                    <button key={m} onClick={() => onToggleDisplayMode(m)}
-                      title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
-                      style={{
-                        padding:"3px 8px", borderRadius:5, border:"none",
-                        background: displayMode===m
-                          ? (m==="comfort" ? "var(--toggle-blue-bg)" : "var(--toggle-neutral-bg)")
-                          : "transparent",
-                        color: displayMode===m ? THEME.text1 : THEME.text3,
-                        fontSize:9, fontWeight:700, cursor:"pointer",
-                        fontFamily:"inherit", transition:"all 0.15s", letterSpacing:"0.04em",
-                      }}>{lbl}</button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <button onClick={onToggleDisplayMode}
-                title={displayMode==="pro" ? "Switch to Comfort mode (A11Y)" : "Switch to Pro mode"}
-                style={{
-                  width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
-                  background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
-                  borderRadius:7, display:"flex", justifyContent:"center",
-                  alignItems:"center", transition:"all 0.15s",
-                  color: THEME.text3,
-                }}>
-                <span style={{ lineHeight:1, color:"inherit" }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
-              </button>
-            )}
-          </div>
-        )}
-        {/* Sign Out — always last */}
-        {/* Language + Theme toggles — same as Portfolio Rail */}
+        {/* DE / EN */}
         {open ? (
           <div className="rail-theme-row">
             {[["de", deFlagUrl, "DE"], ["en", gbFlagUrl, "EN"]].map(([lang, flag, lbl]) => (
@@ -7243,6 +7237,8 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
             label={(uiLanguage||"en").toUpperCase()}
             onClick={() => onChangeLanguage && onChangeLanguage((uiLanguage||"en")==="de" ? "en" : "de")}/>
         )}
+
+        {/* Light / Dark */}
         {open ? (
           <div className="rail-theme-row">
             {[["light", <Sun size={13}/>, t("rail.lightMode")], ["dark", <Moon size={13}/>, t("rail.darkMode")]].map(([th, icon, lbl]) => (
@@ -7260,11 +7256,44 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
             label={(uiTheme||"dark")==="dark" ? t("rail.darkMode") : t("rail.lightMode")}
             onClick={() => onToggleTheme && onToggleTheme()}/>
         )}
-        {onSignOut && user && (
-          <RailBtn open={open} icon={<LogOut size={16}/>} label={t("etf.signOut")}
-            onClick={onSignOut} color={THEME.text3}/>
+
+        {/* User account row — same as Portfolio Rail */}
+        {user && (
+          <div ref={userBtnRef}
+            className={"rail-user" + (open ? "" : " rail-user-collapsed")}
+            onClick={() => setUserModalOpen(v => !v)}
+            style={{
+              border: userModalOpen ? "1px solid var(--border)" : "1px solid transparent",
+              background: userModalOpen ? "var(--surface-2)" : "transparent",
+            }}>
+            <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
+            {open && (
+              <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
+                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                  {user.username}
+                </div>
+                <div style={{ fontSize:10, color:"var(--fg-3)" }}>ETF Screener</div>
+              </div>
+            )}
+          </div>
         )}
       </div>
+
+      {/* User modal (same as Portfolio Rail) */}
+      {userModalOpen && user && (
+        <UserModal
+          username={user.username}
+          portfolioCount={0}
+          subtitle="ETF Screener"
+          anchorRef={userBtnRef}
+          switchLabel={t("portfolio.explorer")}
+          switchIcon={<LayoutDashboard size={14} style={{ flexShrink:0 }}/>}
+          onClose={() => setUserModalOpen(false)}
+          onSwitch={() => { setUserModalOpen(false); onSwitchToPortfolio && onSwitchToPortfolio(); }}
+          onLogout={() => { setUserModalOpen(false); onSignOut && onSignOut(); }}
+        />
+      )}
     </div>
 
     {/* Delete confirmation modal */}
@@ -7468,17 +7497,17 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       {/* Toolbar: period selector + refresh */}
       <div style={{ padding:"0 16px 0 16px", borderBottom:`1px solid ${THEME.border2}`,
-        display:"flex", alignItems:"center", gap:4, flexShrink:0, height:44 }}>
+        display:"flex", alignItems:"center", gap:8, flexShrink:0, height:44 }}>
         {/* Period buttons */}
-        {ETF_PERIODS.map(p => (
-          <button key={p.key} onClick={()=>onPeriod(p.key)} style={{
-            padding:"4px 10px", border:"none", cursor:"pointer",
-            background:period===p.key?"rgba(59,130,246,0.15)":"transparent",
-            color:period===p.key?THEME.accent:THEME.text3,
-            fontSize:11, fontWeight:700, fontFamily:"inherit",
-            borderBottom:period===p.key?`2px solid ${THEME.accent}`:"2px solid transparent",
-            borderRadius:"6px 6px 0 0", transition:"all 0.12s" }}>{p.label}</button>
-        ))}
+        <div className="rail-density-row" style={{ flexShrink:0 }}>
+          {ETF_PERIODS.map(p => (
+            <button key={p.key} className={"rail-density-btn" + (period===p.key ? " active" : "")}
+              onClick={() => onPeriod(p.key)}
+              style={{ padding:"4px 10px", fontFamily:"var(--font-mono)", letterSpacing:"0.03em" }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
         <div style={{ flex:1 }}/>
         {/* Holdings count + last update */}
         <div style={{ fontSize:10, color:THEME.text3, marginRight:8, textAlign:"right" }}>
@@ -7505,13 +7534,23 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
         <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
           <thead>
             <tr style={{ borderBottom:`1px solid ${THEME.border2}` }}>
-              {["#","Symbol","Name","Weight","Trend","Price",periodLabel,"Div. Yield","Ex-Date"].map(h => (
-                <th key={h} style={{ padding:"7px 12px",
-                  textAlign:["#","Weight","Price",periodLabel].includes(h)?"right":"left",
+              {[
+                { key:"#",        label:t("etf.colRank"),    right:true  },
+                { key:"symbol",   label:t("etf.colSymbol"),  right:false },
+                { key:"name",     label:t("etf.colName"),    right:false },
+                { key:"weight",   label:t("etf.colWeight"),  right:true  },
+                { key:"trend",    label:t("etf.colTrend"),   right:false },
+                { key:"price",    label:t("etf.colPrice"),   right:true  },
+                { key:"period",   label:periodLabel,         right:true  },
+                { key:"divyield", label:t("etf.colDivYield"),right:true  },
+                { key:"exdate",   label:t("etf.colExDate"),  right:false },
+              ].map(({key, label, right}) => (
+                <th key={key} style={{ padding:"7px 12px",
+                  textAlign:right?"right":"left",
                   fontSize:9, fontWeight:700, color:THEME.text3,
                   textTransform:"uppercase", letterSpacing:"0.07em",
                   position:"sticky", top:0, background:THEME.bg,
-                  whiteSpace:"nowrap" }}>{h}</th>
+                  whiteSpace:"nowrap" }}>{label}</th>
               ))}
             </tr>
           </thead>
@@ -7634,6 +7673,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
 // ── ETF Explorer main component ───────────────────────────────────────────────
 function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut,
+                       onSettings,
                        displayMode, onToggleDisplayMode,
                        railOpen, onToggleRail,
                        uiTheme, onToggleTheme,
@@ -7734,7 +7774,8 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   useEffect(() => {
     if (!holdings.length) return;
     fetchQuotes();
-    // Seed quotes from already-cached chart data (symbols loaded in a previous session/tab)
+
+    // ── Fast path: seed from in-memory chart cache (symbols already loaded this session) ──
     const seeded = {};
     holdings.forEach(h => {
       const cached = globalChartCache.get(h.symbol);
@@ -7746,38 +7787,29 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
     if (Object.keys(seeded).length > 0) {
       setQuotes(prev => ({ ...seeded, ...prev }));
     }
-    // Preload chart data for holdings — staggered to avoid flooding Yahoo/rate-limit.
-    // Only fetch symbols not already cached. Max 3 concurrent, 300ms between batches.
-    // Also extract price + refs from each chart response and update quotes state so that
-    // price/YTD show up progressively in the Holdings table and TreeMap/BarChart views,
-    // even if the batch endpoint hasn't resolved yet.
-    const toFetch = holdings.filter(h => !globalChartCache.has(h.symbol));
-    const CONCURRENCY = 3;
-    const fetchBatch = async (items) => {
-      for (let i = 0; i < items.length; i += CONCURRENCY) {
-        const batch = items.slice(i, i + CONCURRENCY);
-        const results = await Promise.all(batch.map(h =>
-          quotesApi.raw(h.symbol)
-            .then(d => {
-              if (!d) return null;
-              globalChartCache.set(h.symbol, d);
-              const q = extractQuoteFromRaw(d);
-              return q ? { symbol: h.symbol, q } : null;
-            })
-            .catch(() => null)
-        ));
-        // Merge extracted quotes into state (batch endpoint results take precedence via prev spread)
+
+    // ── Single-request path: ask the server for compiled price+refs for ALL holdings ──
+    // The server reads from etf_quote_summary_cache (TTL = smart quote TTL) for cached
+    // symbols and only calls Yahoo for symbols it doesn't have yet.  This replaces up to
+    // 50 individual /api/quotes/yahoo/:symbol calls with one POST round-trip.
+    const symbols = holdings.map(h => h.symbol);
+    fetch(`${ETF_BASE}/etf/quotes/summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols }),
+    })
+      .then(r => r.json())
+      .then(res => {
         const extracted = {};
-        results.forEach(r => { if (r) extracted[r.symbol] = r.q; });
+        Object.entries(res.results || {}).forEach(([sym, q]) => {
+          if (q) extracted[sym] = q;
+        });
         if (Object.keys(extracted).length > 0) {
-          setQuotes(prev => ({ ...extracted, ...prev })); // batch results win if already present
+          // batch-endpoint (fetchQuotes) results take precedence via the spread order
+          setQuotes(prev => ({ ...extracted, ...prev }));
         }
-        if (i + CONCURRENCY < items.length) {
-          await new Promise(r => setTimeout(r, 300)); // 300ms pause between batches
-        }
-      }
-    };
-    fetchBatch(toFetch);
+      })
+      .catch(() => { /* non-fatal — batch endpoint or seeded cache still shows data */ });
   }, [holdings]); // eslint-disable-line
 
   // Nodes
@@ -7838,6 +7870,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         onSwitchToPortfolio={onSwitchToPortfolio}
         onBack={onBack}
         onSignOut={onSignOut || (onSwitchToPortfolio ? () => { onBack(); } : null)}
+        onSettings={onSettings}
         displayMode={displayMode}
         onToggleDisplayMode={onToggleDisplayMode}
         uiTheme={uiTheme} onToggleTheme={onToggleTheme}
@@ -7861,14 +7894,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             { key:"historic",     icon:<Clock size={14}/>,           label:t("nav.historicCourses") },
           ].map(tab => (
             <button key={tab.key} onClick={()=>setActiveTab(tab.key)}
-              style={{
-                display:"flex", alignItems:"center", gap:7,
-                padding:"7px 14px", border:"none", cursor:"pointer",
-                background:activeTab===tab.key?"rgba(59,130,246,0.15)":"transparent",
-                color:activeTab===tab.key?THEME.accent:THEME.text3,
-                borderRadius:9, fontSize:12,
-                fontWeight:activeTab===tab.key?700:500,
-                fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
+              className={"app-nav-tab" + (activeTab===tab.key ? " active" : "")}>
               {tab.icon}{tab.label}
             </button>
           ))}
@@ -7906,30 +7932,27 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
 
         {/* Period toolbar — shown for TreeMap and BarChart tabs */}
         {activeTab !== "transactions" && (
-          <div style={{ padding:"0 16px 0 22px", display:"flex", alignItems:"center",
+          <div style={{ padding:"0 16px 0 22px", display:"flex", alignItems:"center", gap:8,
             borderBottom:`1px solid ${THEME.border}`, height:46,
             background:THEME.surface, flexShrink:0 }}>
-            {ETF_PERIODS.map(p => (
-              <button key={p.key} onClick={()=>setPeriod(p.key)} style={{
-                padding:"5px 12px", border:"none", cursor:"pointer",
-                background:period===p.key?"rgba(59,130,246,0.15)":"transparent",
-                color:period===p.key?THEME.accent:THEME.text3,
-                fontSize:11, fontWeight:700, fontFamily:"inherit",
-                borderBottom:period===p.key?`2px solid ${THEME.accent}`:"2px solid transparent",
-                borderRadius:"7px 7px 0 0" }}>{p.label}</button>
-            ))}
+            <div className="rail-density-row" style={{ flexShrink:0 }}>
+              {ETF_PERIODS.map(p => (
+                <button key={p.key} className={"rail-density-btn" + (period===p.key ? " active" : "")}
+                  onClick={() => setPeriod(p.key)}
+                  style={{ padding:"4px 10px", fontFamily:"var(--font-mono)", letterSpacing:"0.03em" }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
             {activeTab==="chart" && (
               <>
-                <div style={{ width:1, height:20, background:THEME.border, margin:"0 12px" }}/>
-                <div style={{ display:"flex", gap:2, background:"var(--toggle-pill-bg)",
-                  borderRadius:9, padding:3, border:`1px solid ${THEME.border}` }}>
+                <div style={{ width:1, height:20, background:THEME.border, flexShrink:0 }}/>
+                <div className="rail-density-row" style={{ flexShrink:0 }}>
                   {[["perf",t("nav.performance")],["size",t("chart.byWeight")]].map(([key,label])=>(
-                    <button key={key} onClick={()=>setBarSubView(key)} style={{
-                      padding:"4px 11px", border:"none", cursor:"pointer",
-                      borderRadius:7, fontSize:10, fontWeight:700,
-                      fontFamily:"inherit", transition:"all 0.15s",
-                      background:barSubView===key?"var(--toggle-blue-bg)":"transparent",
-                      color:barSubView===key?"var(--toggle-blue-fg)":THEME.text3 }}>{label}</button>
+                    <button key={key} className={"rail-density-btn" + (barSubView===key ? " active" : "")}
+                      onClick={() => setBarSubView(key)}>
+                      {label}
+                    </button>
                   ))}
                 </div>
               </>
@@ -8840,25 +8863,49 @@ export default function App() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (etfMode) return (
-    <EtfExplorer
-      onBack={() => setEtfMode(false)}
-      user={user}
-      savedEtfs={savedEtfs}
-      onLogin={(loggedIn) => {
-        // Use the full handleLogin flow so Portfolio view works immediately after switch
-        handleLogin(loggedIn);
-      }}
-      onSwitchToPortfolio={() => setEtfMode(false)}
-      onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
-      displayMode={displayMode}
-      onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
-      railOpen={railOpen}
-      onToggleRail={() => setRailOpen(v => !v)}
-      uiTheme={uiTheme}
-      onToggleTheme={toggleTheme}
-      uiLanguage={uiLanguage}
-      onChangeLanguage={changeLanguage}
-    />
+    <>
+      <EtfExplorer
+        onBack={() => setEtfMode(false)}
+        user={user}
+        savedEtfs={savedEtfs}
+        onLogin={(loggedIn) => {
+          // Use the full handleLogin flow so Portfolio view works immediately after switch
+          handleLogin(loggedIn);
+        }}
+        onSwitchToPortfolio={() => setEtfMode(false)}
+        onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
+        onSettings={() => setShowSettings(true)}
+        displayMode={displayMode}
+        onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
+        railOpen={railOpen}
+        onToggleRail={() => setRailOpen(v => !v)}
+        uiTheme={uiTheme}
+        onToggleTheme={toggleTheme}
+        uiLanguage={uiLanguage}
+        onChangeLanguage={changeLanguage}
+      />
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)}
+          dataSource={dataSource} setDataSource={setDataSource}
+          avApiKey={avApiKey} setAvApiKey={setAvApiKey}
+          onSave={async () => {
+            try {
+              if (user) await userApi.saveSettings(user.id, {
+                data_source: dataSource,
+                api_keys: { alphavantage: avApiKey, ai: { provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+                display_ccy: currency,
+              });
+              setShowSettings(false);
+            } catch(e) {}
+          }}
+          avUsage={avUsage}
+          aiProvider={aiProvider}   setAiProvider={setAiProvider}
+          aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
+          aiModel={aiModel}         setAiModel={setAiModel}
+          aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
+          userId={user?.id}/>
+      )}
+    </>
   );
   if (!user) return <LoginScreen onLogin={handleLogin} onEtfMode={() => setEtfMode(true)}/>;
 
@@ -8920,14 +8967,7 @@ export default function App() {
               { key:"historic",     icon:<Clock size={14}/>,           label:t("nav.historicCourses") },
             ].map(tab => (
               <button key={tab.key} onClick={() => handleTab(tab.key)}
-                style={{
-                  display:"flex", alignItems:"center", gap:7,
-                  padding:"7px 14px", border:"none", cursor:"pointer",
-                  background: activeTab===tab.key ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: activeTab===tab.key ? THEME.accent : THEME.text3,
-                  borderRadius:9, fontSize:12,
-                  fontWeight: activeTab===tab.key ? 700 : 500,
-                  fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
+                className={"app-nav-tab" + (activeTab===tab.key ? " active" : "")}>
                 {tab.icon}{tab.label}
               </button>
             ))}
@@ -8942,14 +8982,7 @@ export default function App() {
               { key:"rebalance",   icon:<Target size={14}/>,  label:t("nav.rebalance")   },
             ].map(tab => (
               <button key={tab.key} onClick={() => handleTab(tab.key)}
-                style={{
-                  display:"flex", alignItems:"center", gap:7,
-                  padding:"7px 14px", border:"none", cursor:"pointer",
-                  background: activeTab===tab.key ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: activeTab===tab.key ? THEME.accent : THEME.text3,
-                  borderRadius:9, fontSize:12,
-                  fontWeight: activeTab===tab.key ? 700 : 500,
-                  fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
+                className={"app-nav-tab" + (activeTab===tab.key ? " active" : "")}>
                 {tab.icon}{tab.label}
               </button>
             ))}

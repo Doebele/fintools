@@ -178,7 +178,15 @@
     "avgPerfWeighted": "Ø Performance (gewichtet)",
     "gainersLosers": "Gewinner / Verlierer",
     "topHoldings": "Top-Positionen",
-    "viewMode": "Ansichtsmodus"
+    "viewMode": "Ansichtsmodus",
+    "colRank": "#",
+    "colSymbol": "Symbol",
+    "colName": "Name",
+    "colWeight": "Gewicht",
+    "colTrend": "Trend",
+    "colPrice": "Preis",
+    "colDivYield": "Div.-Rendite",
+    "colExDate": "Ex-Tag"
   },
   "common": {
     "save": "Speichern",
