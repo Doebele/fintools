@@ -8,14 +8,29 @@ import * as d3 from "d3";
 // Persistent UI settings store (survives ETF switches within session)
 const _divCalSettings = { chartView: "calendar", fictValue: 10000, viewYear: new Date().getFullYear() };
 
+// Use CSS custom properties so Analytics respects light/dark theme
 const THEME = {
-  bg: "#0d0e12", surface: "#13141a", surface2: "#1a1b23",
-  border: "rgba(255,255,255,0.10)", border2: "rgba(255,255,255,0.06)",
-  text1: "#f0f1f5", text2: "#b4bfcc", text3: "#8896a8",
-  accent: "#3b82f6", green: "#4ade80", red: "#f87171", yellow: "#fbbf24",
-  mono: "'JetBrains Mono',monospace", font: "'Syne',sans-serif",
+  bg:      "var(--bg)",
+  surface: "var(--surface)",
+  surface2:"var(--surface-2)",
+  border:  "var(--border)",
+  border2: "var(--border-2)",
+  text1:   "var(--fg-1)",
+  text2:   "var(--fg-2)",
+  text3:   "var(--fg-3)",
+  accent:  "var(--accent)",
+  green:   "var(--green)",
+  red:     "var(--red)",
+  yellow:  "var(--yellow)",
+  mono:    "var(--font-mono)",
+  font:    "var(--font-sans)",
 };
 const C = THEME;
+// Resolve a CSS custom property to its computed value (needed for D3 SVG attrs)
+const getCSSVar = (name) =>
+  typeof document !== "undefined"
+    ? getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+    : "";
 
 const fmt$ = (v, dec=0) => v==null?"—":`$${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:dec,maximumFractionDigits:dec})}`;
 
@@ -29,14 +44,14 @@ const InfoTip = ({ text, title, width=220, side="top" }) => {
     <span style={{ position:"relative", display:"inline-flex", alignItems:"center", marginLeft:3 }}
       onMouseEnter={() => setVis(true)}
       onMouseLeave={() => setVis(false)}>
-      <Info size={11} style={{ color:"rgba(255,255,255,0.28)", cursor:"help", flexShrink:0 }}/>
+      <Info size={11} style={{ color:"var(--fg-3)", cursor:"help", flexShrink:0 }}/>
       {vis && (
         <div style={{
           position:"absolute", left:"50%", ...posStyle,
           transform:"translateX(-50%)", width, zIndex:200,
-          background:"#1a1d2e", border:`1px solid ${C.border}`,
+          background:"var(--surface)", border:`1px solid var(--border)`,
           borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-          boxShadow:"0 6px 24px rgba(0,0,0,0.6)",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.18)",
         }}>
           {title && <div style={{ fontSize:10, color:C.text1, fontWeight:700, marginBottom:4 }}>{title}</div>}
           <div style={{ fontSize:10, color:C.text2, lineHeight:1.55 }}>{text}</div>
@@ -100,7 +115,7 @@ function computeCorrelation(seriesA, seriesB) {
 }
 
 function corrColor(r) {
-  if (r == null) return "rgba(255,255,255,0.05)";
+  if (r == null) return "var(--surface-2)";
   if (r >= 0.7) return `rgba(248,113,113,${0.3+r*0.4})`; // red = high corr = bad
   if (r >= 0.3) return `rgba(251,191,36,${0.2+r*0.3})`;  // yellow = medium
   if (r >= 0)   return `rgba(74,222,128,${0.15+r*0.4})`; // green = low corr = good
@@ -194,6 +209,8 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
   const [range,    setRange]      = useState("2y");
   const [err,      setErr]        = useState(null);
   const [hovered,  setHovered]    = useState(null); // [i, j]
+  const [containerW, setContainerW] = useState(0);
+  const wrapRef = useRef(null);
 
   // Deduplicate symbols from nodes
   const symbols = useMemo(() =>
@@ -216,6 +233,15 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
+  // Track available width from the outer wrapper (always rendered, not inside loading gate)
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setContainerW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Build correlation matrix
   const matrix = useMemo(() => {
     if (!Object.keys(histData).length) return null;
@@ -237,8 +263,16 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
     return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : null;
   }, [matrix]);
 
-  const cellSize = Math.min(44, Math.floor(560 / Math.max(symbols.length, 1)));
-  const labelW   = 70;
+  const labelW  = 70;
+  const PAD     = 44;  // 22px left + 22px right padding
+  const n       = Math.max(symbols.length, 1);
+  // Width-driven cell size: fill the available container width exactly
+  const cellSize = Math.floor(
+    Math.min(44, Math.max(8, containerW > 0
+      ? (containerW - labelW - PAD) / n
+      : 560 / n
+    ))
+  );
 
   if (!symbols.length) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", color:C.text3 }}>
@@ -247,7 +281,7 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
   );
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+    <div ref={wrapRef} style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       <SectionHeader
         title="Correlation Matrix"
         subtitle={`Daily returns correlation · ${symbols.length} positions · ${range === "2y" ? "2 years" : "1 year"} of history`}
@@ -307,7 +341,7 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
       )}
 
       {!loading && matrix && (
-        <div style={{ flex:1, overflowAuto:"auto", padding:"0 22px 22px", overflowY:"auto" }}>
+        <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", padding:"0 22px 22px" }}>
           <div style={{ display:"flex" }}>
             {/* Y-axis labels */}
             <div style={{ display:"flex", flexDirection:"column", paddingTop:cellSize }}>
@@ -350,16 +384,16 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
                         onMouseLeave={()=>setHovered(null)}
                         style={{
                           width:cellSize, height:cellSize,
-                          background:i===j?"rgba(255,255,255,0.08)":corrColor(v),
-                          border:"1px solid rgba(0,0,0,0.3)",
+                          background:i===j?"var(--surface-2)":corrColor(v),
+                          border:"1px solid var(--border)",
                           display:"flex", alignItems:"center", justifyContent:"center",
                           cursor:"default", transition:"all 0.08s",
-                          outline:isHov?"2px solid rgba(255,255,255,0.5)":undefined,
+                          outline:isHov?"2px solid var(--fg-1)":undefined,
                           opacity:hovered&&!isRowCol&&!isHov ? 0.4 : 1,
                         }}>
                         {v != null && cellSize >= 30 && (
                           <span style={{ fontFamily:C.mono, fontSize:Math.min(9, cellSize*0.28),
-                            color:"rgba(255,255,255,0.9)", fontWeight:700 }}>
+                            color:"var(--fg-1)", fontWeight:700 }}>
                             {i===j ? "1" : v.toFixed(2)}
                           </span>
                         )}
@@ -716,7 +750,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
     g.append("g")
       .attr("class", "grid")
       .call(d3.axisLeft(yScale).ticks(5).tickFormat("").tickSize(-W))
-      .selectAll("line").attr("stroke","rgba(255,255,255,0.05)");
+      .selectAll("line").style("stroke","var(--border-2)");
     g.select(".grid .domain").remove();
 
     // ── Fan Chart: 3 konzentrische Bänder (von außen nach innen) ─────────────
@@ -786,7 +820,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
     g.append("line")
       .attr("x1", 0).attr("x2", W)
       .attr("y1", yScale(totalValueUSD)).attr("y2", yScale(totalValueUSD))
-      .attr("stroke","rgba(255,255,255,0.15)").attr("stroke-dasharray","6,4");
+      .style("stroke","var(--fg-3)").attr("stroke-dasharray","6,4").style("opacity","0.5");
 
     // Axes
     g.append("g").attr("transform",`translate(0,${H})`)
@@ -794,20 +828,20 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
         const yr = Math.round(i/12);
         return yr > 0 && i%(12)===0 ? `Y${yr}` : "";
       }))
-      .selectAll("text").attr("fill",C.text3).attr("font-size",9);
+      .selectAll("text").style("fill","var(--fg-3)").attr("font-size",9);
 
     g.append("g")
       .call(d3.axisLeft(yScale).ticks(5).tickFormat(fmtY))
-      .selectAll("text").attr("fill",C.text3).attr("font-size",9);
+      .selectAll("text").style("fill","var(--fg-3)").attr("font-size",9);
 
-    g.selectAll(".domain").attr("stroke","rgba(255,255,255,0.1)");
-    g.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
+    g.selectAll(".domain").style("stroke","var(--border)");
+    g.selectAll(".tick line").style("stroke","var(--border)");
 
     // ── Interactive crosshair overlay ─────────────────────────────────────
     const crosshair = g.append("line")
       .attr("class","crosshair")
       .attr("y1",0).attr("y2",H)
-      .attr("stroke","rgba(255,255,255,0.25)").attr("stroke-width",1)
+      .style("stroke","var(--fg-2)").attr("stroke-width",1)
       .attr("stroke-dasharray","4,3").attr("opacity",0).attr("pointer-events","none");
 
     const overlay = svg.append("rect")
@@ -849,9 +883,9 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
   }, [result, totalValueUSD, years]);
 
   const inp = {
-    background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-    borderRadius:7, color:C.text1, padding:"5px 10px", fontSize:12,
-    fontFamily:C.mono, outline:"none", width:"100%",
+    background:"var(--surface-2)", border:`1px solid var(--border)`,
+    borderRadius:7, color:"var(--fg-1)", padding:"5px 10px", fontSize:12,
+    fontFamily:"var(--font-mono)", outline:"none", width:"100%",
   };
   const lbl = { fontSize:10, color:C.text3, marginBottom:4, display:"block" };
 
@@ -927,7 +961,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
                 ].map(m => (
                   <button key={m.key} onClick={()=>setTaxMode(m.key)} style={{
                     padding:"5px 8px", borderRadius:6, border:`1px solid ${taxMode===m.key?C.accent:C.border}`,
-                    background:taxMode===m.key?"rgba(59,130,246,0.12)":"rgba(255,255,255,0.02)",
+                    background:taxMode===m.key?"rgba(59,130,246,0.12)":"transparent",
                     color:taxMode===m.key?C.text1:C.text3,
                     fontFamily:"inherit", cursor:"pointer", textAlign:"left",
                   }}>
@@ -1201,10 +1235,10 @@ function DriftBar({ curPct, tgtPct, threshold, aColor }) {
     <div style={{position:'relative',height:14,width:'100%',display:'flex',alignItems:'center'}}>
       {/* Background track */}
       <div style={{position:'absolute',left:0,top:5,right:0,height:4,
-        background:'rgba(255,255,255,0.07)',borderRadius:3}}/>
+        background:'var(--surface-2)',borderRadius:3}}/>
       {/* Current position bar */}
       <div style={{position:'absolute',left:0,top:5,height:4,borderRadius:3,
-        width:`${curX}%`,background:tgtPct>0?C.accent:'rgba(255,255,255,0.25)',
+        width:`${curX}%`,background:tgtPct>0?C.accent:'var(--border)',
         transition:'width 0.4s'}}/>
       {/* Drift zone highlight — only the gap, not the whole bar */}
       {tgtPct > 0 && zoneW > 0.5 && (
@@ -1220,7 +1254,7 @@ function DriftBar({ curPct, tgtPct, threshold, aColor }) {
       {tgtPct > 0 && (
         <div style={{position:'absolute',top:2,width:2,height:10,borderRadius:1,
           left:`${tgtX}%`,transform:'translateX(-50%)',
-          background:overThreshold?aColor:'rgba(255,255,255,0.4)',
+          background:overThreshold?aColor:'var(--fg-3)',
           boxShadow:overThreshold?`0 0 4px ${aColor}`:undefined,
           transition:'all 0.3s'}}/>
       )}
@@ -1483,8 +1517,8 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {!user && <Pill label="Sign in to save targets" color={C.yellow}/>}
             {/* View tab buttons */}
-            <div style={{ display:"flex", background:"rgba(255,255,255,0.04)",
-              borderRadius:8, padding:2, border:`1px solid ${C.border}` }}>
+            <div style={{ display:"flex", background:"var(--surface-2)",
+              borderRadius:8, padding:2, border:`1px solid var(--border)` }}>
               {[
                 { key:"allocations", icon:<PieChart size={12}/>,        label:"Allocations" },
                 { key:"plan",        icon:<ArrowLeftRight size={12}/>,   label:"Plan" },
@@ -1606,7 +1640,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   <button key={m} onClick={()=>setMode(m)} style={{
                     padding:"3px 7px", borderRadius:5,
                     border:`1px solid ${mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.border}`,
-                    background:mode===m?"rgba(255,255,255,0.08)":"transparent",
+                    background:mode===m?"var(--surface-2)":"transparent",
                     color:mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.text3,
                     fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
                     textTransform:"uppercase",
@@ -1625,15 +1659,15 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   onMouseEnter={e=>{const t=e.currentTarget.querySelector(".tt");if(t)t.style.display="block";}}
                   onMouseLeave={e=>{const t=e.currentTarget.querySelector(".tt");if(t)t.style.display="none";}}>
                   <svg width={13} height={13} viewBox="0 0 16 16" fill="none" style={{ cursor:"help", flexShrink:0 }}>
-                    <circle cx="8" cy="8" r="7.5" stroke="rgba(255,255,255,0.25)" strokeWidth="1"/>
-                    <text x="8" y="11.5" textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.4)" fontFamily="sans-serif" fontWeight="700">?</text>
+                    <circle cx="8" cy="8" r="7.5" stroke="var(--border)" strokeWidth="1"/>
+                    <text x="8" y="11.5" textAnchor="middle" fontSize="10" fill="var(--fg-3)" fontFamily="sans-serif" fontWeight="700">?</text>
                   </svg>
                   <div className="tt" style={{
                     display:"none", position:"absolute", left:"50%", bottom:"calc(100% + 6px)",
                     transform:"translateX(-50%)", width:220, zIndex:100,
-                    background:"#1e2030", border:`1px solid ${C.border}`,
+                    background:"var(--surface)", border:`1px solid var(--border)`,
                     borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-                    boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
+                    boxShadow:"0 4px 20px rgba(0,0,0,0.18)",
                   }}>
                     <div style={{ fontSize:10, color:C.text1, fontWeight:700, marginBottom:4 }}>
                       Drift Threshold
@@ -1649,9 +1683,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               </div>
               <input type="number" value={threshold} min={1} max={30} step={1}
                 onChange={e=>setThreshold(+e.target.value)}
-                style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, width:52, outline:"none" }}/>
+                style={{ background:"var(--surface-2)", border:`1px solid var(--border)`,
+                  borderRadius:6, color:"var(--fg-1)", padding:"4px 8px", fontSize:12,
+                  fontFamily:"var(--font-mono)", width:52, outline:"none" }}/>
               <span style={{ fontSize:11, color:C.text3 }}>%</span>
             </div>
 
@@ -1659,8 +1693,8 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
               <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Rounding:</label>
               <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
-                style={{ flex:1, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.text2, padding:"4px 7px", fontSize:11,
+                style={{ flex:1, background:"var(--surface-2)", border:`1px solid var(--border)`,
+                  borderRadius:6, color:"var(--fg-2)", padding:"4px 7px", fontSize:11,
                   fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
                 <option value="precise">Precise</option>
                 <option value="hundreds">± 100</option>
@@ -1676,9 +1710,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               </label>
               <input type="number" value={cashAdd} min={0} step={100}
                 onChange={e=>{ setCashAdd(+e.target.value); if(+e.target.value>0) setCashExpanded(true); }}
-                style={{ flex:1, background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}`,
-                  borderRadius:6, color:C.text1, padding:"4px 8px", fontSize:12,
-                  fontFamily:C.mono, outline:"none" }}/>
+                style={{ flex:1, background:"var(--surface-2)", border:`1px solid var(--border)`,
+                  borderRadius:6, color:"var(--fg-1)", padding:"4px 8px", fontSize:12,
+                  fontFamily:"var(--font-mono)", outline:"none" }}/>
             </div>
 
             {/* Row 5: Cash Allocation expandable */}
@@ -1726,7 +1760,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                               </div>
                             </div>
                             <div style={{ height:3, borderRadius:2,
-                              background:"rgba(255,255,255,0.07)", overflow:"hidden" }}>
+                              background:"var(--surface-2)", overflow:"hidden" }}>
                               <div style={{ height:"100%", width:`${barW}%`,
                                 background:C.green, borderRadius:2, opacity:0.7,
                                 transition:"width 0.3s" }}/>
@@ -1870,7 +1904,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               {/* 4. Bar graph */}
               <div style={{ flex:1, minWidth:0, paddingRight:4 }}>
                 <div style={{ height:5, borderRadius:3,
-                  background:"rgba(255,255,255,0.06)", overflow:"hidden" }}>
+                  background:"var(--surface-2)", overflow:"hidden" }}>
                   <div style={{ height:"100%", borderRadius:3, background:aColor, opacity:0.75,
                     width:`${type==="BUY"
                       ? (totalBuy>0?Math.abs(a.diffUSD)/totalBuy*100:0)
@@ -1913,7 +1947,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   </div>
                 )}
                 <div style={{ padding:"3px 10px", borderRadius:6,
-                  background:"rgba(255,255,255,0.06)", border:`1px solid ${C.border}`,
+                  background:"var(--surface-2)", border:`1px solid var(--border)`,
                   fontSize:10, color:C.text3, fontFamily:C.mono }}>
                   Net {fmtSym((totalBuy-totalSell)*cashRate,0)}
                 </div>
@@ -2069,9 +2103,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                       value={t.tickerPct||""}
                       placeholder="0"
                       onChange={e=>setTarget(pos.symbol, +e.target.value)}
-                      style={{ width:56, background:"rgba(255,255,255,0.05)",
-                        border:`1px solid ${C.border}`, borderRadius:5, color:C.text1,
-                        padding:"3px 6px", fontSize:12, fontFamily:C.mono, outline:"none",
+                      style={{ width:56, background:"var(--surface-2)",
+                        border:`1px solid var(--border)`, borderRadius:5, color:"var(--fg-1)",
+                        padding:"3px 6px", fontSize:12, fontFamily:"var(--font-mono)", outline:"none",
                         textAlign:"right" }}/>
                     <span style={{ fontSize:10, color:C.text3, width:14 }}>%</span>
                   </div>
@@ -2350,7 +2384,7 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
                 transform:isHov?"scaleY(1.04)":"scaleY(1)",
                 transformOrigin:"bottom",
                 filter:isHov?"brightness(1.15)":"brightness(1)",
-                background:hasDivs?"transparent":"rgba(255,255,255,0.04)" }}>
+                background:hasDivs?"transparent":"var(--surface-2)" }}>
                 {m.events.map(ev => {
                   const evFrac   = ev.totalUSD && m.totalUSD > 0 ? ev.totalUSD / m.totalUSD : 0;
                   const isSegHov = isHov && hovSym === ev.symbol;
@@ -2393,8 +2427,8 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
             </div>
           ))}
           <div style={{ display:"flex", alignItems:"center", gap:4, marginLeft:"auto" }}>
-            <div style={{ width:14, height:8, borderRadius:2, background:"rgba(255,255,255,0.2)",
-              border:"1px dashed rgba(255,255,255,0.2)" }}/>
+            <div style={{ width:14, height:8, borderRadius:2, background:"var(--border)",
+              border:"1px dashed var(--border)" }}/>
             <span style={{ fontSize:9, color:C.text3 }}>Estimated</span>
           </div>
         </div>
@@ -2543,7 +2577,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {/* View toggle */}
             <div style={{ display:"flex", gap:2, padding:"2px", borderRadius:8,
-              background:"rgba(255,255,255,0.05)", border:`1px solid ${C.border}` }}>
+              background:"var(--surface-2)", border:`1px solid var(--border)` }}>
               {[["calendar","📅 Calendar"],["barchart","📊 Bar Chart"]].map(([v,label]) => (
                 <button key={v} onClick={()=>setChartView(v)} style={{
                   padding:"4px 10px", borderRadius:6, border:"none",
@@ -2716,7 +2750,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                     {/* Mini income bar */}
                     {hasEvt && (
                       <div style={{ marginTop:6, height:2, borderRadius:1,
-                        background:"rgba(255,255,255,0.08)", overflow:"hidden" }}>
+                        background:"var(--surface-2)", overflow:"hidden" }}>
                         <div style={{ height:"100%", borderRadius:1,
                           width:`${Math.min(100,(m.totalUSD/Math.max(...monthly.map(x=>x.totalUSD),0.01))*100)}%`,
                           background:C.accent, opacity:0.6 }}/>

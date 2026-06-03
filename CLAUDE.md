@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Self-hosted portfolio tracker. Node 18 + Express + better-sqlite3 backend talking to a Vite-built React 18 SPA, both packaged as Docker containers and orchestrated via `docker-compose`. Designed to run on a Synology NAS but works anywhere Docker does.
 
-There are **no tests, no linter, no TypeScript, no CI pipeline**. The repo is two large files (`backend/server.js` ~2,300 lines, `frontend/src/App.jsx` ~8,100 lines) plus Docker plumbing.
+There are **no tests, no linter, no TypeScript, no CI pipeline**. The repo is two large files (`backend/server.js` ~2,600 lines, `frontend/src/App.jsx` ~9,200 lines) plus Docker plumbing.
+
+The active feature branch is **`feat/portfolio-pal-ui`** — this adds i18n (DE/EN), light/dark theming, and the ETF Screener view.
 
 ## Common commands
 
@@ -87,20 +89,49 @@ Errors are normalised back to three user-visible messages: `"Yahoo Finance rate 
 
 #### Caching layers
 
-- `quotes_cache` — raw Yahoo JSON blobs, TTL via `QUOTE_TTL_MIN` (default 5 min for daily, 15 min for intraday)
+- `quotes_cache` — raw Yahoo JSON blobs, TTL via `QUOTE_TTL_MIN` (default 5 min for daily, 15 min for intraday). Cache key: `symbol` for default 2y range, `symbol_r{range}` for other ranges, `symbol_{interval}` for intraday.
 - `parsed_quotes` — compact per-symbol row used by the batch endpoint
 - `fx_cache` — FX rates, TTL `FX_TTL_MIN` (default 60 min)
+- `etf_holdings_cache` — ETF holdings JSON, 24h TTL
+- `etf_quote_summary_cache` — compact `{price, changePct, currency}` per symbol; smart TTL (60 min market hours, 24h off-hours). Written by both the summary batch endpoint and the raw quote endpoint.
+- `etf_search_cache` — ETF search results keyed by normalised query, 60 min TTL
 - `dedupFetch(key, fn)` — in-flight request coalescing so a burst of concurrent calls for the same symbol only triggers one upstream fetch
+
+`POST /api/etf/quotes/summary` — batch endpoint replacing per-symbol quote fetching in the ETF Screener. Reads from `etf_quote_summary_cache` → `quotes_cache` → Yahoo (three-level hierarchy). `extractSummaryFromRaw(raw)` on the backend mirrors the frontend's `extractQuoteFromRaw`.
 
 When debugging "stale data" issues, first check `/api/stats` for `cacheHits`/`cacheMisses`, then look at `updated_at` in the relevant `*_cache` table.
 
 ### Frontend (`frontend/src/App.jsx`)
 
-Single-file React 18 app, ~8,100 lines. Navigation:
+Single-file React 18 app, ~9,200 lines. Navigation:
 
-- Search for `// ════` banners — top-level components (`LoginScreen`, `Rail`, `TreeMapView`, `BarChartView`, `Tooltip`, `PerformanceView`, etc.)
+- Search for `// ════` banners — top-level components (`LoginScreen`, `Rail`, `EtfRail`, `EtfExplorer`, `TreeMapView`, `BarChartView`, `Tooltip`, `PerformanceView`, etc.)
 - The router-equivalent is `activeTab` (`"holdings" | "chart" | "performance" | "transactions" | "correlation" | "montecarlo" | "rebalance" | "calendar" | "dividends"`) — search `activeTab === "X"` to find each tab's render
+- When `etfMode === true` (set at App root), the entire view switches to `EtfExplorer` instead of the portfolio views
 - Global state lives in the top-level `App` function; props are drilled (no Redux/Zustand/Context)
+
+#### i18n
+
+`react-i18next` with `i18next-browser-languagedetector`. Translation files at `frontend/src/i18n/{en,de}/common.json`. Initialised in `frontend/src/i18n/index.js`. Language preference stored in `localStorage` key `pp-lang` **and** server-side in the `settings` table JSON blob as `ui_language`.
+
+Usage: `const { t } = useTranslation(); t("section.key")`. All user-visible strings must go through `t()`.
+
+#### Theming
+
+CSS custom properties on `:root` / `[data-theme="dark"]` / `[data-theme="light"]`, injected by `useGlobalStyles()`. Theme toggled by setting `document.body.setAttribute("data-theme", ...)` and stored in `localStorage` key `pp-theme`. The `THEME` object holds only `var(--*)` references — changing the `data-theme` attribute is the only required action to switch themes.
+
+Light theme uses Application-Pal surface colours; chart/semantic colours (green/red/yellow/accent) are identical in both themes.
+
+#### CSS design system — official UI patterns
+
+Two classes defined in `useGlobalStyles()` must be used consistently across the entire app:
+
+- **`rail-density-row` + `rail-density-btn[.active]`** — Segmented control for 2–4 equal-width toggle options (e.g. Export/Import, Portfolio/ETF switcher, Compact/Relaxed, DE/EN, Light/Dark). Do **not** use custom inline styles for new toggles.
+- **`app-nav-tab[.active]`** — Navigation tab for horizontal tab bars (top nav bar, ETF inner nav). Transparent background, accent colour on active.
+
+#### ETF Screener
+
+`EtfExplorer` → `EtfRail` + `EtfHoldingsTable`. Lives entirely in `App.jsx`. `EtfRail` accepts the same `uiTheme`/`onToggleTheme`/`uiLanguage`/`onChangeLanguage`/`displayMode`/`onToggleDisplayMode` props as `Rail` so both sidebars stay in sync. `UserModal` is reused in `EtfRail` with `subtitle="ETF Screener"` and a `switchLabel` override. `SettingsModal` is rendered from the App root when `etfMode=true` (not inside `EtfExplorer`) so it can access all required state.
 
 #### Two in-memory caches at module scope
 
@@ -139,7 +170,8 @@ Key tables:
 - `users`, `portfolios` (soft-deleted), `transactions` (with `price_usd` denormalised)
 - `savings_plans` (recurring buys)
 - `quotes_cache`, `parsed_quotes`, `fx_cache`, `av_usage` (rate-limit tracking for Alpha Vantage)
-- `user_kv` (per-user JSON KV), `user_etfs` (saved ETF screener picks), `settings` (display currency + API keys)
+- `etf_holdings_cache`, `etf_quote_summary_cache`, `etf_search_cache` (ETF Screener caches — see Caching layers above)
+- `user_kv` (per-user JSON KV), `user_etfs` (saved ETF screener picks), `settings` (display currency, API keys, **and `ui_language`**)
 
 `make backup` produces gzipped SQL dumps in `backups/`. `make restore` recreates the DB from the newest dump.
 

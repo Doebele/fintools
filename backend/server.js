@@ -956,8 +956,12 @@ app.get('/api/quotes/yahoo/:symbol', async (req, res) => {
   const range        = req.query.range    || '2y';
   const interval     = req.query.interval || '1d';
   const isIntraday   = interval !== '1d';
-  const cacheKey     = isIntraday ? `${symbol}_intraday` : symbol;
-  const ttl          = isIntraday ? 15 : getQuoteTtlMin();  // intraday: 15 min; daily: smart TTL
+  // Include range in cache key so requests with different ranges don't collide.
+  // Keep the legacy key for the default '2y' range so existing cached rows are still used.
+  const cacheKey = isIntraday
+    ? `${symbol}_${interval}`
+    : (range === '2y' ? symbol : `${symbol}_r${range}`);
+  const ttl = isIntraday ? 15 : getQuoteTtlMin();  // intraday: 15 min; daily: smart TTL
 
   try {
     if (!forceRefresh) {
@@ -974,6 +978,15 @@ app.get('/api/quotes/yahoo/:symbol', async (req, res) => {
     if (!result) throw new Error('No data returned from Yahoo Finance');
     db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo', CURRENT_TIMESTAMP)")
       .run(cacheKey, JSON.stringify(data));
+    // Keep etf_quote_summary_cache in sync whenever we have fresh daily chart data
+    if (!isIntraday) {
+      const summary = extractSummaryFromRaw(data);
+      if (summary) {
+        db.prepare(`INSERT OR REPLACE INTO etf_quote_summary_cache (symbol, data, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)`)
+          .run(symbol, JSON.stringify(summary));
+      }
+    }
     res.json(data);
   } catch(e) {
     log.warn('Yahoo error:', symbol, e.message);
@@ -1359,14 +1372,79 @@ process.on('SIGINT',  () => { db.close(); process.exit(0); });
 // ETF EXPLORER ROUTES  — no auth required, public endpoints
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── DB table for ETF holdings cache ─────────────────────────────────────────
+// ── DB tables for ETF caches ─────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS etf_holdings_cache (
     ticker     TEXT    PRIMARY KEY,
     holdings   TEXT    NOT NULL,
     fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Compiled price + period-performance refs for each holding symbol.
+  -- Much smaller than full raw chart JSON; re-derived whenever quotes_cache is refreshed.
+  CREATE TABLE IF NOT EXISTS etf_quote_summary_cache (
+    symbol     TEXT    PRIMARY KEY,
+    data       TEXT    NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- ETF autocomplete search results keyed by normalised query string.
+  CREATE TABLE IF NOT EXISTS etf_search_cache (
+    query      TEXT    PRIMARY KEY,
+    results    TEXT    NOT NULL,
+    fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+// ── Helper: extract compiled price + period refs from a raw Yahoo chart blob ──
+// Mirrors extractQuoteFromRaw() in the frontend; runs server-side so the result
+// can be stored in etf_quote_summary_cache and served in one DB read.
+function extractSummaryFromRaw(raw) {
+  const result = raw?.chart?.result?.[0];
+  if (!result) return null;
+  const meta  = result.meta;
+  const price = meta.regularMarketPrice ?? meta.previousClose ?? null;
+  if (!price) return null;
+
+  const timestamps = result.timestamp ?? [];
+  const closes     = result.indicators?.quote?.[0]?.close ?? [];
+
+  // Binary-search for the closest non-null close at or before targetTs
+  const findRef = (targetTs) => {
+    let idx = -1;
+    for (let i = 0; i < timestamps.length; i++) {
+      if (timestamps[i] > targetTs) break;
+      if (closes[i] != null) idx = i;
+    }
+    return idx >= 0 ? closes[idx] : null;
+  };
+
+  const refs = {};
+  if (timestamps.length >= 2) {
+    const nowTs    = timestamps[timestamps.length - 1];
+    const ytdStart = Date.UTC(new Date().getUTCFullYear(), 0, 1) / 1000;
+    const ytdRef   = findRef(ytdStart);
+    if (ytdRef) refs['YTD'] = ytdRef;
+
+    const PERIODS = { '1W':7, '1M':30, '3M':91, '6M':182, '1Y':365, '2Y':730 };
+    for (const [key, days] of Object.entries(PERIODS)) {
+      const targetTs = nowTs - days * 86400;
+      if (timestamps[0] <= targetTs) {
+        const ref = findRef(targetTs);
+        if (ref) refs[key] = ref;
+      }
+    }
+  }
+
+  return {
+    price,
+    changePct:  meta.regularMarketChangePercent ?? null,
+    shortName:  meta.shortName  ?? null,
+    name:       meta.longName   ?? meta.shortName ?? null,
+    currency:   meta.currency   ?? 'USD',
+    refs:       Object.keys(refs).length > 0 ? refs : null,
+  };
+}
 
 // ── Predefined ETF list ──────────────────────────────────────────────────────
 const PREDEFINED_ETFS = [
@@ -1434,6 +1512,32 @@ const STATIC_HOLDINGS = {
   ],
 };
 
+// ── Yahoo Finance ETF holdings fetch (quoteSummary.topHoldings) ──────────────
+// Free, no API key required. Returns up to ~10 top holdings for most ETFs.
+async function fetchYahooEtfHoldings(ticker) {
+  try {
+    const data = await yahooFinance.quoteSummary(
+      ticker,
+      { modules: ['topHoldings'] },
+      { validateResult: false }
+    );
+    const raw = data?.topHoldings?.holdings;
+    if (!Array.isArray(raw) || raw.length < 2) return null;
+    return raw
+      .map(h => ({
+        symbol: h.symbol,
+        name:   h.holdingName || h.symbol,
+        weight: Math.round((parseFloat(h.holdingPercent || 0) * 10000)) / 100, // 0.1095 → 10.95%
+        source: 'yahoo',
+      }))
+      .filter(h => h.symbol && h.weight > 0)
+      .sort((a, b) => b.weight - a.weight);
+  } catch(e) {
+    log.warn(`Yahoo topHoldings failed for ${ticker}:`, e.message);
+    return null;
+  }
+}
+
 // ── Alpha Vantage ETF holdings fetch ─────────────────────────────────────────
 async function fetchAvEtfHoldings(ticker) {
   const AV_KEY = process.env.AV_API_KEY || process.env.ALPHAVANTAGE_API_KEY || '';
@@ -1472,20 +1576,34 @@ app.get('/api/etf/list', (_req, res) => {
   res.json({ etfs: PREDEFINED_ETFS });
 });
 
-// ── GET /api/etf/search?q= — live Yahoo + AV fallback ────────────────────────
+// ── GET /api/etf/search?q= — live Yahoo + AV fallback, cached 60 min ─────────
 app.get('/api/etf/search', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) return res.json({ results: PREDEFINED_ETFS });
 
-  const qUpper = q.toUpperCase();
+  const qUpper    = q.toUpperCase();
+  const cacheKey  = qUpper;
+  const SEARCH_TTL_MIN = 60; // cache search results for 1 hour
 
-  // 1) Always include matching presets first
+  // 1) Always include matching presets first (local, no network)
   const presets = PREDEFINED_ETFS.filter(e =>
     e.ticker.toUpperCase().includes(qUpper) || e.name.toUpperCase().includes(qUpper)
   );
   const seen = new Set(presets.map(e => e.ticker.toUpperCase()));
 
-  // 2) Live Yahoo Finance autocomplete
+  // 2) Check DB cache for live results
+  const cachedSearch = db.prepare(
+    `SELECT results FROM etf_search_cache
+     WHERE query=? AND datetime(fetched_at) > datetime('now', '-${SEARCH_TTL_MIN} minutes')`
+  ).get(cacheKey);
+
+  if (cachedSearch) {
+    const liveResults = JSON.parse(cachedSearch.results).filter(r => !seen.has(r.ticker.toUpperCase()));
+    const presetsMarked = presets.map(p => ({ ...p, isPreset: true }));
+    return res.json({ results: [...presetsMarked, ...liveResults], _cached: true });
+  }
+
+  // 3) Live Yahoo Finance autocomplete
   let liveResults = [];
   try {
     const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=15&newsCount=0&listsCount=0&enableFuzzyQuery=false&enableEnhancedTrivialQuery=true`;
@@ -1504,14 +1622,13 @@ app.get('/api/etf/search', async (req, res) => {
           source:   'yahoo_search',
           isPreset: false,
         }))
-        .filter(r => !seen.has(r.ticker.toUpperCase()))
         .slice(0, 12);
     }
   } catch(e) {
     log.warn('Yahoo ETF search failed:', e.message);
   }
 
-  // 3) AV fallback if Yahoo returned nothing
+  // 4) AV fallback if Yahoo returned nothing
   if (!liveResults.length) {
     try {
       const AV_KEY = process.env.AV_API_KEY || process.env.ALPHAVANTAGE_API_KEY || '';
@@ -1529,7 +1646,6 @@ app.get('/api/etf/search', async (req, res) => {
               source:   'av_search',
               isPreset: false,
             }))
-            .filter(r => !seen.has(r.ticker.toUpperCase()))
             .slice(0, 10);
         }
       }
@@ -1538,10 +1654,15 @@ app.get('/api/etf/search', async (req, res) => {
     }
   }
 
-  // Mark presets
-  const presetsMarked = presets.map(p => ({ ...p, isPreset: true }));
+  // 5) Persist live results to DB cache (excluding presets, those are local)
+  if (liveResults.length > 0) {
+    db.prepare(`INSERT OR REPLACE INTO etf_search_cache (query, results, fetched_at) VALUES (?, ?, CURRENT_TIMESTAMP)`)
+      .run(cacheKey, JSON.stringify(liveResults));
+  }
 
-  res.json({ results: [...presetsMarked, ...liveResults] });
+  const presetsMarked = presets.map(p => ({ ...p, isPreset: true }));
+  const deduped = liveResults.filter(r => !seen.has(r.ticker.toUpperCase()));
+  res.json({ results: [...presetsMarked, ...deduped] });
 });
 
 
@@ -1556,25 +1677,44 @@ app.get('/api/etf/:ticker/holdings', async (req, res) => {
   if (cached) {
     const ageH = (Date.now() - new Date(cached.fetched_at).getTime()) / 3600000;
     if (ageH < CACHE_TTL_HOURS) {
+      const cachedHoldings = JSON.parse(cached.holdings);
       return res.json({
-        ticker, holdings: JSON.parse(cached.holdings),
+        ticker, holdings: cachedHoldings,
         fetched_at: cached.fetched_at, from_cache: true,
+        data_source: cachedHoldings[0]?.source || 'unknown',
       });
     }
   }
 
-  const etfMeta = PREDEFINED_ETFS.find(e => e.ticker === ticker);
-  const source  = etfMeta?.source || 'av';
-  let holdings  = null;
+  let holdings = null;
+  let dataSource = 'unknown';
 
-  if (source === 'static') {
-    // European ETFs — use static data (no free API)
+  // 1) Yahoo Finance topHoldings — free, no key, works for most ETFs globally
+  holdings = await fetchYahooEtfHoldings(ticker);
+  if (holdings && holdings.length >= 2) {
+    dataSource = 'yahoo';
+  }
+
+  // 2) Alpha Vantage ETF_PROFILE — needs AV_API_KEY, returns up to 50 holdings
+  //    Use when Yahoo returns < 10 holdings AND AV key is available
+  const AV_KEY_AVAILABLE = !!(process.env.AV_API_KEY || process.env.ALPHAVANTAGE_API_KEY);
+  if ((!holdings || holdings.length < 10) && AV_KEY_AVAILABLE) {
+    const avHoldings = await fetchAvEtfHoldings(ticker);
+    avCountIncrement(1);
+    if (avHoldings && avHoldings.length > (holdings?.length || 0)) {
+      holdings = avHoldings;
+      dataSource = 'alphavantage';
+    }
+  }
+
+  // 3) Static data — European ETFs with hardcoded holdings (fallback)
+  if (!holdings || holdings.length < 2) {
     const key = ticker.replace('.DE','').replace('.SW','');
-    holdings = STATIC_HOLDINGS[key] || STATIC_HOLDINGS[ticker] || null;
-  } else {
-    // US ETFs — Alpha Vantage ETF_PROFILE
-    holdings = await fetchAvEtfHoldings(ticker);
-    avCountIncrement(1); // track AV usage
+    const staticH = STATIC_HOLDINGS[key] || STATIC_HOLDINGS[ticker] || null;
+    if (staticH && staticH.length > 0) {
+      holdings = staticH.map(h => ({ ...h, source: 'static' }));
+      dataSource = 'static';
+    }
   }
 
   if (!holdings || !holdings.length) {
@@ -1599,7 +1739,76 @@ app.get('/api/etf/:ticker/holdings', async (req, res) => {
     VALUES (?, ?, ?)
   `).run(ticker, JSON.stringify(holdings), now);
 
-  res.json({ ticker, holdings, fetched_at: now, from_cache: false });
+  res.json({ ticker, holdings, fetched_at: now, from_cache: false, data_source: dataSource });
+});
+
+// ── POST /api/etf/quotes/summary — compiled price + period refs for holding symbols ──
+// Body: { symbols: ["AAPL","MSFT",...] }
+// Returns: { results: { SYM: { price, changePct, refs, currency, name, shortName } } }
+//
+// Strategy (per symbol, fully parallel):
+//   1. etf_quote_summary_cache — hit → return immediately (TTL = smart quote TTL)
+//   2. quotes_cache             — hit → derive summary, store in etf_quote_summary_cache, return
+//   3. Yahoo Finance            — fetch 2y/1d chart, store in both caches, return
+//
+// This replaces up to 50 individual /api/quotes/yahoo/:symbol calls from the ETF screener
+// with a single HTTP round-trip and server-side parallelism.
+app.post('/api/etf/quotes/summary', async (req, res) => {
+  const { symbols = [] } = req.body ?? {};
+  if (!Array.isArray(symbols) || !symbols.length) return res.json({ results: {} });
+
+  const uniq    = [...new Set(symbols.map(s => s.toUpperCase()))].slice(0, 80);
+  const ttl     = getQuoteTtlMin();   // 60 min market hours, 24h off-hours
+  const results = {};
+
+  await Promise.all(uniq.map(async sym => {
+    try {
+      // ── 1. etf_quote_summary_cache ────────────────────────────────────────
+      const sumCached = db.prepare(
+        `SELECT data FROM etf_quote_summary_cache
+         WHERE symbol=? AND datetime(updated_at) > datetime('now', '-${ttl} minutes')`
+      ).get(sym);
+      if (sumCached) {
+        cacheHits++;
+        results[sym] = JSON.parse(sumCached.data);
+        return;
+      }
+
+      // ── 2. quotes_cache (full chart blob already stored for this symbol) ──
+      const rawCached = db.prepare(
+        `SELECT data FROM quotes_cache
+         WHERE symbol=? AND datetime(updated_at) > datetime('now', '-${ttl} minutes')`
+      ).get(sym);
+
+      let raw;
+      if (rawCached) {
+        cacheHits++;
+        raw = JSON.parse(rawCached.data);
+      } else {
+        // ── 3. Fetch from Yahoo (2y daily — same as portfolio sparkline default) ─
+        cacheMisses++;
+        raw = await dedupFetch(`yahoo_${sym}`, () => fetchYahoo(sym, '2y', '1d'));
+        if (raw.chart?.error) throw new Error(raw.chart.error.description ?? 'Yahoo error');
+        db.prepare(`INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at)
+                    VALUES (?, ?, 'yahoo', CURRENT_TIMESTAMP)`)
+          .run(sym, JSON.stringify(raw));
+      }
+
+      // Derive and persist compact summary
+      const summary = extractSummaryFromRaw(raw);
+      if (summary) {
+        db.prepare(`INSERT OR REPLACE INTO etf_quote_summary_cache (symbol, data, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)`)
+          .run(sym, JSON.stringify(summary));
+      }
+      results[sym] = summary ?? null;
+    } catch(e) {
+      log.warn(`etf/quotes/summary failed for ${sym}:`, e.message);
+      results[sym] = null;
+    }
+  }));
+
+  res.json({ results });
 });
 
 // ── GET /api/quotes/dividend/:symbol — annual dividend rate + next ex-date ────

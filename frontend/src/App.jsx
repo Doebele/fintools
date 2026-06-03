@@ -1,38 +1,46 @@
 /**
- * Portfolio Tracker v3 — Multi-User / Multi-Portfolio
+ * Portfolio Pal — Multi-User / Multi-Portfolio
  * React + D3 + Lucide Icons
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import * as d3 from "d3";
 import {
   PanelLeft, LayoutDashboard, BarChart2, List, Layers, GitMerge,
   RefreshCw, Settings, LogOut, Plus, CheckSquare, Square, Pencil,
-  User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle,
+  User, Lock, Eye, EyeOff, Trash2, Edit2, X, AlertCircle, AlertTriangle,
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
-  Gauge, Armchair, Info, Clock, FileText,
+  Gauge, Armchair, Info, Clock, FileText, Sun, Moon, Globe,
+  Pin, PinOff,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
+import { useTranslation, I18nextProvider } from "react-i18next";
+import i18n from "./i18n/index.js";
+import deFlagUrl from "round-flag-icons/flags/de.svg?url";
+import gbFlagUrl from "round-flag-icons/flags/gb.svg?url";
 
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
+// All values are CSS custom properties — actual colours defined in useGlobalStyles.
+// Switching themes updates :root / [data-theme] at the CSS level; no re-render needed.
 const THEME = {
-  bg:       "#0d0e12",
-  surface:  "#13141a",
-  surface2: "#1a1b23",
-  border:   "rgba(255,255,255,0.10)",
-  border2:  "rgba(255,255,255,0.06)",
-  text1:    "#f0f1f5",
-  text2:    "#b4bfcc",
-  text3:    "#8896a8",
-  accent:   "#3b82f6",
-  green:    "#4ade80",
-  red:      "#f87171",
-  yellow:   "#fbbf24",
-  font:     "'Syne', sans-serif",
-  mono:     "'JetBrains Mono', monospace",
-  serif:    "'DM Serif Display', Georgia, serif",
+  bg:       "var(--bg)",
+  surface:  "var(--surface)",
+  surface2: "var(--surface-2)",
+  border:   "var(--border)",
+  border2:  "var(--border-2)",
+  text1:    "var(--fg-1)",
+  text2:    "var(--fg-2)",
+  text3:    "var(--fg-3)",
+  accent:   "var(--accent)",
+  green:    "var(--green)",
+  red:      "var(--red)",
+  yellow:   "var(--yellow)",
+  font:     "var(--font-sans)",
+  mono:     "var(--font-mono)",
+  serif:    "var(--font-serif)",
 };
 
 const RAIL_COLLAPSED = 52;
@@ -53,7 +61,7 @@ function useGlobalStyles() {
     if (document.getElementById("ptv3-global")) return;
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=DM+Serif+Display:ital@0;1&display=swap";
+    link.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=DM+Serif+Display:ital@0;1&family=Fira+Sans:wght@400;500;600;700&display=swap";
     document.head.appendChild(link);
     const s = document.createElement("style");
     s.id = "ptv3-global";
@@ -61,20 +69,83 @@ function useGlobalStyles() {
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html { height: 100%; }
       body { height: 100%; overflow: hidden; }
-      
+
+      /* ── CSS Custom Properties — Dark theme (default) ── */
+      :root, [data-theme="dark"] {
+        --bg:        #0d0e12;
+        --surface:   #13141a;
+        --surface-2: #1a1b23;
+        --border:    rgba(255,255,255,0.10);
+        --border-2:  rgba(255,255,255,0.06);
+        --fg-1:      #f0f1f5;
+        --fg-2:      #b4bfcc;
+        --fg-3:      #8896a8;
+        --accent:    #3b82f6;
+        --accent-08: rgba(59,130,246,0.08);
+        --accent-15: rgba(59,130,246,0.15);
+        --accent-35: rgba(59,130,246,0.35);
+        --green:     #4ade80;
+        --red:       #f87171;
+        --yellow:    #fbbf24;
+        --font-sans:  'Syne', sans-serif;
+        --font-mono:  'JetBrains Mono', monospace;
+        --font-serif: 'DM Serif Display', Georgia, serif;
+        --scrollbar-thumb: rgba(255,255,255,0.12);
+        --shadow-modal: 0 32px 80px rgba(0,0,0,0.60);
+        --shadow-card:  0 4px 24px rgba(0,0,0,0.35);
+        /* Toggle colours */
+        --toggle-pill-bg:     rgba(0,0,0,0.25);
+        --toggle-neutral-bg:  rgba(255,255,255,0.12);
+        --toggle-orange-fg:   #fb923c;
+        --toggle-orange-bg:   rgba(249,115,22,0.22);
+        --toggle-blue-fg:     #3b82f6;
+        --toggle-blue-bg:     rgba(59,130,246,0.22);
+      }
+
+      /* ── CSS Custom Properties — Light theme ── */
+      [data-theme="light"] {
+        --bg:        #f7f7f5;
+        --surface:   #ffffff;
+        --surface-2: #f0f0ed;
+        --border:    rgba(15,17,22,0.10);
+        --border-2:  rgba(15,17,22,0.06);
+        --fg-1:      #15171c;
+        --fg-2:      #45505d;
+        --fg-3:      #7a8493;
+        --accent:    #3b82f6;
+        --accent-08: rgba(59,130,246,0.08);
+        --accent-15: rgba(59,130,246,0.15);
+        --accent-35: rgba(59,130,246,0.35);
+        --green:     #16a34a;
+        --red:       #dc2626;
+        --yellow:    #d97706;
+        --font-sans:  'Fira Sans', sans-serif;
+        --font-mono:  'JetBrains Mono', monospace;
+        --font-serif: 'DM Serif Display', Georgia, serif;
+        --scrollbar-thumb: rgba(15,17,22,0.15);
+        --shadow-modal: 0 24px 64px rgba(15,17,22,0.16);
+        --shadow-card:  0 1px 2px rgba(15,17,22,0.04), 0 4px 12px rgba(15,17,22,0.06);
+        /* Toggle colours — A11Y AA-compliant on light surfaces */
+        --toggle-pill-bg:     rgba(15,17,22,0.07);
+        --toggle-neutral-bg:  rgba(15,17,22,0.10);
+        --toggle-orange-fg:   #c2410c;   /* orange-700: 5.3:1 on white ✓ AA */
+        --toggle-orange-bg:   rgba(194,65,12,0.10);
+        --toggle-blue-fg:     #1d4ed8;   /* blue-700:   5.9:1 on white ✓ AA */
+        --toggle-blue-bg:     rgba(29,78,216,0.10);
+      }
+
+      /* ── Theme transition ── */
+      body { transition: background-color 0.2s ease, color 0.2s ease; }
+
       /* ── Pro mode (default): compact information density ── */
       :root { --fs-base: 13px; --fs-scale: 1; }
       body {
-        background: #0d0e12; color: #f0f1f5; font-family: 'Syne', sans-serif;
+        background: var(--bg); color: var(--fg-1); font-family: var(--font-sans);
         font-size: var(--fs-base); -webkit-font-smoothing: antialiased;
-        transition: font-size 0.25s ease;
+        transition: font-size 0.25s ease, background-color 0.2s ease, color 0.2s ease;
       }
-      
+
       /* ── Comfort mode: WCAG AA compliant scaling ── */
-      /* Zoom applied to body so ALL content scales uniformly:
-         - ETF Explorer, Portfolio View, Login, Modals — everything
-         - CSS zoom scales all px dimensions (inline styles, SVG, D3, etc.)
-         - width/height compensation prevents scrollbars from appearing */
       body[data-mode="comfort"] {
         --fs-base: 16px;
         zoom: 1.18;
@@ -82,29 +153,99 @@ function useGlobalStyles() {
         height: calc(100vh / 1.18);
         overflow: hidden;
       }
-      
+
       button { font-family: inherit; }
-      .mono { font-family: 'JetBrains Mono', monospace; }
+      .mono { font-family: var(--font-mono); }
       .spin { display: inline-block; animation: ptv3spin 0.9s linear infinite; }
       @keyframes ptv3spin { to { transform: rotate(360deg); } }
       @keyframes ptv3pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
       .pulse { animation: ptv3pulse 1.4s ease-in-out infinite; }
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+      ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
       input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
-      /* Rail button hover */
-      .rail-btn:hover { background: rgba(59,130,246,0.08) !important; color: #3b82f6 !important; }
-      .rail-btn:hover .rail-icon { color: #3b82f6 !important; }
-      /* Currency button hover */
-      .ccy-btn:hover { background: rgba(59,130,246,0.08) !important; }
+      /* ── Rail nav button ── */
+      .rail-btn {
+        display: flex; align-items: center; gap: 9px;
+        width: 100%; padding: 5px 10px; border-radius: 6px;
+        border: none; background: transparent; color: var(--fg-2);
+        font-size: 12.5px; font-weight: 500; cursor: pointer;
+        transition: background 0.12s ease, color 0.12s ease;
+        text-align: left; font-family: var(--font-sans);
+        white-space: nowrap; min-width: 0;
+      }
+      .rail-btn:hover { background: var(--accent-08) !important; color: var(--accent) !important; }
+      .rail-btn:hover .rail-icon { color: var(--accent) !important; }
+      .rail-btn.active { background: var(--accent-15) !important; color: var(--accent) !important; font-weight: 600 !important; }
+      .rail-btn.active .rail-icon { color: var(--accent) !important; }
+      /* ── Currency button hover ── */
+      .ccy-btn:hover { background: var(--accent-08) !important; }
       .ccy-btn:hover .ccy-flag { opacity: 1 !important; }
-      .ccy-btn:hover .ccy-label { color: #3b82f6 !important; }
-      .ccy-btn:hover .ccy-name  { color: #3b82f6 !important; }
-      /* Global smooth transitions for all interactive elements */
+      .ccy-btn:hover .ccy-label { color: var(--accent) !important; }
+      .ccy-btn:hover .ccy-name  { color: var(--accent) !important; }
+      /* Global smooth transitions */
       button { transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease; }
-      /* Tab active indicator slide animation */
       .tab-pill { transition: background 0.3s ease, color 0.3s ease, font-weight 0.15s; }
+      /* ── Rail footer section ── */
+      .rail-footer-section {
+        flex-shrink: 0; border-top: 1px solid var(--border);
+        padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 3px;
+      }
+      /* ── Density / theme / language segmented rows (App-Pal design system) ── */
+      .rail-density-row, .rail-theme-row {
+        display: flex; gap: 3px; padding: 2px;
+        background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border);
+      }
+      .rail-density-btn {
+        flex: 1; display: flex; align-items: center; justify-content: center;
+        gap: 5px; padding: 5px 8px; border-radius: 6px; border: none;
+        background: transparent; color: var(--fg-3); font-size: 11px; font-weight: 600;
+        cursor: pointer; transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+        font-family: inherit; white-space: nowrap;
+      }
+      .rail-density-btn:hover { color: var(--fg-1); }
+      .rail-density-btn.active {
+        background: var(--surface); color: var(--fg-1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+      }
+      /* ── Navigation tabs (top nav bar + ETF inner nav) ── */
+      .app-nav-tab {
+        display: flex; align-items: center; gap: 7px;
+        padding: 7px 14px; border: none; cursor: pointer;
+        background: transparent; color: var(--fg-3);
+        border-radius: 9px; font-size: 12px; font-weight: 500;
+        font-family: inherit;
+        transition: background 0.2s ease, color 0.2s ease, font-weight 0.12s;
+      }
+      .app-nav-tab:hover { background: var(--surface-2); color: var(--fg-1); }
+      .app-nav-tab.active {
+        background: rgba(59,130,246,0.15); color: var(--accent); font-weight: 700;
+      }
+      /* ── User account row ── */
+      .rail-user {
+        display: flex; align-items: center; gap: 9px;
+        padding: 6px 8px; border-radius: 8px; cursor: pointer;
+        border: 1px solid transparent;
+        transition: background 0.12s ease, border-color 0.12s ease;
+      }
+      .rail-user:hover { background: var(--surface-2); }
+      .rail-user-collapsed { justify-content: center; padding: 6px 4px; }
+      /* ── Avatar ── */
+      .avatar {
+        width: 28px; height: 28px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 11px; color: #fff;
+        background: var(--accent); flex-shrink: 0;
+      }
+      /* ── Rail collapsed tooltip ── */
+      .rail-tip {
+        position: fixed; background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600;
+        color: var(--fg-1); white-space: nowrap; pointer-events: none; z-index: 9999;
+        box-shadow: var(--shadow-card);
+        opacity: 0; transition: opacity 0.12s ease;
+      }
+      .rail-tip.visible { opacity: 1; }
     `;
     document.head.appendChild(s);
   }, []);
@@ -450,6 +591,7 @@ const PERIOD_TO_RANGE = {
 
 // ─── Small UI Helpers ─────────────────────────────────────────────────────────
 function RefreshIconButton({ onClick, loading }) {
+  const { t } = useTranslation();
   const [hov, setHov] = useState(false);
   return (
     <button
@@ -457,7 +599,7 @@ function RefreshIconButton({ onClick, loading }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       disabled={loading}
-      title="Refresh Quotes"
+      title={t("tips.refresh")}
       style={{
         display:"flex", alignItems:"center", gap:5,
         padding: hov ? "4px 10px" : "4px 7px",
@@ -711,6 +853,7 @@ function LoginScreen({ onLogin, onEtfMode }) {
 // RENAME PORTFOLIO MODAL
 // ════════════════════════════════════════════════════════════════════════════
 function RenamePortfolioModal({ portfolio, onClose, onRename }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(portfolio.name);
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState(null);
@@ -721,7 +864,7 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
     try {
       await onRename(portfolio.id, name.trim());
       onClose();
-    } catch(e) { setErr(e.message || "Fehler beim Umbenennen"); }
+    } catch(e) { setErr(e.message || t("portfolio.errRename")); }
     setBusy(false);
   };
 
@@ -732,7 +875,7 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
       <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`,
         borderRadius:16, padding:24, width:340, fontFamily:THEME.font }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-          <span style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>Portfolio umbenennen</span>
+          <span style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>{t("portfolio.rename")}</span>
           <button onClick={onClose} style={{ background:"none", border:"none", color:THEME.text3, cursor:"pointer" }}>
             <X size={18}/>
           </button>
@@ -750,14 +893,14 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
           <button onClick={onClose}
             style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1px solid ${THEME.border}`,
               background:"transparent", color:THEME.text2, fontSize:13, fontFamily:THEME.font, cursor:"pointer" }}>
-            Abbrechen
+            {t("common.cancel")}
           </button>
           <button onClick={handleSave} disabled={!name.trim() || busy}
             style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
               background:THEME.accent, color:"#fff", fontSize:13, fontWeight:600,
               fontFamily:THEME.font, cursor: name.trim() ? "pointer" : "not-allowed",
               opacity: name.trim() ? 1 : 0.5 }}>
-            {busy ? "…" : "Speichern"}
+            {busy ? "…" : t("portfolio.renameBtn")}
           </button>
         </div>
       </div>
@@ -776,6 +919,7 @@ const RESOLUTION_LABELS = {
 };
 
 function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone, onCreatePortfolio }) {
+  const { t } = useTranslation();
   const [tab,         setTab]         = useState("export");
   const [selPort,     setSelPort]     = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
   const [file,        setFile]        = useState(null);
@@ -862,12 +1006,6 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     if (isValidFile(f)) { setFile(f); setPreviewData(null); setResult(null); setImportErr(null); }
   };
 
-  const btnStyle = (active) => ({
-    flex:1, padding:"8px 0", border:"none", cursor:"pointer",
-    borderRadius:8, fontSize:12, fontWeight:700, fontFamily:"inherit",
-    background: active ? THEME.accent : "rgba(255,255,255,0.05)",
-    color: active ? "#fff" : THEME.text3, transition:"all 0.15s",
-  });
 
   const handleCreatePort = async () => {
     if (!newPortName.trim() || !user) return;
@@ -877,7 +1015,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       if (onCreatePortfolio) onCreatePortfolio(port);
       setSelPort(port.id);
       setNewPortName("");
-    } catch(e) { setImportErr(e.message || "Portfolio konnte nicht erstellt werden"); }
+    } catch(e) { setImportErr(e.message || t("portfolio.errCreate")); }
     setCreatingPort(false);
   };
 
@@ -889,14 +1027,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
         style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
           background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
         {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        <option value="new">＋ Neues Portfolio anlegen…</option>
+        <option value="new">{t("portfolio.createNew")}</option>
       </select>
       {isNewPort && (
         <div style={{ display:"flex", gap:8, marginTop:8 }}>
           <input
             autoFocus
             value={newPortName} onChange={e => setNewPortName(e.target.value)}
-            placeholder="Name des neuen Portfolios"
+            placeholder={t("portfolio.namePlaceholder")}
             onKeyDown={e => e.key === "Enter" && handleCreatePort()}
             style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1px solid ${THEME.accent}66`,
               background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}/>
@@ -905,7 +1043,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               background:THEME.accent, color:"#fff", fontSize:12, fontWeight:600,
               cursor: newPortName.trim() ? "pointer" : "not-allowed", fontFamily:"inherit",
               opacity: newPortName.trim() ? 1 : 0.5 }}>
-            {creatingPort ? "…" : "Anlegen"}
+            {creatingPort ? "…" : t("common.create")}
           </button>
         </div>
       )}
@@ -969,12 +1107,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <X size={16}/>
             </button>
           </div>
-          <div style={{ display:"flex", gap:6, padding:4, background:"rgba(0,0,0,0.3)", borderRadius:10, marginBottom:16 }}>
-            <button style={btnStyle(tab==="export")} onClick={()=>{ setTab("export"); setPreviewData(null); setResult(null); }}>
-              <FileDown size={13} style={{marginRight:5,verticalAlign:"middle"}}/> Export Excel
+          <div className="rail-density-row" style={{ marginBottom:16 }}>
+            <button className={"rail-density-btn" + (tab==="export" ? " active" : "")}
+              onClick={()=>{ setTab("export"); setPreviewData(null); setResult(null); }}>
+              <FileDown size={13}/> Export Excel
             </button>
-            <button style={btnStyle(tab==="import")} onClick={()=>{ setTab("import"); setPreviewData(null); setResult(null); }}>
-              <Upload size={13} style={{marginRight:5,verticalAlign:"middle"}}/> Import Excel
+            <button className={"rail-density-btn" + (tab==="import" ? " active" : "")}
+              onClick={()=>{ setTab("import"); setPreviewData(null); setResult(null); }}>
+              <Upload size={13}/> Import Excel
             </button>
           </div>
         </div>
@@ -1010,7 +1150,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
           {tab === "import" && !previewData && !result && (
             <div>
               {portSelectJsx}
-              {/* Template */}}
+              {/* Template */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                 padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
                 border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
@@ -1298,30 +1438,80 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 // RAIL NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
 // ─── Delayed tooltip for collapsed sidebar icons ──────────────────────────
-// ─── Inline info tooltip (? icon with popover) ───────────────────────────────
-const InfoTip = ({ text, title, width=220, side="top" }) => {
+// ── Shared tooltip bubble renderer (portal, fixed, always-above with smart fallback) ──
+function _tipBubble(pos, width, title, body) {
+  // Always prefer above; fall back to below only if within 80px of viewport top
+  const above = pos.y > 80;
+  const style = above
+    ? { bottom: window.innerHeight - pos.y }
+    : { top: pos.yBelow ?? (pos.y + 12) };
+  return createPortal(
+    <div style={{
+      position:"fixed", left:pos.x, ...style,
+      transform:"translateX(-50%)", width, zIndex:9999,
+      background:"var(--surface-2)", border:`1px solid var(--border)`,
+      borderRadius:8, padding:"8px 10px", pointerEvents:"none",
+      boxShadow:"var(--shadow-modal)",
+    }}>
+      {title && <div style={{ fontSize:10, color:"var(--fg-1)", fontWeight:700, marginBottom:4 }}>{title}</div>}
+      <div style={{ fontSize:10, color:"var(--fg-2)", lineHeight:1.55 }}>{body}</div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── InfoTip — ℹ icon hover tooltip (standalone controls) ─────────────────────
+const InfoTip = ({ text, i18nKey, title, width=220 }) => {
+  const { t } = useTranslation();
+  const resolvedText = i18nKey ? t(i18nKey) : text;
   const [vis, setVis] = useState(false);
-  const posStyle = side === "bottom"
-    ? { top:"calc(100% + 6px)", bottom:"auto" }
-    : { bottom:"calc(100% + 6px)", top:"auto" };
+  const [pos, setPos] = useState({ x:0, y:0 });
+  const spanRef = useRef(null);
+
+  const handleEnter = () => {
+    if (spanRef.current) {
+      const r = spanRef.current.getBoundingClientRect();
+      setPos({ x: r.left + r.width / 2, y: r.top - 6, yBelow: r.bottom + 6 });
+    }
+    setVis(true);
+  };
+
   return (
-    <span style={{ position:"relative", display:"inline-flex", alignItems:"center", marginLeft:3 }}
-      onMouseEnter={() => setVis(true)}
+    <span ref={spanRef}
+      style={{ position:"relative", display:"inline-flex", alignItems:"center", marginLeft:3 }}
+      onMouseEnter={handleEnter}
       onMouseLeave={() => setVis(false)}>
-      <Info size={11} style={{ color:"rgba(255,255,255,0.28)", cursor:"help", flexShrink:0 }}/>
-      {vis && (
-        <div style={{
-          position:"absolute", left:"50%", ...posStyle,
-          transform:"translateX(-50%)", width, zIndex:200,
-          background:"#1a1d2e", border:`1px solid ${THEME.border}`,
-          borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-          boxShadow:"0 6px 24px rgba(0,0,0,0.6)",
-          transition:"opacity 0.15s",
-        }}>
-          {title && <div style={{ fontSize:10, color:THEME.text1, fontWeight:700, marginBottom:4 }}>{title}</div>}
-          <div style={{ fontSize:10, color:THEME.text2, lineHeight:1.55 }}>{text}</div>
-        </div>
-      )}
+      <Info size={11} style={{ color:"var(--fg-3)", cursor:"help", flexShrink:0, opacity:0.55 }}/>
+      {vis && _tipBubble(pos, width, title, resolvedText)}
+    </span>
+  );
+};
+
+// ─── LabelTip — tooltip triggered by hovering the label text (no icon) ────────
+const LabelTip = ({ children, text, i18nKey, title, width=240 }) => {
+  const { t } = useTranslation();
+  const resolvedText = i18nKey ? t(i18nKey) : text;
+  const [vis, setVis] = useState(false);
+  const [pos, setPos] = useState({ x:0, y:0 });
+  const spanRef = useRef(null);
+
+  if (!resolvedText) return <>{children}</>;
+
+  const handleEnter = () => {
+    if (spanRef.current) {
+      const r = spanRef.current.getBoundingClientRect();
+      setPos({ x: r.left + r.width / 2, y: r.top - 6, yBelow: r.bottom + 6 });
+    }
+    setVis(true);
+  };
+
+  return (
+    <span ref={spanRef}
+      style={{ cursor:"help", borderBottom:"1px dotted var(--fg-3)", display:"inline" }}
+      onMouseEnter={handleEnter}
+      onMouseLeave={() => setVis(false)}>
+      {children}
+      {vis && _tipBubble(pos, width, title, resolvedText)}
     </span>
   );
 };
@@ -1344,10 +1534,10 @@ const SidebarTip = ({ children, label, open }) => {
         <div style={{
           position:"fixed", left:pos.x, top:pos.y,
           transform:"translateY(-50%)",
-          background:"#1e2030", border:`1px solid ${THEME.border}`,
+          background:"var(--surface-2)", border:"1px solid var(--border)",
           borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
-          color:THEME.text1, whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"0 4px 16px rgba(0,0,0,0.5)", pointerEvents:"none",
+          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
+          boxShadow:"var(--shadow-card)", pointerEvents:"none",
         }}>{label}</div>
       )}
     </div>
@@ -1363,7 +1553,7 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
     if (open) return;
     const rect = e.currentTarget.getBoundingClientRect();
     setTipPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
-    timerRef.current = setTimeout(() => setTip(true), 1200);
+    timerRef.current = setTimeout(() => setTip(true), 600);
   };
   const hideTip = () => {
     clearTimeout(timerRef.current);
@@ -1375,25 +1565,19 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
       <button onClick={onClick}
         onMouseEnter={showTip}
         onMouseLeave={hideTip}
-        className={active ? undefined : "rail-btn"}
+        className={"rail-btn" + (active ? " active" : "")}
         style={{
-          display:"flex", alignItems:"center", gap:10,
-          width:"100%", padding: open ? "9px 12px" : "9px 0",
           justifyContent: open ? "flex-start" : "center",
-          borderRadius:9, border:"none", cursor:"pointer",
-          background: active ? "rgba(59,130,246,0.15)" : "transparent",
-          color: active ? THEME.accent : (color || THEME.text3),
-          fontSize:12, fontWeight: active ? 700 : 500,
-          fontFamily:THEME.font, transition:"background 0.12s, color 0.12s",
-          position:"relative",
+          padding: open ? "5px 10px" : "7px 0",
+          color: active ? "var(--accent)" : (color || "var(--fg-2)"),
         }}>
         <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
-        {open && <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>}
-        {badge && (
+        {open && <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>}
+        {badge != null && open && (
           <span style={{
             marginLeft:"auto", flexShrink:0,
-            background:"rgba(59,130,246,0.2)", color:THEME.accent,
-            fontSize:9, fontWeight:700, borderRadius:4, padding:"2px 5px",
+            fontFamily:"var(--font-mono)",
+            color:"var(--fg-3)", fontSize:10, fontWeight:600,
           }}>{badge}</span>
         )}
       </button>
@@ -1401,11 +1585,10 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
         <div style={{
           position:"fixed", left:tipPos.x, top:tipPos.y,
           transform:"translateY(-50%)",
-          background:"#1e2030", border:`1px solid ${THEME.border}`,
-          borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
-          color:THEME.text1, whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
-          pointerEvents:"none",
+          background:"var(--surface-2)", border:"1px solid var(--border)",
+          borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:600,
+          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
+          boxShadow:"var(--shadow-card)", pointerEvents:"none",
         }}>{label}</div>
       )}
     </>
@@ -1421,6 +1604,119 @@ const Divider = () => (
   <div style={{ height:1, background:THEME.border2, margin:"6px 8px" }}/>
 );
 
+// ── User account popover (portal — anchored above the rail-user row) ──────────
+function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch, subtitle, switchLabel, switchIcon }) {
+  const { t } = useTranslation();
+  const ref = useRef(null);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (
+        ref.current && !ref.current.contains(e.target) &&
+        anchorRef.current && !anchorRef.current.contains(e.target)
+      ) onClose();
+    };
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
+  }, [onClose, anchorRef]);
+
+  const rect = anchorRef.current?.getBoundingClientRect();
+  // Anchor the modal's BOTTOM to just above the user row — independent of modal height
+  const bottom = window.innerHeight - (rect?.top ?? 0) + 8;
+  // Position to the right of the rail; clamp so it never overflows the right viewport edge
+  const left = Math.min(
+    (rect?.right ?? 0) + 10,
+    window.innerWidth - 256
+  );
+  const initials = (username || "U").slice(0, 2).toUpperCase();
+
+  return createPortal(
+    <div ref={ref} style={{
+      position:"fixed", left, bottom, top:"auto",
+      width:240, background:"var(--surface)", border:"1px solid var(--border)",
+      borderRadius:12, boxShadow:"var(--shadow-modal)", zIndex:9999, overflow:"hidden",
+      maxHeight:"calc(100vh - 24px)",
+    }} onClick={e => e.stopPropagation()}>
+      {/* Header */}
+      <div style={{ padding:"14px 16px 12px", borderBottom:"1px solid var(--border)",
+        display:"flex", alignItems:"center", gap:10 }}>
+        <div className="avatar" style={{ width:34, height:34, borderRadius:9, fontSize:13, fontWeight:700 }}>
+          {initials}
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {username}
+          </div>
+          <div style={{ fontSize:10, color:"var(--fg-3)", marginTop:1 }}>
+            {subtitle ?? `${portfolioCount} ${t("user.portfolios", { count: portfolioCount })}`}
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ padding:"6px 6px" }}>
+        {/* Switch user */}
+        <button onClick={onSwitch} style={{
+          display:"flex", alignItems:"center", gap:10, width:"100%",
+          padding:"8px 10px", borderRadius:7, border:"none",
+          background:"transparent", cursor:"pointer",
+          fontFamily:"var(--font-sans)", textAlign:"left",
+          color:"var(--fg-2)", transition:"background 0.1s",
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
+        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+          {switchIcon ?? <ArrowLeftRight size={14} style={{ flexShrink:0 }}/>}
+          <span style={{ fontSize:12, fontWeight:500 }}>{switchLabel ?? t("user.switchUser")}</span>
+        </button>
+
+        {/* Logout — two-step */}
+        {!confirmLogout ? (
+          <button onClick={() => setConfirmLogout(true)} style={{
+            display:"flex", alignItems:"center", gap:10, width:"100%",
+            padding:"8px 10px", borderRadius:7, border:"none",
+            background:"transparent", cursor:"pointer",
+            fontFamily:"var(--font-sans)", textAlign:"left",
+            color:"var(--fg-2)", transition:"background 0.1s",
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
+          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+            <LogOut size={14} style={{ flexShrink:0 }}/>
+            <span style={{ fontSize:12, fontWeight:500 }}>{t("user.logout")}</span>
+          </button>
+        ) : (
+          <div style={{ padding:"10px 10px 8px", borderRadius:8,
+            background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)",
+            margin:"2px 0" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+              <AlertTriangle size={13} style={{ color:"#f87171", flexShrink:0 }}/>
+              <span style={{ fontSize:11, color:"var(--fg-2)", lineHeight:1.4 }}>
+                {t("user.confirmLogout")}
+              </span>
+            </div>
+            <div style={{ display:"flex", gap:6 }}>
+              <button onClick={onLogout} style={{
+                flex:1, padding:"5px 0", borderRadius:6, border:"none",
+                background:"#ef4444", color:"#fff", cursor:"pointer",
+                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:600,
+              }}>{t("user.logout")}</button>
+              <button onClick={() => setConfirmLogout(false)} style={{
+                flex:1, padding:"5px 0", borderRadius:6,
+                border:"1px solid var(--border)", background:"transparent",
+                color:"var(--fg-2)", cursor:"pointer",
+                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:500,
+              }}>{t("common.cancel")}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function Rail({
   open, onToggle,
   user, portfolios, activePortfolioIds, onTogglePortfolio,
@@ -1435,10 +1731,16 @@ function Rail({
   onImportExport,
   onEtfExplorer,
   displayMode, onToggleDisplayMode,
+  uiTheme, onToggleTheme,
+  uiLanguage, onChangeLanguage,
 }) {
+  const { t } = useTranslation();
   const w = open ? RAIL_EXPANDED : RAIL_COLLAPSED;
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const userBtnRef = useRef(null);
 
-
+  const handleLogoutFromModal = () => { setUserModalOpen(false); onLogout(); };
+  const handleSwitchFromModal = () => { setUserModalOpen(false); onLogout(); };
 
   return (
     <div style={{
@@ -1557,20 +1859,18 @@ function Rail({
               fontFamily:THEME.font, cursor:"pointer", marginBottom:2,
               transition:"background 0.12s",
             }}>
-            <Plus size={13}/> Add Transaction
+            <Plus size={13}/> {t("rail.addTransaction")}
           </button>
         ) : (
-          <RailBtn open={open} icon={<Plus size={16}/>} label="Add Transaction"
+          <RailBtn open={open} icon={<Plus size={16}/>} label={t("rail.addTransaction")}
             color={THEME.accent} onClick={() => onTab("_addtx")}/>
         )}
-        <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:"flex"}}><RefreshCw size={16}/></span> : <RefreshCw size={16}/>}
-          label="Refresh Quotes" onClick={onRefresh}/>
         {onRecalcFX && (
           <RailBtn open={open} icon={<span style={{fontSize:12}}>⟳$</span>} label="Recalc FX Costs"
             onClick={onRecalcFX}
             color={THEME.yellow ?? "#fbbf24"}/>
         )}
-        <RailBtn open={open} icon={<FileDown size={16}/>} label="Import / Export"
+        <RailBtn open={open} icon={<FileDown size={16}/>} label={t("rail.importExport")}
           onClick={onImportExport}/>
 
 
@@ -1578,7 +1878,7 @@ function Rail({
       </div>  {/* end scrollable body */}
 
       {/* ─── Bottom: Currency + Account (pinned) ──────────────── */}
-      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 6px 8px", flexShrink:0 }}>
+      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 0 8px", flexShrink:0 }}>
           {/* Currency */}
           {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
             textTransform:"uppercase", letterSpacing:"0.10em",
@@ -1634,104 +1934,129 @@ function Rail({
             })}
           </div>
 
-        {/* Separator */}
-        <div style={{ height:1, background:THEME.border2, margin:"4px 0" }}/>
+        <div style={{ height:1, background:"var(--border-2)", margin:"4px 0" }}/>
 
-        {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-          textTransform:"uppercase", letterSpacing:"0.10em",
-          padding:"6px 6px 4px", opacity:0.7 }}>Account</div>}
-        {open && user && (
-          <div style={{ padding:"2px 6px 6px", display:"flex", alignItems:"center", gap:8 }}>
-            <div style={{ width:26, height:26, borderRadius:"50%",
-              background:"rgba(59,130,246,0.2)", display:"flex",
-              alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-              <User size={12} style={{ color:THEME.accent }}/>
-            </div>
-            <div>
-              <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>{user.username}</div>
-              <div style={{ fontSize:9, color:THEME.text3 }}>
-                {portfolios.length} portfolio{portfolios.length!==1?"s":""}
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Data source settings (small, collapsed-friendly) */}
-        <RailBtn open={open} icon={<Settings size={14}/>} label={`Source: ${dataSource==="alphavantage"?"AV":"Yahoo"}`}
-          onClick={onSettings}/>
+        {/* Refresh Quotes + Settings — same 8px horizontal padding as ETF rail-footer-section */}
+        <div style={{ padding:"0 8px" }}>
+          <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:"flex"}}><RefreshCw size={16}/></span> : <RefreshCw size={16}/>}
+            label={t("rail.refreshQuotes")} onClick={onRefresh}/>
+          <RailBtn open={open} icon={<Settings size={14}/>} label={t("rail.settings")}
+            onClick={onSettings}/>
+        </div>
 
-        {/* ── ETF Screener link ── */}
+      </div>{/* end pinned currency+actions section */}
+
+      {/* ── Footer (pinned) ── */}
+      <div className="rail-footer-section">
+
+        {/* App switcher: Portfolio Explorer ↔ ETF Screener */}
         {onEtfExplorer && (
           open ? (
-            <button onClick={onEtfExplorer} style={{
-              display:"flex", alignItems:"center", gap:10,
-              width:"100%", padding:"9px 12px", borderRadius:9,
-              border:"none", cursor:"pointer", background:"transparent",
-              color:THEME.accent, fontFamily:THEME.font,
-              transition:"background 0.12s, color 0.12s",
-            }}
-            className="rail-btn">
-              <span style={{ flexShrink:0, display:"flex" }}><TrendingUp size={16}/></span>
-              <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>ETF Screener</span>
-            </button>
-          ) : (
-            <SidebarTip label="ETF Screener" open={open}>
-              <button onClick={onEtfExplorer} style={{
-                display:"flex", alignItems:"center", justifyContent:"center",
-                width:"100%", padding:"9px 0", borderRadius:9,
-                border:"none", cursor:"pointer", background:"transparent",
-                color:THEME.accent, transition:"background 0.12s",
-              }} className="rail-btn">
-                <TrendingUp size={16}/>
+            <div className="rail-density-row">
+              <button className="rail-density-btn active" style={{ flex:1 }}>
+                <LayoutDashboard size={12}/><span>Portfolio</span>
               </button>
-            </SidebarTip>
+              <button className="rail-density-btn" onClick={onEtfExplorer} style={{ flex:1 }}>
+                <TrendingUp size={12}/><span>ETF</span>
+              </button>
+            </div>
+          ) : (
+            <RailBtn open={false} icon={<TrendingUp size={15}/>} label="ETF" onClick={onEtfExplorer}/>
           )
         )}
+        {/* Compact / Relaxed */}
+        {open ? (
+          <div className="rail-density-row">
+            {[["pro", <Gauge size={13}/>, t("rail.compact")], ["comfort", <Armchair size={13}/>, t("rail.relaxed")]].map(([m, icon, lbl]) => (
+              <button key={m}
+                className={"rail-density-btn" + (displayMode===m ? " active" : "")}
+                onClick={() => onToggleDisplayMode && onToggleDisplayMode(m)}
+                title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}>
+                {icon}<span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false}
+            icon={displayMode==="comfort" ? <Armchair size={15}/> : <Gauge size={15}/>}
+            label={displayMode==="comfort" ? t("rail.relaxed") : t("rail.compact")}
+            onClick={() => onToggleDisplayMode && onToggleDisplayMode()}/>
+        )}
 
-        {/* ── Display mode toggle ── */}
-        {onToggleDisplayMode && (
-          <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
-            {open ? (
-              <div style={{ display:"flex", alignItems:"center", gap:8,
-                padding:"6px 10px", borderRadius:8,
-                background:"rgba(255,255,255,0.04)",
-                border:`1px solid ${THEME.border}` }}>
-                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
-                <div style={{ display:"flex", gap:2, padding:"2px",
-                  borderRadius:6, background:"rgba(0,0,0,0.25)",
-                  border:`1px solid ${THEME.border}` }}>
-                  {[["pro",<Gauge size={13}/>, "Pro mode"],["comfort",<Armchair size={13}/>, "Comfort mode"]].map(([m, lbl]) => (
-                    <button key={m} onClick={() => onToggleDisplayMode(m)}
-                      title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
-                      style={{
-                        padding:"3px 8px", borderRadius:5, border:"none",
-                        background: displayMode===m
-                          ? (m==="comfort" ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.12)")
-                          : "transparent",
-                        color: displayMode===m ? THEME.text1 : THEME.text3,
-                        fontSize:9, fontWeight:700, cursor:"pointer",
-                        fontFamily:"inherit", transition:"all 0.15s", letterSpacing:"0.04em",
-                      }}>{lbl}</button>
-                  ))}
+        {/* DE / EN */}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["de", deFlagUrl, "DE"], ["en", gbFlagUrl, "EN"]].map(([lang, flag, lbl]) => (
+              <button key={lang}
+                className={"rail-density-btn" + (uiLanguage===lang ? " active" : "")}
+                onClick={() => onChangeLanguage && onChangeLanguage(lang)}
+                title={lang==="de" ? t("rail.langDe") : t("rail.langEn")}>
+                <img src={flag} width={13} height={13} style={{ borderRadius:"50%", flexShrink:0 }} alt={lbl}/>
+                <span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false} icon={<Globe size={15}/>}
+            label={uiLanguage.toUpperCase()}
+            onClick={() => onChangeLanguage && onChangeLanguage(uiLanguage==="de" ? "en" : "de")}/>
+        )}
+
+        {/* Light / Dark */}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["light", <Sun size={13}/>, t("rail.lightMode")], ["dark", <Moon size={13}/>, t("rail.darkMode")]].map(([th, icon, lbl]) => (
+              <button key={th}
+                className={"rail-density-btn" + (uiTheme===th ? " active" : "")}
+                onClick={() => onToggleTheme && onToggleTheme()}
+                title={lbl}>
+                {icon}<span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false}
+            icon={uiTheme==="dark" ? <Moon size={15}/> : <Sun size={15}/>}
+            label={uiTheme==="dark" ? t("rail.darkMode") : t("rail.lightMode")}
+            onClick={() => onToggleTheme && onToggleTheme()}/>
+        )}
+
+        {/* User account row */}
+        {user && (
+          <div ref={userBtnRef}
+            className={"rail-user" + (open ? "" : " rail-user-collapsed")}
+            onClick={() => setUserModalOpen(v => !v)}
+            style={{
+              border: userModalOpen ? "1px solid var(--border)" : "1px solid transparent",
+              background: userModalOpen ? "var(--surface-2)" : "transparent",
+            }}>
+            <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
+            {open && (
+              <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
+                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                  {user.username}
+                </div>
+                <div style={{ fontSize:10, color:"var(--fg-3)" }}>
+                  {portfolios.length} {t("user.portfolios", { count: portfolios.length })}
                 </div>
               </div>
-            ) : (
-              <button onClick={onToggleDisplayMode}
-                title={displayMode==="pro" ? "Switch to Comfort mode (A11Y)" : "Switch to Pro mode"}
-                style={{
-                  width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
-                  background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
-                  borderRadius:7, display:"flex", justifyContent:"center",
-                  alignItems:"center", transition:"all 0.15s",
-                  color: THEME.text3,
-                }}>
-                <span style={{ lineHeight:1, color:"inherit" }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
-              </button>
             )}
           </div>
         )}
-
-        <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out" onClick={onLogout} color={THEME.text3}/>
       </div>
+
+      {/* User modal */}
+      {userModalOpen && user && (
+        <UserModal
+          username={user.username}
+          portfolioCount={portfolios.length}
+          anchorRef={userBtnRef}
+          onClose={() => setUserModalOpen(false)}
+          onLogout={handleLogoutFromModal}
+          onSwitch={handleSwitchFromModal}
+        />
+      )}
     </div>
   );
 }
@@ -1776,7 +2101,7 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
 }
 
 function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLeave }) {
-  const { cw, ch, perf, glPerf, symbol, currentPriceUSD, valueUSD, shortName } = cell;
+  const { cw, ch, perf, glPerf, symbol, currentPriceUSD, valueUSD, shortName, weight, isEtf } = cell;
   const activePerf = colorMode === "gainloss" ? glPerf : perf;
   const bg   = getPerfColor(activePerf);
   const rate = rates[currency] ?? 1;
@@ -1826,7 +2151,9 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
       {small > 70 && (
         <div style={{ fontFamily:THEME.mono, fontSize:Math.max(8,Math.min(10,small*0.10)),
           color:"rgba(255,255,255,0.45)", marginTop:1 }}>
-          {cSym}{((valueUSD??0)*rate).toLocaleString("en-US",{maximumFractionDigits:0})}
+          {isEtf
+            ? `${(weight ?? 0).toFixed(2)}%`
+            : `${cSym}${((valueUSD??0)*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`}
         </div>
       )}
     </div>
@@ -1955,7 +2282,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
   const animBars = useRef({});
   const [, forceRender] = useState(0);
 
-  const valid = useMemo(() => nodes.filter(n => n.currentPriceUSD > 0), [nodes]);
+  const valid = useMemo(() => nodes.filter(n => n.currentPriceUSD > 0 || (n.isEtf && (n.valueUSD ?? 0) > 0)), [nodes]);
   const sortedPerf = useMemo(() => [...valid].sort((a,b) => {
     const pa = colorMode==="gainloss" ? (a.glPerf??-Infinity) : (a.perf??-Infinity);
     const pb = colorMode==="gainloss" ? (b.glPerf??-Infinity) : (b.perf??-Infinity);
@@ -2278,12 +2605,12 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
       </div>
 
       {miniChart && (
-        <div style={{ height:76, background:"rgba(0,0,0,0.2)", position:"relative" }}>
+        <div style={{ height:76, background:"var(--surface-2)", position:"relative" }}>
           <svg width={miniChart.W} height={miniChart.H} style={{ position:"absolute", inset:0 }}>
             <defs>
               <linearGradient id={`tg-${data.symbol}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={miniChart.lineColor} stopOpacity="0.25"/>
-                <stop offset="100%" stopColor={miniChart.lineColor} stopOpacity="0"/>
+                <stop offset="0%" stopColor={miniChart.lineColor} stopOpacity="0.30"/>
+                <stop offset="100%" stopColor={miniChart.lineColor} stopOpacity="0.03"/>
               </linearGradient>
             </defs>
             <polyline points={miniChart.pts + ` ${miniChart.W},${miniChart.H} 0,${miniChart.H}`}
@@ -2297,23 +2624,28 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
 
       <div style={{ padding:"10px 14px" }}>
         {[
-          ["Price",       `${cSym}${price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`],
-          ...(data.valueUSD != null ? [
-            ["Market Value",`${cSym}${value.toLocaleString("en-US",{maximumFractionDigits:0})}`],
-            ["Cost Basis",  `${cSym}${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`],
-            ["Avg Cost/Share", data.qty > 0 ? `${cSym}${(cost/data.qty).toFixed(2)}` : "—"],
-            ["Shares",         data.qty > 0 ? data.qty.toLocaleString("en-US",{maximumFractionDigits:4}) : "—"],
-            [null],
-            ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
-            ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
-          ...(data.trailingPE != null || data.forwardPE != null ? [
-            [null],
-            ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1), THEME.accent]] : []),
-            ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1),  THEME.accent]] : []),
-          ] : []),
+          ...(data.isEtf ? [
+            // ── ETF holding ─────────────────────────────────────────────────
+            ...(price > 0 ? [["Price", `${cSym}${price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`, perf != null ? (perf >= 0 ? THEME.green : THEME.red) : THEME.text1]] : []),
+            ...(perf != null ? [["Period Perf.", `${perf >= 0 ? "+" : ""}${perf.toFixed(2)}%`, perf >= 0 ? THEME.green : THEME.red]] : []),
+            ["ETF Weight",  `${data.weight.toFixed(2)}%`],
           ] : [
-            // ETF holding — show weight only
-            ...(data.weight ? [["ETF Weight", `${data.weight.toFixed(2)}%`]] : []),
+            // ── Portfolio holding ────────────────────────────────────────────
+            ["Price",       `${cSym}${price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`],
+            ...(data.valueUSD != null ? [
+              ["Market Value",`${cSym}${value.toLocaleString("en-US",{maximumFractionDigits:0})}`],
+              ["Cost Basis",  `${cSym}${cost.toLocaleString("en-US",{maximumFractionDigits:0})}`],
+              ["Avg Cost/Share", data.qty > 0 ? `${cSym}${(cost/data.qty).toFixed(2)}` : "—"],
+              ["Shares",         data.qty > 0 ? data.qty.toLocaleString("en-US",{maximumFractionDigits:4}) : "—"],
+              [null],
+              ["Net G/L",     `${gainLoss>=0?"+":""}${cSym}${Math.abs(gainLoss).toLocaleString("en-US",{maximumFractionDigits:0})} (${fmtPct(glPerf)})`, gainLoss>=0?THEME.green:THEME.red],
+              ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
+              ...(data.trailingPE != null || data.forwardPE != null ? [
+                [null],
+                ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1), THEME.accent]] : []),
+                ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1),  THEME.accent]] : []),
+              ] : []),
+            ] : []),
           ]),
           // Dividend data rows (only if available)
           ...(divData && divData.yieldPct != null ? [
@@ -2522,6 +2854,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                            benchSymbols = [], setBenchSymbols,
                            instrOverlays = [], setInstrOverlays,
                            onSymbolsChange, onSeriesColorsChange }) {
+  const { t } = useTranslation();
   // ── Range derived from the global period toolbar ────────────────────────────
   const range       = PERIOD_TO_RANGE[period] ?? "1y";
   const periodLabel = period === "Intraday" ? "1D" : period;
@@ -2533,8 +2866,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
   //   consolidated + instruments → instruments (1 line per symbol)
   //   aggregated   + instruments → inst_by_portfolio (1 line per symbol×portfolio)
   const ANSICHT_MODES = [
-    { label:"Portfolio",   value:"portfolio",   tip:"Portfoliowert (gesamt oder je Portfolio)" },
-    { label:"Instrumente", value:"instruments", tip:"Je Instrument eine Linie"                 },
+    { label:t("chart.viewPortfolio"),   value:"portfolio",   tip:t("chart.portfolioValue") },
+    { label:t("chart.viewInstruments"), value:"instruments", tip:t("chart.perInstrument")  },
   ];
   const LINE_COLORS = [
     "#3b82f6","#34d399","#f59e0b","#ec4899","#8b5cf6",
@@ -3278,25 +3611,25 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
       {/* ── Controls: only stats (loading indicator lives in toolbar) ──── */}
       <div style={{ padding:"8px 20px 6px", flexShrink:0 }}>
         {(loading || intradayLoading) && (
-          <div style={{ fontSize:10, color:THEME.text3, marginBottom:4 }}>⟳ Laden…</div>
+          <div style={{ fontSize:10, color:THEME.text3, marginBottom:4 }}>⟳ {t("perf.loading")}</div>
         )}
 
         {/* Stats */}
         {stats && (
           <div style={{ display:"flex", gap:20, flexWrap:"wrap", marginBottom:4 }}>
             {[
-              { label:"Aktueller Wert", val: fmtV(stats.last),  color:THEME.text1 },
-              { label:"Investiert",      val: fmtV(stats.cost),  color:THEME.text2 },
-              ...(stats.glAbs != null ? [{ label:"G/L gesamt",
+              { label:t("perf.currentValue"), val: fmtV(stats.last),  color:THEME.text1 },
+              { label:t("perf.invested"),      val: fmtV(stats.cost),  color:THEME.text2 },
+              ...(stats.glAbs != null ? [{ label:t("perf.glTotal"),
                 val:`${fmtV(stats.glAbs)} (${fmtPct(stats.glPct)})`,
                 color: stats.glAbs >= 0 ? THEME.green : THEME.red }] : []),
-              { label:`Periode (${periodLabel})`,
+              { label:`${t("perf.period")} (${periodLabel})`,
                 val: stats.periodChangePct != null
                   ? `${fmtV(stats.periodChange)} (${fmtPct(stats.periodChangePct)})`
                   : fmtV(stats.periodChange),
                 color: stats.periodChange >= 0 ? THEME.green : THEME.red },
-              ...(stats.bestDay  ? [{ label:"Bester Tag",    val:`${fmtPct(stats.bestDay.pct)} · ${fmtDate(stats.bestDay.date)}`,  color:THEME.green }] : []),
-              ...(stats.worstDay ? [{ label:"Schlechtester", val:`${fmtPct(stats.worstDay.pct)} · ${fmtDate(stats.worstDay.date)}`, color:THEME.red   }] : []),
+              ...(stats.bestDay  ? [{ label:t("perf.bestDay"),  val:`${fmtPct(stats.bestDay.pct)} · ${fmtDate(stats.bestDay.date)}`,  color:THEME.green }] : []),
+              ...(stats.worstDay ? [{ label:t("perf.worstDay"), val:`${fmtPct(stats.worstDay.pct)} · ${fmtDate(stats.worstDay.date)}`, color:THEME.red   }] : []),
             ].map(s => (
               <div key={s.label}>
                 <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.05em", textTransform:"uppercase" }}>{s.label}</div>
@@ -3320,7 +3653,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             (period === "Intraday" ? intradayHistData != null : histData != null) && (
           <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
             justifyContent:"center", color:THEME.text3, fontSize:13 }}>
-            Keine Daten für den gewählten Zeitraum
+            {t("perf.noData")}
           </div>
         )}
 
@@ -3739,6 +4072,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
 // ── EditPlanModal ─────────────────────────────────────────────────────────────
 function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }) {
+  const { t } = useTranslation();
   const portfolio = portfolios.find(p => p.id === plan.portfolio_id);
   const [endDate,      setEndDate]      = useState(plan.end_date);
   const [periodicity,  setPeriodicity]  = useState(plan.periodicity);
@@ -3786,10 +4120,10 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
   const handleSave = async () => {
     const priceN  = parseFloat(price);
     const budgetN = parseFloat(budget);
-    if (!endDate) { setError("Enddatum erforderlich"); return; }
-    if (isNaN(budgetN) || budgetN <= 0) { setError("Budget muss eine positive Zahl sein"); return; }
+    if (!endDate) { setError(t("savingsPlan.errEndDate")); return; }
+    if (isNaN(budgetN) || budgetN <= 0) { setError(t("savingsPlan.errBudget")); return; }
     if (newPastDates.length > 0 && (isNaN(priceN) || priceN <= 0)) {
-      setError("Preis für neue Käufe erforderlich"); return;
+      setError(t("savingsPlan.errPrice")); return;
     }
     setBusy(true);
     try {
@@ -3822,7 +4156,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
   const cSym = CCY_SYM[currency] ?? (currency + " ");
 
   return (
-    <Modal title="Sparplan bearbeiten" onClose={onClose}>
+    <Modal title={t("savingsPlan.edit")} onClose={onClose}>
       {/* Plan summary */}
       <div style={{ display:"flex", gap:8, marginBottom:16, padding:"10px 12px",
         background:"rgba(59,130,246,0.07)", borderRadius:10, border:"1px solid rgba(59,130,246,0.18)",
@@ -3861,7 +4195,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
           <select value={periodicity} onChange={e => setPeriodicity(e.target.value)}
             style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
-            {PERIODICITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label} — {o.description}</option>)}
+            {PERIODICITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>)}
           </select>
         </div>
       </div>
@@ -3906,9 +4240,9 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
         <div style={{ borderRadius:10, border:`1px solid ${THEME.border}`, overflow:"hidden", marginBottom:12 }}>
           <div style={{ padding:"8px 12px", background:"rgba(255,255,255,0.04)",
             borderBottom:`1px solid ${THEME.border}`, display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:11, color:THEME.text2, fontWeight:700 }}>Sparplan-Vorschau</span>
+            <span style={{ fontSize:11, color:THEME.text2, fontWeight:700 }}>{t("savingsPlan.preview")}</span>
             <span style={{ marginLeft:"auto", fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
-              {allDates.length} Termine gesamt
+              {allDates.length} {t("savingsPlan.datesTotal")}
             </span>
           </div>
 
@@ -3966,7 +4300,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
         <button onClick={onClose}
           style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
             background:"transparent", color:THEME.text2, cursor:"pointer", fontSize:12 }}>
-          Abbrechen
+          {t("common.cancel")}
         </button>
         <button onClick={handleSave}
           disabled={busy || !endDate || !budget}
@@ -3974,7 +4308,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
             background: newPastDates.length > 0 ? THEME.accent : "rgba(59,130,246,0.4)",
             color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700,
             opacity: (busy || !endDate || !budget) ? 0.5 : 1 }}>
-          {busy ? "Speichern…"
+          {busy ? t("savingsPlan.saving")
             : newPastDates.length > 0
               ? `✓ ${newPastDates.length} Kauf${newPastDates.length!==1?"käufe":""} + Plan speichern`
               : "Plan speichern"}
@@ -4127,6 +4461,65 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     });
   }, []);
 
+  // ── Column show/hide (persisted to localStorage) ──
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { const s = localStorage.getItem("ptv3-hidden-cols"); return new Set(s ? JSON.parse(s) : []); }
+    catch { return new Set(); }
+  });
+
+  // ── Column pinning — "type" always first, persisted ──
+  const [pinnedCols, setPinnedCols] = useState(() => {
+    try { const s = localStorage.getItem("ptv3-pinned-cols"); return JSON.parse(s || '[]'); }
+    catch { return []; }
+  });
+
+  // ── Column settings panel open/close ──
+  const [colPanelOpen, setColPanelOpen] = useState(false);
+  const [panelAnchor, setPanelAnchor] = useState({ top: 0, left: 0 });
+  const colPanelRef = useRef(null);
+  const colPanelBtnRef = useRef(null);
+
+  // Close panel on outside click (panel is in a portal so check btn ref too)
+  useEffect(() => {
+    if (!colPanelOpen) return;
+    const handler = (e) => {
+      if (
+        colPanelRef.current && !colPanelRef.current.contains(e.target) &&
+        colPanelBtnRef.current && !colPanelBtnRef.current.contains(e.target)
+      ) {
+        setColPanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [colPanelOpen]);
+
+  const toggleHidden = (key) => {
+    if (key === "type" || key === "actions") return;
+    setHiddenCols(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      localStorage.setItem("ptv3-hidden-cols", JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const togglePinned = (key) => {
+    if (key === "type") return;
+    setPinnedCols(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      localStorage.setItem("ptv3-pinned-cols", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const resetColSettings = () => {
+    setHiddenCols(new Set());
+    setPinnedCols([]);
+    localStorage.removeItem("ptv3-hidden-cols");
+    localStorage.removeItem("ptv3-pinned-cols");
+  };
+
   // Flatten all transactions with portfolio info
   const allTxFlat = useMemo(() => {
     const rows = [];
@@ -4264,6 +4657,29 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     return out;
   }, [sorted, groupingMode, compact, expandedGroups]);
 
+  // ── Derived column lists ──────────────────────────────────────────────────
+  // "type" is always the first pinned column
+  const effectivePinned = ["type", ...pinnedCols.filter(k => k !== "type")];
+
+  // All visible cols (not hidden), in order: pinned first, then rest
+  const visibleCols = TX_COLS_DEFAULT.filter(c => !hiddenCols.has(c.key));
+  const pinnedVisible = effectivePinned.filter(k => visibleCols.some(c => c.key === k));
+  const orderedCols = [
+    ...pinnedVisible.map(k => TX_COLS_DEFAULT.find(c => c.key === k)),
+    ...visibleCols.filter(c => !effectivePinned.includes(c.key)),
+  ];
+
+  const getPinnedLeft = (colKey) => {
+    let left = 0;
+    for (const k of pinnedVisible) {
+      if (k === colKey) break;
+      left += colWidths[k] ?? (TX_COLS_DEFAULT.find(c => c.key === k)?.width ?? 0);
+    }
+    return left;
+  };
+
+  const isLastPinned = (colKey) => pinnedVisible[pinnedVisible.length - 1] === colKey;
+
   // Column resize drag
   const startResize = (e, key) => {
     e.preventDefault();
@@ -4306,16 +4722,26 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.07em",
     whiteSpace:"nowrap", userSelect:"none", cursor:col.sortable?"pointer":"default",
     width:colWidths[col.key], minWidth:colWidths[col.key], maxWidth:colWidths[col.key],
-    position:"relative", overflow:"hidden",
+    position: pinnedVisible.includes(col.key) ? "sticky" : "relative",
+    left: pinnedVisible.includes(col.key) ? getPinnedLeft(col.key) : undefined,
+    zIndex: pinnedVisible.includes(col.key) ? 3 : undefined,
+    overflow:"hidden",
     borderRight:`1px solid ${THEME.border2}`,
-    background: sortKey===col.key?"rgba(59,130,246,0.06)":"transparent",
+    background: pinnedVisible.includes(col.key) ? THEME.surface
+      : sortKey===col.key ? "rgba(59,130,246,0.06)" : THEME.surface,
+    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
   });
 
-  const tdStyle = (col, extra={}) => ({
+  const tdStyle = (col, solidBg = THEME.surface, extra={}) => ({
     padding:"0 10px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
     width:colWidths[col.key], minWidth:colWidths[col.key], maxWidth:colWidths[col.key],
     borderRight:`1px solid ${THEME.border2}`,
-    background: sortKey===col.key?"rgba(59,130,246,0.03)":"transparent",
+    position: pinnedVisible.includes(col.key) ? "sticky" : undefined,
+    left: pinnedVisible.includes(col.key) ? getPinnedLeft(col.key) : undefined,
+    zIndex: pinnedVisible.includes(col.key) ? 2 : undefined,
+    background: pinnedVisible.includes(col.key) ? solidBg
+      : sortKey===col.key ? "rgba(59,130,246,0.03)" : "transparent",
+    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.14)" : undefined,
     ...extra,
   });
 
@@ -4337,14 +4763,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
       }}>
         {[
           [groupingMode ? "Positions" : "Transactions", groupingMode ? groupedData.length : allTxFlat.length, null, null],
-          ["Total Cost",    `$${(totalCost/1000).toFixed(1)}K`, null, "Total cost basis across all positions in USD at purchase-date FX rates."],
-          ["Current Value", `$${(totalValue/1000).toFixed(1)}K`, null, "Current market value of all positions in USD."],
-          ["Total G/L",     `${totalGL>=0?"+":"−"}$${(Math.abs(totalGL)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss: current value minus total cost basis. Does not account for taxes or transaction fees."],
-          ...(hasPrdGL?[[`${period==="Intraday"?"1D":period} G/L`, `${totalPrdGL>=0?"+":"−"}$${(Math.abs(totalPrdGL)/1000).toFixed(1)}K`, totalPrdGL>=0?THEME.green:THEME.red, `Gain/Loss over the selected ${period} period, based on period-start reference prices.`]]:[]),
+          ["Total Cost",    `${cSym}${((totalCost*rate)/1000).toFixed(1)}K`, null, "Total cost basis across all positions at purchase-date FX rates."],
+          ["Current Value", `${cSym}${((totalValue*rate)/1000).toFixed(1)}K`, null, "Current market value of all positions."],
+          ["Total G/L",     `${totalGL>=0?"+":"−"}${cSym}${(Math.abs(totalGL*rate)/1000).toFixed(1)}K (${totalCost>0?((totalGL/totalCost)*100).toFixed(1):0}%)`, totalGL>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss: current value minus total cost basis. Does not account for taxes or transaction fees."],
+          ...(hasPrdGL?[[`${period==="Intraday"?"1D":period} G/L`, `${totalPrdGL>=0?"+":"−"}${cSym}${(Math.abs(totalPrdGL*rate)/1000).toFixed(1)}K`, totalPrdGL>=0?THEME.green:THEME.red, `Gain/Loss over the selected ${period} period, based on period-start reference prices.`]]:[]),
         ].map(([l,v,c,tip])=>(
           <div key={l}>
             <div style={{fontSize:9,color:THEME.text3,textTransform:"uppercase",letterSpacing:".07em",marginBottom:2,display:"flex",alignItems:"center",gap:2}}>
-              {l}{tip && <InfoTip text={tip} side="bottom" width={220}/>}
+              {tip ? <LabelTip text={tip} width={220}>{l}</LabelTip> : l}
             </div>
             <div style={{fontFamily:THEME.mono,fontSize:12,fontWeight:700,color:c||THEME.text1}}>{v}</div>
           </div>
@@ -4361,6 +4787,95 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               cursor:"pointer", fontFamily:THEME.font, transition:"all 0.15s",
             }}
           >{groupingMode ? "⊕ Grouped" : "≡ Flat"}</button>
+
+          {/* Column settings button */}
+          <div style={{ position:"relative" }}>
+            <button
+              ref={colPanelBtnRef}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setPanelAnchor({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - 276) });
+                setColPanelOpen(v => !v);
+              }}
+              style={{
+                display:"flex", alignItems:"center", gap:5,
+                padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
+                background: colPanelOpen ? "var(--accent-15)" : "var(--surface-2)",
+                color: colPanelOpen ? "var(--accent)" : THEME.text3,
+                border:`1px solid ${colPanelOpen ? "var(--accent-35)" : THEME.border}`,
+                cursor:"pointer", fontFamily:"var(--font-sans)",
+              }}
+            >
+              <Settings size={11}/> Columns
+              {hiddenCols.size > 0 && (
+                <span style={{ background:"var(--accent)", color:"#fff", borderRadius:9, fontSize:8, fontWeight:700, padding:"0 4px", marginLeft:2 }}>
+                  {hiddenCols.size}
+                </span>
+              )}
+            </button>
+
+            {colPanelOpen && createPortal(
+              (() => {
+                return (
+                  <div ref={colPanelRef} style={{
+                    position:"fixed",
+                    top: panelAnchor.top,
+                    left: panelAnchor.left,
+                    width: 268, maxHeight: 420, overflowY:"auto",
+                    background:"var(--surface)", border:`1px solid ${THEME.border}`,
+                    borderRadius:10, padding:8,
+                    boxShadow:"var(--shadow-modal)", zIndex:9999,
+                  }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
+                      letterSpacing:"0.06em", padding:"0 4px 6px", borderBottom:`1px solid ${THEME.border2}`, marginBottom:6 }}>
+                      Columns
+                    </div>
+                    {TX_COLS_DEFAULT.filter(c => c.key !== "actions").map(col => {
+                      const hidden = hiddenCols.has(col.key);
+                      const pinned = effectivePinned.includes(col.key);
+                      const alwaysOn = col.key === "type";
+                      const label = col.key === "prdPct" ? `${period==="Intraday"?"1D":period} %`
+                                  : col.key === "prdAbs" ? `${period==="Intraday"?"1D":period} $`
+                                  : col.label || col.key;
+                      return (
+                        <div key={col.key}
+                          style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 6px", borderRadius:6,
+                            opacity: alwaysOn ? 0.5 : 1 }}
+                          onMouseEnter={e => !alwaysOn && (e.currentTarget.style.background = "var(--surface-2)")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                          <input type="checkbox" checked={!hidden} disabled={alwaysOn}
+                            onChange={() => toggleHidden(col.key)}
+                            style={{ accentColor:"var(--accent)", width:13, height:13, flexShrink:0, cursor: alwaysOn ? "default" : "pointer" }}/>
+                          <span style={{ flex:1, fontSize:12, color:"var(--fg-2)", cursor: alwaysOn ? "default" : "pointer" }}
+                            onClick={() => !alwaysOn && toggleHidden(col.key)}>
+                            {label}
+                            {alwaysOn && <span style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>always visible</span>}
+                          </span>
+                          <button
+                            onClick={() => togglePinned(col.key)}
+                            disabled={alwaysOn || hidden}
+                            title={pinned && !alwaysOn ? "Unpin column" : "Pin column to left"}
+                            style={{ background:"none", border:"none", cursor: (alwaysOn || hidden) ? "default" : "pointer",
+                              padding:"1px 3px", borderRadius:3, display:"flex", alignItems:"center",
+                              color: pinned ? "var(--accent)" : "var(--fg-3)", opacity: (alwaysOn || hidden) ? 0.3 : 1 }}>
+                            {pinned && !alwaysOn ? <PinOff size={11}/> : <Pin size={11}/>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button onClick={resetColSettings}
+                      style={{ width:"100%", marginTop:8, padding:"5px 8px", borderRadius:6,
+                        border:`1px solid ${THEME.border}`, background:"none", cursor:"pointer",
+                        fontSize:11, color:THEME.text3, fontFamily:"var(--font-sans)" }}>
+                      Reset to defaults
+                    </button>
+                  </div>
+                );
+              })(),
+              document.body
+            )}
+          </div>
+
           <span style={{fontSize:10,color:THEME.text3}}>Drag column edges to resize · Click headers to sort</span>
         </div>
       </div>
@@ -4368,20 +4883,24 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 
       {/* Table wrapper */}
       <div style={{ flex:1, overflow:"auto", position:"relative" }}>
-        <table style={{ borderCollapse:"collapse", width:"max-content", minWidth:"100%", tableLayout:"fixed" }}>
+        <table style={{ borderCollapse:"separate", borderSpacing:0, width:"max-content", minWidth:"100%", tableLayout:"fixed" }}>
           <colgroup>
-            {TX_COLS_DEFAULT.map(col=><col key={col.key} style={{width:colWidths[col.key]}}/>)}
+            {orderedCols.map(col=><col key={col.key} style={{width:colWidths[col.key]}}/>)}
           </colgroup>
           {/* Header */}
           <thead>
             <tr style={{ height:34, background:THEME.surface, position:"sticky", top:0, zIndex:10 }}>
-              {TX_COLS_DEFAULT.map(col=>(
+              {orderedCols.map(col=>(
                 <th key={col.key} style={thStyle(col)} onClick={()=>col.sortable&&handleSort(col.key)}>
                   <span style={{ display:"inline-flex", alignItems:"center", gap:3 }}>
-                    {col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
-                     : col.key==="prdAbs" ? `${period==="Intraday"?"1D":period} $`
-                     : col.label}
-                    {col.tip && <InfoTip text={col.tip} side="bottom" width={240}/>}
+                    {(() => {
+                      const lbl = col.key==="prdPct" ? `${period==="Intraday"?"1D":period} %`
+                               : col.key==="prdAbs" ? `${period==="Intraday"?"1D":period} $`
+                               : col.label;
+                      return col.tip
+                        ? <LabelTip text={col.tip} width={240}>{lbl}</LabelTip>
+                        : lbl;
+                    })()}
                   </span>
                   <SortIcon col={col}/>
                   {/* Resize handle */}
@@ -4408,14 +4927,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                 const grp = row;
                 const isExpanded = expandedGroups.has(grp._key);
                 const isBuy = grp.type === "BUY";
-                const rowBg = i%2===0?"transparent":"rgba(255,255,255,0.015)";
-                return (
-                  <tr key={grp._key}
-                    style={{ height:36, background:rowBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
-                    onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
-                    onMouseLeave={e=>e.currentTarget.style.background=rowBg}
-                  >
-                    <td style={tdStyle(TX_COLS_DEFAULT[0])}>
+                const rawBg = i%2===0 ? THEME.surface : "rgba(255,255,255,0.025)";
+
+                const renderGroupCell = (col) => {
+                  switch (col.key) {
+                    case "type": return (
                       <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                         <button onClick={()=>toggleGroup(grp._key)}
                           style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
@@ -4434,14 +4950,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                                            : isBuy ? "rgba(74,222,128,0.2)" : "rgba(248,113,113,0.2)"}`,
                         }}>{grp.type==="MIX" ? "MIX" : grp.type}</span>
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[1])}>
+                    );
+                    case "symbol": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <div style={{ width:6, height:6, borderRadius:"50%", background:grp.portfolioColor, flexShrink:0 }}/>
                         <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{grp.symbol}</span>
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[2])}>
+                    );
+                    case "name": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <span style={{ fontSize:11, color:THEME.text2 }}>{grp.name || ""}</span>
                         {grp._txs.length > 1 && (
@@ -4451,105 +4967,77 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                           </span>
                         )}
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[3])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{grp.date}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[4])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{grp.quantity}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[5])}>
-                      {grp._avgBuyPriceUSD != null ? (
-                        <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
-                          <span style={{ fontSize:9, color:THEME.text3, marginRight:2 }}>avg</span>
-                          ${grp._avgBuyPriceUSD.toFixed(2)}
-                        </span>
-                      ) : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[6])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._cost)}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[7])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(grp._curPriceUSD)}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[8])}>
-                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._curValue)}</span>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[9])}>
-                      {grp._glPct != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glPct>=0?THEME.green:THEME.red }}>
-                            {grp._glPct>=0?"+":""}{grp._glPct.toFixed(1)}%
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[10])}>
-                      {grp._glAbs != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glAbs>=0?THEME.green:THEME.red }}>
-                            {grp._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._glAbs))}
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[11])}>
-                      {grp._prdPct != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdPct>=0?THEME.green:THEME.red }}>
-                            {grp._prdPct>=0?"+":""}{grp._prdPct.toFixed(1)}%
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[12])}>
-                      {grp._prdAbs != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdAbs>=0?THEME.green:THEME.red }}>
-                            {grp._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._prdAbs))}
-                          </span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[13])}>
-                      {(() => {
-                        const q = quotes[grp.symbol];
-                        const pe = q?.trailingPE ?? q?.forwardPE ?? null;
-                        return pe != null
-                          ? <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.accent }}>{pe.toFixed(1)}</span>
-                          : <span style={{color:THEME.text3}}>—</span>;
-                      })()}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[14])}>
-                      {grp._div === undefined
-                        ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                        : grp._div?.yieldPct != null
-                          ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:"#fbbf24" }}>{grp._div.yieldPct.toFixed(2)}%</span>
-                          : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[15])}>
-                      {grp._div === undefined ? (
-                        <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                      ) : grp._div?.exDate ? (
-                        <div>
-                          <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>{grp._div.exDate}</span>
-                          {grp._div.nextExDate && (
-                            <div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>→ {grp._div.nextExDate}</div>
-                          )}
-                        </div>
-                      ) : <span style={{color:THEME.text3}}>—</span>}
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                    );
+                    case "date": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{grp.date}</span>);
+                    case "quantity": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{grp.quantity}</span>);
+                    case "price": return grp._avgBuyPriceUSD != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
+                        <span style={{ fontSize:9, color:THEME.text3, marginRight:2 }}>avg</span>
+                        ${grp._avgBuyPriceUSD.toFixed(2)}
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._cost)}</span>);
+                    case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(grp._curPriceUSD)}</span>);
+                    case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._curValue)}</span>);
+                    case "glPct": return grp._glPct != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glPct>=0?THEME.green:THEME.red }}>
+                        {grp._glPct>=0?"+":""}{grp._glPct.toFixed(1)}%
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "glAbs": return grp._glAbs != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glAbs>=0?THEME.green:THEME.red }}>
+                        {grp._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._glAbs))}
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "prdPct": return grp._prdPct != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdPct>=0?THEME.green:THEME.red }}>
+                        {grp._prdPct>=0?"+":""}{grp._prdPct.toFixed(1)}%
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "prdAbs": return grp._prdAbs != null ? (
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._prdAbs>=0?THEME.green:THEME.red }}>
+                        {grp._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(grp._prdAbs))}
+                      </span>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "pe": {
+                      const q = quotes[grp.symbol];
+                      const pe = q?.trailingPE ?? q?.forwardPE ?? null;
+                      return pe != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.accent }}>{pe.toFixed(1)}</span>
+                        : <span style={{color:THEME.text3}}>—</span>;
+                    }
+                    case "divYield": return grp._div === undefined
+                      ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                      : grp._div?.yieldPct != null
+                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:"#fbbf24" }}>{grp._div.yieldPct.toFixed(2)}%</span>
+                        : <span style={{color:THEME.text3}}>—</span>;
+                    case "exDate": return grp._div === undefined ? (
+                      <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                    ) : grp._div?.exDate ? (
+                      <div>
+                        <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>{grp._div.exDate}</span>
+                        {grp._div.nextExDate && (<div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>→ {grp._div.nextExDate}</div>)}
+                      </div>
+                    ) : <span style={{color:THEME.text3}}>—</span>;
+                    case "links": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <a href={`https://finance.yahoo.com/quote/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
                           style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
-                            background:"rgba(100,160,255,0.08)",border:`1px solid rgba(100,160,255,0.18)`,
+                            background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
                             color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                           onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                         >Y!</a>
                         <a href={`https://www.perplexity.ai/finance/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
                           style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
-                            background:"rgba(168,120,255,0.08)",border:`1px solid rgba(168,120,255,0.18)`,
+                            background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
                             color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
                           onMouseLeave={e=>e.currentTarget.style.background="rgba(168,120,255,0.08)"}
                         >Px</a>
                       </div>
-                    </td>
-                    <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                    );
+                    case "actions": return (
                       <button onClick={()=>onRefreshSymbol && onRefreshSymbol(grp.symbol)}
                         title={`Refresh ${grp.symbol}`}
                         style={{ background:"none",border:"none",cursor:"pointer",color:THEME.text3,
@@ -4557,222 +5045,149 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><RefreshCw size={12}/></button>
-                    </td>
+                    );
+                    default: return null;
+                  }
+                };
+
+                return (
+                  <tr key={grp._key}
+                    style={{ height:36, background:rawBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
+                    onMouseLeave={e=>e.currentTarget.style.background=rawBg}
+                  >
+                    {orderedCols.map(col => (
+                      <td key={col.key} style={tdStyle(col, rawBg)}>
+                        {renderGroupCell(col)}
+                      </td>
+                    ))}
                   </tr>
                 );
               }
 
               // ── FLAT or SUB-ROW ────────────────────────────────────────────
               const tx = row;
-              const isBuy = tx.type === "BUY";
-              const rowBg = isSubrow
-                ? "rgba(59,130,246,0.04)"
-                : i%2===0?"transparent":"rgba(255,255,255,0.015)";
-              return (
-                <tr key={isSubrow ? `sub-${tx.id}` : tx.id}
-                  style={{ height:36, background:rowBg, borderBottom:`1px solid ${THEME.border2}`,
-                    transition:"background 0.08s" }}
-                  onMouseEnter={e=>{
-                    e.currentTarget.style.background="rgba(59,130,246,0.06)";
-                    Array.from(e.currentTarget.cells).forEach(c=>{
-                      if(c.style.background.includes("rgba(59,130,246,0.03)"))
-                        c.style.background="rgba(59,130,246,0.09)";
-                    });
-                  }}
-                  onMouseLeave={e=>{
-                    e.currentTarget.style.background=rowBg;
-                    Array.from(e.currentTarget.cells).forEach((c,ci)=>{
-                      if(TX_COLS_DEFAULT[ci]&&sortKey===TX_COLS_DEFAULT[ci].key)
-                        c.style.background="rgba(59,130,246,0.03)";
-                      else c.style.background="transparent";
-                    });
-                  }}
-                >
-                  {/* Type — click to refresh this symbol's quote */}
-                  <td style={{ ...tdStyle(TX_COLS_DEFAULT[0]), ...(isSubrow ? { borderLeft:`2px solid rgba(59,130,246,0.3)`, paddingLeft:8, opacity:0.85 } : {}) }}>
+              const txIsBuy = tx.type === "BUY";
+              const rawBg = isSubrow ? "rgba(59,130,246,0.06)" : i%2===0 ? THEME.surface : "rgba(255,255,255,0.025)";
+
+              const renderSubrowCell = (col) => {
+                switch (col.key) {
+                  case "type": return (
                     <button
                       onClick={() => onRefreshSymbol && onRefreshSymbol(tx.symbol)}
                       title={`Refresh ${tx.symbol} quote`}
                       style={{
                         padding:"2px 7px", borderRadius:5, fontSize:9, fontWeight:700,
-                        background:isBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
-                        color:isBuy?THEME.green:THEME.red,
-                        border:`1px solid ${isBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
+                        background:txIsBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
+                        color:txIsBuy?THEME.green:THEME.red,
+                        border:`1px solid ${txIsBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
                         cursor:"pointer", fontFamily:THEME.font,
                         transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s",
                         display:"flex", alignItems:"center", gap:4,
                       }}
                       onMouseEnter={e=>{
-                        e.currentTarget.style.background=isBuy?"rgba(74,222,128,0.25)":"rgba(248,113,113,0.25)";
-                        e.currentTarget.style.boxShadow=`0 0 0 2px ${isBuy?"rgba(74,222,128,0.3)":"rgba(248,113,113,0.3)"}`;
+                        e.currentTarget.style.background=txIsBuy?"rgba(74,222,128,0.25)":"rgba(248,113,113,0.25)";
+                        e.currentTarget.style.boxShadow=`0 0 0 2px ${txIsBuy?"rgba(74,222,128,0.3)":"rgba(248,113,113,0.3)"}`;
                       }}
                       onMouseLeave={e=>{
-                        e.currentTarget.style.background=isBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)";
+                        e.currentTarget.style.background=txIsBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)";
                         e.currentTarget.style.boxShadow="none";
                       }}
                     >
                       {tx.type}
                       <span style={{ fontSize:8, opacity:0.6 }}>⟳</span>
                     </button>
-                  </td>
-                  {/* Symbol */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[1])}>
+                  );
+                  case "symbol": return (
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                       <div style={{ width:6, height:6, borderRadius:"50%", background:tx.portfolioColor, flexShrink:0 }}/>
                       <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
                     </div>
-                  </td>
-                  {/* Name + ISIN */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[2])}>
-                    <div style={{ fontSize:11, color:THEME.text2 }}>{tx.name || ""}</div>
-                    {tx.isin && (
-                      <div style={{ fontSize:9, color:THEME.text3, fontFamily:THEME.mono,
-                        letterSpacing:"0.04em", marginTop:2 }}>{tx.isin}</div>
-                    )}
-                  </td>
-                  {/* Date */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[3])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{tx.date}</span>
-                  </td>
-                  {/* Qty */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[4])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{tx.quantity}</span>
-                  </td>
-                  {/* Buy Price — show in original transaction currency */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[5])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
-                      {CCY_SYM[tx.currency] ?? (tx.currency + " ")}{parseFloat(tx.price).toFixed(2)}
-                    </span>
-                    {tx.currency && tx.currency !== "USD" && tx.price_usd > 0 && (
-                      <span style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>
-                        (${parseFloat(tx.price_usd).toFixed(2)})
+                  );
+                  case "name": return (
+                    <div>
+                      <div style={{ fontSize:11, color:THEME.text2 }}>{tx.name || ""}</div>
+                      {tx.isin && (
+                        <div style={{ fontSize:9, color:THEME.text3, fontFamily:THEME.mono, letterSpacing:"0.04em", marginTop:2 }}>{tx.isin}</div>
+                      )}
+                    </div>
+                  );
+                  case "date": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3 }}>{tx.date}</span>);
+                  case "quantity": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{tx.quantity}</span>);
+                  case "price": return (
+                    <span>
+                      <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>
+                        {CCY_SYM[tx.currency] ?? (tx.currency + " ")}{parseFloat(tx.price).toFixed(2)}
                       </span>
-                    )}
-                  </td>
-                  {/* Cost */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[6])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._cost)}</span>
-                  </td>
-                  {/* Cur. Price (in USD) */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[7])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curPriceUSD)}</span>
-                  </td>
-                  {/* Cur. Value */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[8])}>
-                    <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curValue)}</span>
-                  </td>
-                  {/* G/L % */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[9])}>
-                    {tx._glPct != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glPct>=0?THEME.green:THEME.red }}>
-                          {tx._glPct>=0?"+":""}{tx._glPct.toFixed(1)}%
+                      {tx.currency && tx.currency !== "USD" && tx.price_usd > 0 && (
+                        <span style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>
+                          (${parseFloat(tx.price_usd).toFixed(2)})
                         </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* G/L $ */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[10])}>
-                    {tx._glAbs != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glAbs>=0?THEME.green:THEME.red }}>
-                          {tx._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._glAbs))}
-                        </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* Period G/L % */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[11])}>
-                    {tx._prdPct != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
-                          color:tx._prdPct>=0?THEME.green:THEME.red }}>
-                          {tx._prdPct>=0?"+":""}{tx._prdPct.toFixed(1)}%
-                        </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* Period G/L $ */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[12])}>
-                    {tx._prdAbs != null
-                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
-                          color:tx._prdAbs>=0?THEME.green:THEME.red }}>
-                          {tx._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._prdAbs))}
-                        </span>
-                      : <span style={{color:THEME.text3}}>—</span>
-                    }
-                  </td>
-                  {/* P/E Ratio */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[13])}>
-                    {(() => {
-                      const q = quotes[tx.symbol];
-                      const pe = q?.trailingPE ?? q?.forwardPE ?? null;
-                      return pe != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11,
-                            color:THEME.accent }}>{pe.toFixed(1)}</span>
-                        : <span style={{color:THEME.text3}}>—</span>;
-                    })()}
-                  </td>
-                  {/* Div. Yield */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[14])}>
-                    {tx._div === undefined
-                      ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                      : tx._div?.yieldPct != null
-                        ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
-                            color:"#fbbf24" }}>{tx._div.yieldPct.toFixed(2)}%</span>
-                        : <span style={{color:THEME.text3}}>—</span>}
-                  </td>
-                  {/* Ex-Date */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[15])}>
-                    {tx._div === undefined ? (
-                      <span style={{color:THEME.text3,fontSize:10}}>…</span>
-                    ) : tx._div?.exDate ? (
-                      <div>
-                        <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>
-                          {tx._div.exDate}
-                        </span>
-                        {tx._div.nextExDate && (
-                          <div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>
-                            → {tx._div.nextExDate}
-                          </div>
-                        )}
-                      </div>
-                    ) : <span style={{color:THEME.text3}}>—</span>}
-                  </td>
-                  {/* Links */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                      )}
+                    </span>
+                  );
+                  case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._cost)}</span>);
+                  case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curPriceUSD)}</span>);
+                  case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curValue)}</span>);
+                  case "glPct": return tx._glPct != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glPct>=0?THEME.green:THEME.red }}>
+                        {tx._glPct>=0?"+":""}{tx._glPct.toFixed(1)}%
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "glAbs": return tx._glAbs != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glAbs>=0?THEME.green:THEME.red }}>
+                        {tx._glAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._glAbs))}
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "prdPct": return tx._prdPct != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._prdPct>=0?THEME.green:THEME.red }}>
+                        {tx._prdPct>=0?"+":""}{tx._prdPct.toFixed(1)}%
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "prdAbs": return tx._prdAbs != null
+                    ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._prdAbs>=0?THEME.green:THEME.red }}>
+                        {tx._prdAbs>=0?"+":"−"}{fmtUSD(Math.abs(tx._prdAbs))}
+                      </span>
+                    : <span style={{color:THEME.text3}}>—</span>;
+                  case "pe": {
+                    const q = quotes[tx.symbol];
+                    const pe = q?.trailingPE ?? q?.forwardPE ?? null;
+                    return pe != null
+                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.accent }}>{pe.toFixed(1)}</span>
+                      : <span style={{color:THEME.text3}}>—</span>;
+                  }
+                  case "divYield": return tx._div === undefined
+                    ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                    : tx._div?.yieldPct != null
+                      ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:"#fbbf24" }}>{tx._div.yieldPct.toFixed(2)}%</span>
+                      : <span style={{color:THEME.text3}}>—</span>;
+                  case "exDate": return tx._div === undefined ? (
+                    <span style={{color:THEME.text3,fontSize:10}}>…</span>
+                  ) : tx._div?.exDate ? (
+                    <div>
+                      <span style={{ fontFamily:THEME.mono, fontSize:10, color:THEME.text2 }}>{tx._div.exDate}</span>
+                      {tx._div.nextExDate && (<div style={{ fontSize:9, color:"#60a5fa", marginTop:1 }}>→ {tx._div.nextExDate}</div>)}
+                    </div>
+                  ) : <span style={{color:THEME.text3}}>—</span>;
+                  case "links": return (
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-                      <a href={`https://finance.yahoo.com/quote/${tx.symbol}`}
-                        target="_blank" rel="noopener noreferrer"
-                        title="Yahoo Finance"
-                        style={{
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          width:22, height:22, borderRadius:5,
-                          background:"rgba(100,160,255,0.08)",
-                          border:`1px solid rgba(100,160,255,0.18)`,
-                          color:"#6ca0ff", fontSize:9, fontWeight:800,
-                          textDecoration:"none", fontFamily:THEME.mono,
-                          transition:"background 0.12s",
-                        }}
+                      <a href={`https://finance.yahoo.com/quote/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
+                          color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                         onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                       >Y!</a>
-                      <a href={`https://www.perplexity.ai/finance/${tx.symbol}`}
-                        target="_blank" rel="noopener noreferrer"
-                        title="Perplexity Finance"
-                        style={{
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                          width:22, height:22, borderRadius:5,
-                          background:"rgba(168,120,255,0.08)",
-                          border:`1px solid rgba(168,120,255,0.18)`,
-                          color:"#a878ff", fontSize:8, fontWeight:800,
-                          textDecoration:"none", fontFamily:THEME.mono,
-                          transition:"background 0.12s",
-                        }}
+                      <a href={`https://www.perplexity.ai/finance/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
+                          color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
                         onMouseLeave={e=>e.currentTarget.style.background="rgba(168,120,255,0.08)"}
                       >Px</a>
                     </div>
-                  </td>
-                  {/* Actions */}
-                  <td style={tdStyle(TX_COLS_DEFAULT[16])}>
+                  );
+                  case "actions": return (
                     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                       <button onClick={()=>onEdit(tx.portfolioId, tx)}
                         style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
@@ -4790,7 +5205,23 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><Trash2 size={12}/></button>
                     </div>
-                  </td>
+                  );
+                  default: return null;
+                }
+              };
+
+              return (
+                <tr key={isSubrow ? `sub-${tx.id}` : tx.id}
+                  style={{ height:36, background:rawBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=rawBg}
+                >
+                  {orderedCols.map(col => (
+                    <td key={col.key}
+                      style={tdStyle(col, rawBg, col.key==="type" && isSubrow ? { borderLeft:"2px solid rgba(59,130,246,0.3)", paddingLeft:8, opacity:0.85 } : {})}>
+                      {renderSubrowCell(col)}
+                    </td>
+                  ))}
                 </tr>
               );
             })}
@@ -4798,14 +5229,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
           {/* Footer totals */}
           <tfoot>
             <tr style={{ height:36, background:THEME.surface, borderTop:`2px solid ${THEME.border}` }}>
-              {TX_COLS_DEFAULT.map((col,ci)=>(
-                <td key={col.key} style={{ ...tdStyle(col), fontFamily:THEME.mono, fontSize:11, fontWeight:700, color:THEME.text2 }}>
+              {orderedCols.map((col,ci)=>(
+                <td key={col.key} style={{ ...tdStyle(col, THEME.surface), fontFamily:THEME.mono, fontSize:11, fontWeight:700, color:THEME.text2 }}>
                   {ci===0&&<span style={{color:THEME.text3,fontFamily:THEME.font,fontSize:10}}>TOTAL</span>}
-                  {col.key==="cost"    && `$${totalCost.toLocaleString("en-US",{maximumFractionDigits:0})}`}
-                  {col.key==="curValue"&& (totalValue>0?`$${totalValue.toLocaleString("en-US",{maximumFractionDigits:0})}`:"")}
+                  {col.key==="cost"    && `${cSym}${(totalCost*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`}
+                  {col.key==="curValue"&& (totalValue>0?`${cSym}${(totalValue*rate).toLocaleString("en-US",{maximumFractionDigits:0})}`:"")}
                   {col.key==="prdAbs" && hasPrdGL&&totalPrdGL!==0&&(
                     <span style={{color:totalPrdGL>=0?THEME.green:THEME.red}}>
-                      {totalPrdGL>=0?"+":"−"}${Math.abs(totalPrdGL).toLocaleString("en-US",{maximumFractionDigits:0})}
+                      {totalPrdGL>=0?"+":"−"}{cSym}{Math.abs(totalPrdGL*rate).toLocaleString("en-US",{maximumFractionDigits:0})}
                     </span>
                   )}
                   {col.key==="prdPct" && hasPrdGL&&totalPrdGL!==0&&totalValue>0&&(
@@ -4815,7 +5246,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   )}
                   {col.key==="glAbs"  && totalGL!==0&&(
                     <span style={{color:totalGL>=0?THEME.green:THEME.red}}>
-                      {totalGL>=0?"+":"−"}${Math.abs(totalGL).toLocaleString("en-US",{maximumFractionDigits:0})}
+                      {totalGL>=0?"+":"−"}{cSym}{Math.abs(totalGL*rate).toLocaleString("en-US",{maximumFractionDigits:0})}
                     </span>
                   )}
                   {col.key==="glPct"  && totalCost>0&&totalGL!==0&&(
@@ -4851,12 +5282,12 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 // ════════════════════════════════════════════════════════════════════════════
 
 const PERIODICITY_OPTIONS = [
-  { value: "daily",         label: "Täglich",         description: "Jeden Tag"      },
-  { value: "weekly",        label: "Wöchentlich",     description: "Alle 7 Tage"    },
-  { value: "monthly",       label: "Monatlich",       description: "Jeden Monat"    },
-  { value: "quarterly",     label: "Vierteljährlich", description: "Alle 3 Monate"  },
-  { value: "semi-annually", label: "Halbjährlich",    description: "Alle 6 Monate"  },
-  { value: "annually",      label: "Jährlich",        description: "Einmal pro Jahr" },
+  { value: "daily",         labelKey: "periodicity.daily",      descKey: "periodicityDesc.daily"      },
+  { value: "weekly",        labelKey: "periodicity.weekly",     descKey: "periodicityDesc.weekly"     },
+  { value: "monthly",       labelKey: "periodicity.monthly",    descKey: "periodicityDesc.monthly"    },
+  { value: "quarterly",     labelKey: "periodicity.quarterly",  descKey: "periodicityDesc.quarterly"  },
+  { value: "semi-annually", labelKey: "periodicity.semiannual", descKey: "periodicityDesc.semiannual" },
+  { value: "annually",      labelKey: "periodicity.annual",     descKey: "periodicityDesc.annual"     },
 ];
 
 function generatePeriodDates(startDate, endDate, periodicity) {
@@ -4886,6 +5317,7 @@ function generatePeriodDates(startDate, endDate, periodicity) {
 }
 
 function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, initialTx, editMode, onSavePlan, userId }) {
+  const { t } = useTranslation();
   const [portfolioId, setPortfolioId] = useState(initialTx?.portfolio_id ?? defaultPortfolioId ?? portfolios[0]?.id);
   const [type,        setType]        = useState(initialTx?.type?.toLowerCase() || "buy");
   const [symbol,      setSymbol]      = useState(initialTx?.symbol || "");
@@ -5020,7 +5452,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
     if (purchaseMode === "recurring") {
       const budgetN = parseFloat(budget);
       if (isNaN(budgetN) || budgetN <= 0) { setError("Budget must be a positive number"); return; }
-      if (pastRecurDates.length === 0) { setError("Keine vergangenen Kauftermine — Start Date in der Vergangenheit setzen"); return; }
+      if (pastRecurDates.length === 0) { setError(t("savingsPlan.noPastDates")); return; }
       setBusy(true);
       try {
         // Use start-date FX rate for all transactions (one API call instead of N)
@@ -5089,7 +5521,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
   }, [budget, price]);
 
   return (
-    <Modal title={editMode?"Edit Transaction":"Add Transaction"} onClose={onClose}>
+    <Modal title={editMode ? t("tx.edit") : t("tx.add")} onClose={onClose}>
       {/* Portfolio selector — only in add mode with multiple portfolios */}
       {!editMode && portfolios.length > 1 && (
         <div style={{ marginBottom:16 }}>
@@ -5146,6 +5578,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         border:`1px solid ${THEME.border}` }}>
         <input ref={pdfInputRef} type="file" accept=".pdf" style={{ display:"none" }}
           onChange={e => { const f = e.target.files?.[0]; if(f) handlePdfFile(f); e.target.value=''; }}/>
+        <InfoTip i18nKey="tips.pdfImport" side="bottom" width={240}/>
         <button onClick={() => pdfInputRef.current?.click()}
           disabled={pdfLoading}
           style={{ padding:"6px 13px", borderRadius:8, border:"none",
@@ -5153,12 +5586,12 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             cursor: pdfLoading ? "wait" : "pointer", opacity: pdfLoading ? 0.7 : 1,
             display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", flexShrink:0 }}>
           {pdfLoading
-            ? <><span style={{ fontSize:13 }}>⏳</span> Analysiere…</>
-            : <><FileText size={12}/> PDF laden</>}
+            ? <><span style={{ fontSize:13 }}>⏳</span> {t("pdf.loading")}</>
+            : <><FileText size={12}/> {t("pdf.btn")}</>}
         </button>
         {pdfBanner === "ok" && (
           <span style={{ fontSize:11, color:"#22c55e" }}>
-            ✓ Felder vorausgefüllt — bitte prüfen
+            ✓ {t("pdf.ok")}
           </span>
         )}
         {pdfBanner?.startsWith("error:") && (
@@ -5169,7 +5602,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           </span>
         )}
         {!pdfBanner && !pdfLoading && (
-          <span style={{ fontSize:10, color:THEME.text3 }}>Comdirect, Flatex, …</span>
+          <span style={{ fontSize:10, color:THEME.text3 }}>{t("pdf.hint")}</span>
         )}
       </div>
 
@@ -5197,10 +5630,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               <FInput type="date" value={endDate} onChange={e => setEndDate(e.target.value)}/>
             </div>
             <div>
-              <FLabel>Periodicity</FLabel>
+              <FLabel><LabelTip i18nKey="tips.recurrence" width={200}>Periodicity</LabelTip></FLabel>
               <FSelect value={periodicity} onChange={e => setPeriodicity(e.target.value)}>
                 {PERIODICITY_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label} — {o.description}</option>
+                  <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>
                 ))}
               </FSelect>
             </div>
@@ -5231,7 +5664,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         </div>
         {/* ISIN */}
         <div>
-          <FLabel>ISIN <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span></FLabel>
+          <FLabel><LabelTip i18nKey="tips.isin" width={240}>ISIN</LabelTip> <span style={{ fontWeight:400, opacity:0.5 }}>(optional)</span></FLabel>
           <div style={{ display:"flex", gap:6 }}>
             <FInput placeholder="e.g. US0378331005" value={isin}
               style={{ fontFamily:THEME.mono, letterSpacing:"0.05em", flex:1 }}
@@ -5239,7 +5672,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               onKeyDown={e => e.key==="Enter" && isin.length>=12 && handleIsinLookup()}/>
             <button onClick={handleIsinLookup}
               disabled={isin.length < 12 || isinBusy}
-              title="Symbol aus ISIN suchen"
+              title={t("tips.isinSearch")}
               style={{
                 padding:"0 13px", borderRadius:10, flexShrink:0,
                 border:`1.5px solid ${isin.length>=12 ? THEME.accent : THEME.border}`,
@@ -5294,7 +5727,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           )}
           {isinCandidates && isinCandidates.length === 0 && (
             <div style={{ fontSize:11, color:THEME.text3, marginTop:4 }}>
-              Kein Symbol für diese ISIN gefunden
+              {t("tips.noSymbolFound")}
             </div>
           )}
 
@@ -5313,6 +5746,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             </div>
             <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
               disabled={!symbol||!date||lookupBusy}
+              title={t("tips.getPrice")}
               style={{
                 height:42, padding:"0 16px", borderRadius:10, cursor:"pointer",
                 border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
@@ -5333,6 +5767,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, paddingBottom:2 }}>
               <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
                 disabled={!symbol||!date||lookupBusy}
+                title={t("tips.getPrice")}
                 style={{
                   height:42, padding:"0 14px", borderRadius:10, cursor:"pointer",
                   border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
@@ -5353,7 +5788,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         {/* Row 4: Price | Currency */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div style={{ position:"relative" }}>
-            <FLabel>Price per Share</FLabel>
+            <FLabel><LabelTip i18nKey="tips.buyPrice" width={220}>Price per Share</LabelTip></FLabel>
             <FInput type="number" min="0" step="any" placeholder="0.00" value={price}
               onChange={e => { setPrice(e.target.value); setPriceEdited(true); }}/>
             {lookupOk && !priceEdited && !lookupBusy && (
@@ -5365,7 +5800,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             )}
           </div>
           <div>
-            <FLabel>Currency</FLabel>
+            <FLabel><LabelTip i18nKey="tips.currency" width={220}>Currency</LabelTip></FLabel>
             <FSelect value={currency} onChange={e => setCurrency(e.target.value)}>
               {["USD","EUR","GBP","CHF","JPY","CAD","AUD","HKD","CNY","SGD","SEK","NOK","DKK"].map(c => <option key={c} value={c}>{c}</option>)}
             </FSelect>
@@ -5380,10 +5815,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
             padding:"9px 14px", background:THEME.surface }}>
             <span style={{ fontSize:11, fontWeight:700, color:THEME.text2 }}>
-              Sparplan-Vorschau
+              {t("savingsPlan.preview")}
             </span>
             <span style={{ fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
-              {recurDates.length} Termin{recurDates.length!==1?"e":""}
+              {recurDates.length} {t("savingsPlan.datesTotal")}
             </span>
           </div>
           {/* Past — will be booked */}
@@ -5540,6 +5975,7 @@ function AddPortfolioModal({ onClose, onAdd }) {
 // ════════════════════════════════════════════════════════════════════════════
 function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage,
   aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey, userId }) {
+  const { t } = useTranslation();
   const used = avUsage?.today ?? 0;
   const limit = 25;
   const pct   = Math.min(100, (used/limit)*100);
@@ -5558,10 +5994,10 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
   }, [userId, aiEndpoint, aiModel, aiApiKey]);
 
   return (
-    <Modal title="Data Source Settings" onClose={onClose}>
+    <Modal title={t("settings.title")} onClose={onClose}>
       <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
         <div>
-          <FLabel>Quote Data Source</FLabel>
+          <FLabel>{t("settings.quoteSource")}</FLabel>
           <div style={{ display:"flex", gap:8, marginTop:6 }}>
             {[["yahoo","Yahoo Finance"],["alphavantage","Alpha Vantage"]].map(([val,label]) => (
               <button key={val} onClick={() => setDataSource(val)} style={{
@@ -5576,7 +6012,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         </div>
         {dataSource==="alphavantage" && (
           <div>
-            <FLabel>Alpha Vantage API Key</FLabel>
+            <FLabel><LabelTip i18nKey="tips.avKey" width={240}>Alpha Vantage API Key</LabelTip></FLabel>
             <FInput placeholder="Free key at alphavantage.co"
               value={avApiKey} onChange={e => setAvApiKey(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:12 }}/>
@@ -5595,13 +6031,13 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         )}
         {/* ── KI-Modell für PDF-Import ─────────────────────────────────── */}
         <div style={{ borderTop:`1px solid ${THEME.border}`, paddingTop:16 }}>
-          <FLabel style={{ display:"block", marginBottom:8 }}>KI-Modell für PDF-Import</FLabel>
+          <FLabel style={{ display:"block", marginBottom:8 }}>{t("settings.aiSection")}</FLabel>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:10 }}>
             {[
               ["lmstudio",   "LM Studio"],
               ["ollama",     "Ollama"],
               ["openrouter", "OpenRouter"],
-              ["disabled",   "Deaktiviert"],
+              ["disabled",   t("settings.disabled")],
             ].map(([val, label]) => (
               <button key={val}
                 onClick={() => {
@@ -5622,15 +6058,15 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
             ))}
           </div>
           {aiProvider !== "disabled" && (<>
-            <FLabel>Endpoint URL</FLabel>
+            <FLabel><LabelTip i18nKey="tips.aiEndpoint" width={240}>{t("settings.endpointUrl")}</LabelTip></FLabel>
             <FInput value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
               placeholder="http://localhost:1234"/>
-            <FLabel>Modell-Name</FLabel>
+            <FLabel><LabelTip i18nKey="tips.aiModel" width={240}>{t("settings.modelName")}</LabelTip></FLabel>
             <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
-              placeholder="z.B. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
+              placeholder="e.g. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
             {aiProvider === "openrouter" && (<>
-              <FLabel>API Key</FLabel>
+              <FLabel>{t("settings.apiKey")}</FLabel>
               <FInput value={aiApiKey} onChange={e => setAiApiKey(e.target.value)}
                 style={{ fontFamily:THEME.mono, fontSize:11 }}
                 placeholder="sk-or-..."/>
@@ -5648,13 +6084,13 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
                   display:"flex", alignItems:"center", gap:6,
                 }}>
                 {aiTestState === "testing"
-                  ? <><span className="spin" style={{ display:"inline-block" }}>⟳</span> Testing…</>
-                  : "⚡ Test Connection"}
+                  ? <><span className="spin" style={{ display:"inline-block" }}>⟳</span> {t("settings.testing")}</>
+                  : `⚡ ${t("settings.testConn")}`}
               </button>
               {aiTestState && aiTestState !== "testing" && (
                 aiTestState.ok
                   ? <span style={{ fontSize:11, color:"#22c55e" }}>
-                      ✓ Connected — {aiTestState.latencyMs}ms
+                      ✓ {t("settings.connOk")} — {aiTestState.latencyMs}ms
                       {aiTestState.model && aiTestState.model !== "unknown" && (
                         <span style={{ color:THEME.text3 }}> ({aiTestState.model})</span>
                       )}
@@ -5670,7 +6106,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
 
         <button onClick={onSave} style={{ padding:"11px 0", borderRadius:10, border:"none",
           background:THEME.accent, color:"#fff", cursor:"pointer",
-          fontSize:13, fontWeight:700 }}>Save Settings</button>
+          fontSize:13, fontWeight:700 }}>{t("settings.save")}</button>
       </div>
     </Modal>
   );
@@ -5680,49 +6116,44 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
 // VIEW MODE TOGGLE  (inline on main screen)
 // ════════════════════════════════════════════════════════════════════════════
 function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
+  const { t } = useTranslation();
   // With only 1 portfolio, none of the split/consolidated modes add value
   if (portfolioCount <= 1) return null;
 
   // Holdings: no "single" — aggregated IS the single-portfolio merged view
   if (activeTab === "holdings") {
     var modes = [
-      { key:"consolidated", label:"Consolidated", icon:"⊞" },
-      { key:"aggregated",   label:"Aggregated",   icon:"⊕" },
+      { key:"consolidated", label:t("chart.consolidated"), icon:"⊞" },
+      { key:"aggregated",   label:t("chart.aggregated"),   icon:"⊕" },
     ];
   } else if (activeTab === "chart" || activeTab === "transactions") {
     var modes = [
-      { key:"single", label:"Combined",      icon:"□" },
-      { key:"split",  label:"Per Portfolio", icon:"⊞" },
+      { key:"single", label:t("chart.combined"),      icon:"□" },
+      { key:"split",  label:t("chart.perPortfolio"),  icon:"⊞" },
     ];
   } else if (activeTab === "performance") {
     var modes = [
-      { key:"consolidated", label:"Consolidated", icon:"⊞" },
-      { key:"aggregated",   label:"Aggregated",   icon:"⊕" },
+      { key:"consolidated", label:t("chart.consolidated"), icon:"⊞" },
+      { key:"aggregated",   label:t("chart.aggregated"),   icon:"⊕" },
     ];
   } else {
     return null;
   }
 
   return (
-    <div style={{
-      display:"flex", alignItems:"center", gap:2,
-      background:"rgba(0,0,0,0.25)", borderRadius:9,
-      padding:3, border:`1px solid ${THEME.border}`,
-    }}>
-      {modes.map(m => (
-        <button key={m.key} onClick={() => onViewMode(m.key)} style={{
-          display:"flex", alignItems:"center", gap:5,
-          padding:"4px 12px", borderRadius:7, border:"none", cursor:"pointer",
-          fontSize:10, fontWeight:700, fontFamily:"inherit",
-          transition:"all 0.15s",
-          background: viewMode === m.key ? "rgba(59,130,246,0.22)" : "transparent",
-          color:       viewMode === m.key ? THEME.accent : THEME.text3,
-          letterSpacing:"0.04em",
-        }}>
-          <span style={{ fontSize:12, lineHeight:1 }}>{m.icon}</span>
-          {m.label}
-        </button>
-      ))}
+    <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+      <InfoTip i18nKey="tips.viewMode" side="bottom" width={260}/>
+      <div className="rail-density-row">
+        {modes.map(m => (
+          <button key={m.key}
+            className={"rail-density-btn" + (viewMode===m.key ? " active" : "")}
+            onClick={() => onViewMode(m.key)}
+            style={{ padding:"4px 12px", gap:5 }}>
+            <span style={{ fontSize:12, lineHeight:1 }}>{m.icon}</span>
+            {m.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -5731,22 +6162,23 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
 // SUMMARY BAR
 // ════════════════════════════════════════════════════════════════════════════
 function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period, currency, rates, colorMode, onColorMode }) {
+  const { t } = useTranslation();
   const totalNetGain = totalValueUSD - totalCostUSD;
   return (
     <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
       background:THEME.surface, display:"flex", alignItems:"center", gap:24, flexShrink:0 }}>
       {[
-        ["Total Value",   fmtVal(totalValueUSD, currency, rates), null, "Current market value of all positions across all portfolios."],
-        ["Total Cost",    fmtVal(totalCostUSD,  currency, rates), null, "Total cost basis: sum of all purchases at their original prices converted to USD."],
-        ["Net G/L",       `${totalNetGain>=0?"+":""}${fmtVal(Math.abs(totalNetGain),currency,rates)} (${fmtPct(totalCostUSD>0?(totalNetGain/totalCostUSD)*100:null)})`,
+        [t("summary.totalValue"), fmtVal(totalValueUSD, currency, rates), null, "Current market value of all positions across all portfolios."],
+        [t("summary.totalCost"),  fmtVal(totalCostUSD,  currency, rates), null, "Total cost basis: sum of all purchases at their original prices converted to USD."],
+        [t("summary.netGl"),      `${totalNetGain>=0?"+":""}${fmtVal(Math.abs(totalNetGain),currency,rates)} (${fmtPct(totalCostUSD>0?(totalNetGain/totalCostUSD)*100:null)})`,
                           totalNetGain>=0?THEME.green:THEME.red, "Net unrealised Gain / Loss across all portfolios. No taxes or fees deducted."],
-        [`${period==="Intraday"?"1D":period} Return`, fmtPct(portfolioPerf),
+        [`${period==="Intraday"?"1D":period} ${t("summary.return")}`, fmtPct(portfolioPerf),
                           portfolioPerf!=null?(portfolioPerf>=0?THEME.green:THEME.red):THEME.text3, `Weighted price change over the selected period (${period}).`],
       ].map(([lbl,val,color,tip]) => (
         <div key={lbl}>
           <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
             letterSpacing:"0.08em", marginBottom:2, display:"flex", alignItems:"center", gap:2 }}>
-            {lbl}{tip && <InfoTip text={tip} width={210} side="bottom"/>}
+            {tip ? <LabelTip text={tip} width={210}>{lbl}</LabelTip> : lbl}
           </div>
           <div className="mono" style={{ fontSize:13, fontWeight:700, color:color??THEME.text1 }}>{val}</div>
         </div>
@@ -5754,21 +6186,22 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
 
       <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
         {/* Color mode toggle */}
-        <div style={{ display:"flex", background:THEME.bg, border:`1px solid ${THEME.border}`,
-          borderRadius:8, padding:2, gap:2 }}>
-          {[["market","Mkt %"],["gainloss","G&L"]].map(([mode,label]) => (
-            <button key={mode} onClick={() => onColorMode(mode)} style={{
-              padding:"3px 10px", border:"none", cursor:"pointer", borderRadius:6,
-              fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-              background:colorMode===mode?(mode==="gainloss"?"rgba(251,191,36,0.18)":"rgba(59,130,246,0.18)"):"transparent",
-              color:colorMode===mode?(mode==="gainloss"?"#fbbf24":THEME.accent):THEME.text3,
-            }}>{label}</button>
-          ))}
-        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+          <InfoTip i18nKey="tips.colourMode" side="top" width={260}/>
+          <div className="rail-density-row">
+            {[["market",t("summary.mktPct")],["gainloss",t("summary.gl")]].map(([mode,label]) => (
+              <button key={mode}
+                className={"rail-density-btn" + (colorMode===mode ? " active" : "")}
+                onClick={() => onColorMode(mode)}
+                style={{ padding:"3px 10px" }}>
+                {label}
+              </button>
+            ))}
+          </div>
         {/* Legend */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
           <div style={{ fontSize:7, color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.08em" }}>
-            {colorMode==="gainloss"?"G&L %":"Mkt %"}
+            {colorMode==="gainloss"?`${t("summary.gl")} %`:t("summary.mktPct")}
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:2 }}>
             <span style={{ fontSize:7, color:THEME.text3 }}>−5%</span>
@@ -5779,6 +6212,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
             <span style={{ fontSize:7, color:THEME.text3 }}>+5%</span>
           </div>
         </div>
+        </div>{/* end color mode wrapper */}
       </div>
     </div>
   );
@@ -5788,6 +6222,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
 // PERIOD TOOLBAR
 // ════════════════════════════════════════════════════════════════════════════
 function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, portfolioCount, subView, onSubView, ansicht, onAnsicht, extraRight }) {
+  const { t } = useTranslation();
   const hasSubView   = activeTab === "chart" && onSubView;
   const hasViewMode  = portfolioCount > 1;
   const hasAnsicht   = activeTab === "performance" && onAnsicht;
@@ -5800,17 +6235,20 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
       borderBottom:`1px solid ${THEME.border}`, height:46,
       background:THEME.surface, flexShrink:0 }}>
 
-      {/* Period buttons */}
-      {PERIODS.map(p => (
-        <button key={p.key} onClick={() => onPeriod(p.key)} style={{
-          padding:"5px 12px", border:"none", cursor:"pointer",
-          background:period===p.key?"rgba(59,130,246,0.15)":"transparent",
-          color:period===p.key?THEME.accent:THEME.text3,
-          fontSize:11, fontWeight:700, fontFamily:"inherit",
-          borderBottom:period===p.key?`2px solid ${THEME.accent}`:"2px solid transparent",
-          borderRadius:"7px 7px 0 0",
-        }}>{p.label}</button>
-      ))}
+      {/* Period buttons — pill segmented control */}
+      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+        <InfoTip i18nKey="tips.period" side="bottom" width={220}/>
+        <div className="rail-density-row">
+          {PERIODS.map(p => (
+            <button key={p.key}
+              className={"rail-density-btn" + (period===p.key ? " active" : "")}
+              onClick={() => onPeriod(p.key)}
+              style={{ padding:"4px 10px", fontFamily:"var(--font-mono)", letterSpacing:"0.03em" }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Separator */}
       {(showSep1 || showSepOnly) && (
@@ -5819,19 +6257,14 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
 
       {/* Bar Chart sort mode */}
       {hasSubView && (
-        <div style={{
-          display:"flex", alignItems:"center", gap:2,
-          background:"rgba(0,0,0,0.25)", borderRadius:9, padding:3,
-          border:`1px solid ${THEME.border}`, flexShrink:0,
-        }}>
-          {[["perf","Performance"],["size","By Size"]].map(([key, label]) => (
-            <button key={key} onClick={() => onSubView(key)} style={{
-              padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
-              fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-              background: subView===key ? "rgba(59,130,246,0.22)" : "transparent",
-              color:       subView===key ? THEME.accent : THEME.text3,
-              letterSpacing:"0.04em",
-            }}>{label}</button>
+        <div className="rail-density-row" style={{ flexShrink:0 }}>
+          {[["perf",t("nav.performance")],["size",t("chart.bySize")]].map(([key, label]) => (
+            <button key={key}
+              className={"rail-density-btn" + (subView===key ? " active" : "")}
+              onClick={() => onSubView(key)}
+              style={{ padding:"4px 11px" }}>
+              {label}
+            </button>
           ))}
         </div>
       )}
@@ -5846,20 +6279,15 @@ function PeriodToolbar({ period, onPeriod, viewMode, onViewMode, activeTab, port
       {/* Performance: Portfolio / Instrumente ansicht toggle */}
       {hasAnsicht && (
         <>
-          {hasViewMode && <div style={{ width:1, height:20, background:THEME.border, margin:"0 10px", flexShrink:0 }}/>}
-          <div style={{
-            display:"flex", alignItems:"center", gap:2,
-            background:"rgba(0,0,0,0.25)", borderRadius:9, padding:3,
-            border:`1px solid ${THEME.border}`, flexShrink:0,
-          }}>
-            {[["portfolio","Portfolio"],["instruments","Instrumente"]].map(([key, label]) => (
-              <button key={key} onClick={() => onAnsicht(key)} style={{
-                padding:"4px 11px", border:"none", cursor:"pointer", borderRadius:7,
-                fontSize:10, fontWeight:700, fontFamily:"inherit", transition:"all 0.15s",
-                background: ansicht===key ? "rgba(249,115,22,0.22)" : "transparent",
-                color:       ansicht===key ? "#fb923c" : THEME.text3,
-                letterSpacing:"0.04em",
-              }}>{label}</button>
+          {hasViewMode && <div style={{ width:1, height:20, background:"var(--border)", margin:"0 10px", flexShrink:0 }}/>}
+          <div className="rail-density-row" style={{ flexShrink:0 }}>
+            {[["portfolio",t("chart.viewPortfolio")],["instruments",t("chart.viewInstruments")]].map(([key, label]) => (
+              <button key={key}
+                className={"rail-density-btn" + (ansicht===key ? " active" : "")}
+                onClick={() => onAnsicht(key)}
+                style={{ padding:"4px 11px" }}>
+                {label}
+              </button>
             ))}
           </div>
         </>
@@ -5902,6 +6330,60 @@ const PREDEFINED_ETFS_CLIENT = [
   { ticker:"EXS1.DE", name:"iShares Core DAX",           provider:"iShares"     },
 ];
 
+// ── Extract price + period refs from raw Yahoo chart data ────────────────────
+// Used to populate quotes state as chart data arrives (avoids second batch call).
+function extractQuoteFromRaw(raw) {
+  const result = raw?.chart?.result?.[0];
+  if (!result) return null;
+  const meta = result.meta;
+  const price = meta.regularMarketPrice ?? meta.previousClose ?? null;
+  if (!price) return null;
+
+  const timestamps = result.timestamp ?? [];
+  const closes     = result.indicators?.quote?.[0]?.close ?? [];
+  const refs       = {};
+
+  if (timestamps.length >= 2) {
+    const now = timestamps[timestamps.length - 1];
+    const findRef = (targetTs) => {
+      // find rightmost index ≤ targetTs
+      let idx = 0;
+      for (let i = 0; i < timestamps.length; i++) {
+        if (timestamps[i] <= targetTs) idx = i; else break;
+      }
+      for (let d = 0; d < 5; d++) {
+        if (idx - d >= 0 && closes[idx - d] != null) return closes[idx - d];
+        if (idx + d < closes.length && closes[idx + d] != null) return closes[idx + d];
+      }
+      return null;
+    };
+
+    // YTD: Jan 1st of current year
+    const ytdStart = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
+    const ytdRef   = findRef(ytdStart);
+    if (ytdRef) refs['YTD'] = ytdRef;
+
+    // Fixed periods (only if data goes back that far)
+    const DAYS = { '1W':7, '1M':30, '3M':91, '6M':182, '1Y':365, '2Y':730 };
+    for (const [key, days] of Object.entries(DAYS)) {
+      const targetTs = now - days * 86400;
+      if (timestamps[0] <= targetTs) {
+        const ref = findRef(targetTs);
+        if (ref) refs[key] = ref;
+      }
+    }
+  }
+
+  return {
+    price,
+    changePct: meta.regularMarketChangePercent ?? null,
+    shortName: meta.shortName ?? null,
+    name:      meta.longName ?? meta.shortName ?? null,
+    currency:  meta.currency ?? "USD",
+    refs:      Object.keys(refs).length > 0 ? refs : undefined,
+  };
+}
+
 function buildEtfNodes(holdings, quotes, period) {
   return holdings.map(h => {
     const q   = quotes[h.symbol];
@@ -5920,16 +6402,20 @@ function buildEtfNodes(holdings, quotes, period) {
       return q.changePct ?? null;
     })();
     return {
+      isEtf:           true,
       symbol:          h.symbol,
       name:            q?.name || h.name || h.symbol,
+      shortName:       q?.shortName ?? null,
       weight:          h.weight,
       currentPriceUSD: q?.price ?? 0,
-      valueUSD:        h.weight * 10,
-      costUSD:         h.weight * 10,
-      gainLossUSD:     0,
+      // valueUSD = weight (0–100) used by d3/BarChart for proportional sizing.
+      // costUSD is null → Tooltip takes the ETF branch (no fake cost/market value).
+      valueUSD:        h.weight,
+      costUSD:         null,
+      gainLossUSD:     null,
       perf,
       glPerf:          null,
-      quantity:        h.weight,
+      qty:             null,
       currency:        q?.currency ?? "USD",
     };
   });
@@ -6172,19 +6658,24 @@ function DeleteEtfModal({ etf, onConfirm, onCancel }) {
 function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrency,
                    fetching, onRefreshQuotes,
                    user, savedEtfs, onSaveEtf, onRemoveEtf, onSwitchToPortfolio,
-                   onBack, onSignOut,
-                   displayMode, onToggleDisplayMode }) {
-  const [search,      setSearch]      = useState("");
-  const [searching,   setSearching]   = useState(false);
-  const [results,     setResults]     = useState([]);
-  const [searchErr,   setSearchErr]   = useState(null);
+                   onBack, onSignOut, onSettings,
+                   displayMode, onToggleDisplayMode,
+                   uiTheme, onToggleTheme,
+                   uiLanguage, onChangeLanguage }) {
+  const { t } = useTranslation();
+  const [search,        setSearch]        = useState("");
+  const [searching,     setSearching]     = useState(false);
+  const [results,       setResults]       = useState([]);
+  const [searchErr,     setSearchErr]     = useState(null);
   // Custom ETFs: found via search, staged locally until saved to profile
-  const [customEtfs,  setCustomEtfs]  = useState([]);
+  const [customEtfs,    setCustomEtfs]    = useState([]);
   // Delete confirmation: { etf, from } where from = 'custom' | 'saved'
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [savingCustom,  setSavingCustom]  = useState(false);
+  const [userModalOpen, setUserModalOpen] = useState(false);
   const searchTimer = useRef(null);
   const inputRef    = useRef(null);
+  const userBtnRef  = useRef(null);
   const w = open ? 220 : 52;
 
   // Live search with debounce
@@ -6285,7 +6776,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         </div>
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          title="Remove ETF"
+          title={t("etf.removeEtf")}
           style={{
             flexShrink:0, background:"none", border:"none",
             cursor:"pointer", color: THEME.red ?? "#ef4444",
@@ -6320,7 +6811,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               ETF<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
             </div>
             <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.10em", marginTop:-2 }}>Screener</div>
+              letterSpacing:"0.10em", marginTop:-2 }}>{t("etf.screener").replace("ETF ","").replace("ETF-","")}</div>
           </div>
         )}
         {/* Mode switcher — removed, navigation via sidebar bottom */}
@@ -6348,7 +6839,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               ref={inputRef}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Ticker or name…"
+              placeholder={t("etf.searchPlaceholder")}
               style={{
                 width:"100%", padding:"7px 28px 7px 28px",
                 background:"rgba(255,255,255,0.05)", border:`1px solid ${inSearch ? THEME.accent+"44" : THEME.border}`,
@@ -6384,7 +6875,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <div style={{ padding:"12px 8px", display:"flex", alignItems:"center",
             gap:8, color:THEME.text3, fontSize:11 }}>
             <span className="spin" style={{ display:"flex" }}><RefreshCw size={12}/></span>
-            Searching Yahoo Finance…
+            {t("etf.searching")}
           </div>
         )}
         {/* ── Error ── */}
@@ -6398,7 +6889,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         {open && inSearch && !searching && !searchErr && results.length === 0 && (
           <div style={{ padding:"14px 8px", textAlign:"center", color:THEME.text3,
             fontSize:11, lineHeight:1.5 }}>
-            No ETFs found for<br/>
+            {t("etf.noResults")}<br/>
             <span style={{ fontFamily:"'JetBrains Mono',monospace",
               color:THEME.text2 }}>"{search}"</span>
           </div>
@@ -6408,7 +6899,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         {open && (
           <>
             <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.08em", padding:"4px 4px 6px" }}>Presets</div>
+              letterSpacing:"0.08em", padding:"4px 4px 6px" }}>{t("etf.presets")}</div>
             {(inSearch ? presetResults : PREDEFINED_ETFS_CLIENT).map(etf => (
               <EtfItem key={etf.ticker} etf={etf} isActive={selectedTicker===etf.ticker}/>
             ))}
@@ -6420,7 +6911,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>Saved</div>
+                letterSpacing:"0.08em" }}>{t("etf.saved")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{savedEtfs.length}</div>
             </div>
@@ -6437,7 +6928,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>Custom</div>
+                letterSpacing:"0.08em" }}>{t("etf.custom")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{customEtfs.length}</div>
             </div>
@@ -6485,8 +6976,8 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                     transition:"all 0.15s",
                   }}>
                   {savingCustom
-                    ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={12}/></span> Saving…</>
-                    : <><span style={{fontSize:14}}>☁</span> Save {unsaved.length === 1 ? "to" : `${unsaved.length} to`} profile</>}
+                    ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={12}/></span> {t("etf.saving")}</>
+                    : <><span style={{fontSize:14}}>☁</span> {unsaved.length > 1 ? `${unsaved.length} ` : ""}{t("etf.saveToProfile")}</>}
                 </button>
               );
             })()}
@@ -6498,7 +6989,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>Search results</div>
+                letterSpacing:"0.08em" }}>{t("etf.searchResults")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{liveResults.length}</div>
             </div>
@@ -6521,7 +7012,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                       );
                       handleSelect(etf.ticker);
                     }}
-                    title={added ? "Added to list" : "Add to Custom list"}
+                    title={added ? t("etf.addedToList") : t("etf.addToList")}
                     style={{
                       flexShrink:0, background:"none", border:"none",
                       cursor: added ? "default" : "pointer",
@@ -6615,153 +7106,194 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       {/* Divider */}
       <div style={{ height:1, background:THEME.border2, margin:"6px 8px", flexShrink:0 }}/>
 
-      {/* Currency */}
+      {/* Currency — same sizing/spacing as Portfolio Rail */}
       {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
         textTransform:"uppercase", letterSpacing:"0.10em",
-        padding:"6px 12px 4px", opacity:0.7, flexShrink:0 }}>Currency</div>}
-      <div style={{ padding: open?"2px 8px 6px":"2px 4px 6px", display:"flex",
-        flexDirection:"column", gap:2, flexShrink:0 }}>
+        padding:"6px 6px 4px", opacity:0.7, flexShrink:0 }}>{t("etf.currency")}</div>}
+      <div style={{
+        padding: open ? "2px 4px" : "2px 0",
+        display:"flex", flexDirection:"column",
+        gap:2, alignItems: open ? "stretch" : "center", flexShrink:0,
+      }}>
         {Object.keys(CCY_SYM).map(c => {
           const isActive = currency === c;
           const code = CCY_FLAG[c];
-          const SIZE = open ? 24 : 20;
+          const SIZE = open ? 22 : 16;
           return (
-            <button key={c} onClick={() => onCurrency(c)} title={c}
-              className={isActive?undefined:"ccy-btn"}
-              style={{ display:"flex", alignItems:"center", gap:open?10:0,
-                padding:open?"6px 10px":"6px 0", border:"none", borderRadius:9,
-                background:isActive?"rgba(59,130,246,0.15)":"transparent",
-                cursor:"pointer", fontFamily:THEME.font, transition:"background 0.12s",
-                width:"100%", justifyContent:open?"flex-start":"center",
-                color:isActive?THEME.accent:THEME.text3 }}>
-              <div className="ccy-flag" style={{ width:SIZE, height:SIZE,
-                borderRadius:"50%", overflow:"hidden", flexShrink:0,
-                opacity:isActive?1:0.4, transition:"opacity 0.12s",
+            <SidebarTip key={c} label={`${c} — ${CCY_NAME[c]}`} open={open}>
+            <button onClick={() => onCurrency(c)}
+              className={isActive ? undefined : "ccy-btn"}
+              style={{
+                display:"flex", alignItems:"center",
+                gap: open ? 8 : 0,
+                padding: open ? "5px 8px" : "5px 0",
+                border:"none", borderRadius:8,
+                background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
+                cursor:"pointer", fontFamily:THEME.font,
+                transition:"background 0.12s",
+                width:"100%",
+                justifyContent: open ? "flex-start" : "center",
+              }}>
+              <div className="ccy-flag" style={{
+                width:SIZE, height:SIZE, borderRadius:"50%",
+                overflow:"hidden", flexShrink:0,
+                opacity: isActive ? 1 : 0.4, transition:"opacity 0.12s",
                 display:"flex", alignItems:"center", justifyContent:"center",
-                lineHeight:0, fontSize:0 }}>
-                {code ? <CircleFlag countryCode={code} width={SIZE} height={SIZE}/>
-                      : <span style={{ fontSize:SIZE*0.6 }}>🌐</span>}
+              }}>
+                {code
+                  ? <CircleFlag countryCode={code} width={SIZE} height={SIZE}/>
+                  : <span style={{ fontSize:SIZE*0.6, lineHeight:1 }}>🌐</span>}
               </div>
               {open && (
-                <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-                  <span className="ccy-label" style={{ fontSize:12,
-                    fontWeight:isActive?700:500,
-                    color:isActive?THEME.accent:THEME.text3 }}>{c}</span>
-                  <span className="ccy-name" style={{ fontSize:10,
-                    color:isActive?THEME.accent:THEME.text3 }}>{CCY_NAME[c]}</span>
+                <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
+                  <span className="ccy-label" style={{
+                    fontSize:11, fontWeight: isActive ? 700 : 500,
+                    color: isActive ? THEME.accent : THEME.text3,
+                  }}>{c}</span>
+                  <span className="ccy-name" style={{
+                    fontSize:9, color: isActive ? THEME.accent : THEME.text3,
+                  }}>{CCY_NAME[c]}</span>
                 </div>
               )}
             </button>
+            </SidebarTip>
           );
         })}
       </div>
 
-      {/* ─── Bottom: Account (pinned) ────────────────────────────── */}
-      <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 6px 8px", flexShrink:0 }}>
-        {/* Refresh row */}
-        <RailBtn open={open} icon={fetching ? <span className="spin" style={{display:'flex'}}><RefreshCw size={15}/></span> : <RefreshCw size={15}/>}
-          label="Refresh Quotes" onClick={onRefreshQuotes}/>
-        <div style={{ height:1, background:THEME.border, margin:"4px 0" }}/>
-        {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-          textTransform:"uppercase", letterSpacing:"0.10em",
-          padding:"4px 6px 4px", opacity:0.7 }}>Account</div>}
-        {user ? (
-          <>
-            {open && (
-              <div style={{ padding:"2px 6px 6px", display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ width:26, height:26, borderRadius:"50%",
-                  background:"rgba(59,130,246,0.2)", display:"flex",
-                  alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <User size={12} style={{ color:THEME.accent }}/>
-                </div>
-                <div>
-                  <div style={{ fontSize:12, fontWeight:600, color:THEME.text1 }}>{user.username}</div>
-                  <div style={{ fontSize:9, color:THEME.text3 }}>ETF Screener</div>
-                </div>
-              </div>
-            )}
-            {user && onSwitchToPortfolio && (
-              open ? (
-                <button onClick={onSwitchToPortfolio} style={{
-                  display:"flex", alignItems:"center", gap:10,
-                  width:"100%", padding:"9px 12px", borderRadius:9,
-                  border:"none", cursor:"pointer", background:"transparent",
-                  color:THEME.text2, fontFamily:THEME.font,
-                  transition:"background 0.12s",
-                }} className="rail-btn">
-                  <span style={{ flexShrink:0, display:"flex" }}><LayoutDashboard size={16}/></span>
-                  <span style={{ fontSize:12, fontWeight:600, lineHeight:1.2 }}>Portfolio Explorer</span>
+      {/* ─── Bottom: pinned footer (same class + padding as Portfolio Rail) ── */}
+      <div className="rail-footer-section">
+
+        {/* Refresh quotes */}
+        <RailBtn open={open}
+          icon={fetching ? <span className="spin" style={{display:'flex'}}><RefreshCw size={15}/></span> : <RefreshCw size={15}/>}
+          label={t("etf.refreshQuotes")} onClick={onRefreshQuotes}/>
+
+        {/* Settings — same button as Portfolio Rail */}
+        {onSettings && (
+          <RailBtn open={open} icon={<Settings size={14}/>} label={t("rail.settings")}
+            onClick={onSettings}/>
+        )}
+
+        <div style={{ height:1, background:"var(--border-2)", margin:"2px 0" }}/>
+
+        {/* App switcher: ETF Screener (active) ↔ Portfolio Explorer */}
+        {onSwitchToPortfolio && (
+          open ? (
+            <div className="rail-density-row">
+              <button className="rail-density-btn" onClick={onSwitchToPortfolio} style={{ flex:1 }}>
+                <LayoutDashboard size={12}/><span>Portfolio</span>
+              </button>
+              <button className="rail-density-btn active" style={{ flex:1 }}>
+                <TrendingUp size={12}/><span>ETF</span>
+              </button>
+            </div>
+          ) : (
+            <RailBtn open={false} icon={<LayoutDashboard size={15}/>}
+              label={t("portfolio.explorer")} onClick={onSwitchToPortfolio}/>
+          )
+        )}
+        {!onSwitchToPortfolio && onBack && (
+          <RailBtn open={open} icon={<User size={16}/>} label={t("etf.signIn")}
+            onClick={onBack} color={THEME.accent}/>
+        )}
+
+        {/* Compact / Relaxed */}
+        {onToggleDisplayMode && (
+          open ? (
+            <div className="rail-density-row">
+              {[["pro", <Gauge size={13}/>, t("rail.compact")], ["comfort", <Armchair size={13}/>, t("rail.relaxed")]].map(([m, icon, lbl]) => (
+                <button key={m}
+                  className={"rail-density-btn" + (displayMode===m ? " active" : "")}
+                  onClick={() => onToggleDisplayMode && onToggleDisplayMode(m)}
+                  title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}>
+                  {icon}<span>{lbl}</span>
                 </button>
-              ) : (
-                <SidebarTip label="Portfolio Explorer" open={open}>
-                  <button onClick={onSwitchToPortfolio} style={{
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    width:"100%", padding:"9px 0", borderRadius:9,
-                    border:"none", cursor:"pointer", background:"transparent",
-                    color:THEME.text2, transition:"background 0.12s",
-                  }} className="rail-btn">
-                    <LayoutDashboard size={16}/>
-                  </button>
-                </SidebarTip>
-              )
-            )}
-            {/* Sign Out removed here — rendered once at bottom after View Mode */}
-          </>
-        ) : (
-          onBack && (
-            <RailBtn open={open} icon={<User size={16}/>} label="Sign In"
-              onClick={onBack} color={THEME.accent}/>
+              ))}
+            </div>
+          ) : (
+            <RailBtn open={false}
+              icon={displayMode==="comfort" ? <Armchair size={15}/> : <Gauge size={15}/>}
+              label={displayMode==="comfort" ? t("rail.relaxed") : t("rail.compact")}
+              onClick={() => onToggleDisplayMode && onToggleDisplayMode()}/>
           )
         )}
 
-        {/* ── Display mode toggle (shared with portfolio rail) ── */}
-        {onToggleDisplayMode && (
-          <div style={{ padding: open ? "6px 10px" : "6px 4px" }}>
-            {open ? (
-              <div style={{ display:"flex", alignItems:"center", gap:8,
-                padding:"6px 10px", borderRadius:8,
-                background:"rgba(255,255,255,0.04)",
-                border:`1px solid ${THEME.border}` }}>
-                <span style={{ fontSize:10, color:THEME.text3, flex:1, whiteSpace:"nowrap" }}>View mode</span>
-                <div style={{ display:"flex", gap:2, padding:"2px",
-                  borderRadius:6, background:"rgba(0,0,0,0.25)",
-                  border:`1px solid ${THEME.border}` }}>
-                  {[["pro",<Gauge size={13}/>, "Pro mode"],["comfort",<Armchair size={13}/>, "Comfort mode"]].map(([m, lbl]) => (
-                    <button key={m} onClick={() => onToggleDisplayMode(m)}
-                      title={m==="pro" ? "Compact — maximum information density" : "Comfort — larger text (WCAG AA)"}
-                      style={{
-                        padding:"3px 8px", borderRadius:5, border:"none",
-                        background: displayMode===m
-                          ? (m==="comfort" ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.12)")
-                          : "transparent",
-                        color: displayMode===m ? THEME.text1 : THEME.text3,
-                        fontSize:9, fontWeight:700, cursor:"pointer",
-                        fontFamily:"inherit", transition:"all 0.15s", letterSpacing:"0.04em",
-                      }}>{lbl}</button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <button onClick={onToggleDisplayMode}
-                title={displayMode==="pro" ? "Switch to Comfort mode (A11Y)" : "Switch to Pro mode"}
-                style={{
-                  width:"100%", padding:"6px 0", border:"none", cursor:"pointer",
-                  background: displayMode==="comfort" ? "rgba(59,130,246,0.18)" : "transparent",
-                  borderRadius:7, display:"flex", justifyContent:"center",
-                  alignItems:"center", transition:"all 0.15s",
-                  color: THEME.text3,
-                }}>
-                <span style={{ lineHeight:1, color:"inherit" }}>{displayMode==="comfort" ? <Armchair size={16} aria-label="Comfort Mode" /> : <Gauge size={16} aria-label="Pro Mode aktiv" />}</span>
+        {/* DE / EN */}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["de", deFlagUrl, "DE"], ["en", gbFlagUrl, "EN"]].map(([lang, flag, lbl]) => (
+              <button key={lang}
+                className={"rail-density-btn" + ((uiLanguage||"en")===lang ? " active" : "")}
+                onClick={() => onChangeLanguage && onChangeLanguage(lang)}
+                title={lang==="de" ? t("rail.langDe") : t("rail.langEn")}>
+                <img src={flag} width={13} height={13} style={{ borderRadius:"50%", flexShrink:0 }} alt={lbl}/>
+                <span>{lbl}</span>
               </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false} icon={<Globe size={15}/>}
+            label={(uiLanguage||"en").toUpperCase()}
+            onClick={() => onChangeLanguage && onChangeLanguage((uiLanguage||"en")==="de" ? "en" : "de")}/>
+        )}
+
+        {/* Light / Dark */}
+        {open ? (
+          <div className="rail-theme-row">
+            {[["light", <Sun size={13}/>, t("rail.lightMode")], ["dark", <Moon size={13}/>, t("rail.darkMode")]].map(([th, icon, lbl]) => (
+              <button key={th}
+                className={"rail-density-btn" + ((uiTheme||"dark")===th ? " active" : "")}
+                onClick={() => onToggleTheme && onToggleTheme()}
+                title={lbl}>
+                {icon}<span>{lbl}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <RailBtn open={false}
+            icon={(uiTheme||"dark")==="dark" ? <Moon size={15}/> : <Sun size={15}/>}
+            label={(uiTheme||"dark")==="dark" ? t("rail.darkMode") : t("rail.lightMode")}
+            onClick={() => onToggleTheme && onToggleTheme()}/>
+        )}
+
+        {/* User account row — same as Portfolio Rail */}
+        {user && (
+          <div ref={userBtnRef}
+            className={"rail-user" + (open ? "" : " rail-user-collapsed")}
+            onClick={() => setUserModalOpen(v => !v)}
+            style={{
+              border: userModalOpen ? "1px solid var(--border)" : "1px solid transparent",
+              background: userModalOpen ? "var(--surface-2)" : "transparent",
+            }}>
+            <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
+            {open && (
+              <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
+                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                  {user.username}
+                </div>
+                <div style={{ fontSize:10, color:"var(--fg-3)" }}>ETF Screener</div>
+              </div>
             )}
           </div>
         )}
-        {/* Sign Out — always last */}
-        {onSignOut && user && (
-          <RailBtn open={open} icon={<LogOut size={16}/>} label="Sign Out"
-            onClick={onSignOut} color={THEME.text3}/>
-        )}
       </div>
+
+      {/* User modal (same as Portfolio Rail) */}
+      {userModalOpen && user && (
+        <UserModal
+          username={user.username}
+          portfolioCount={0}
+          subtitle="ETF Screener"
+          anchorRef={userBtnRef}
+          switchLabel={t("portfolio.explorer")}
+          switchIcon={<LayoutDashboard size={14} style={{ flexShrink:0 }}/>}
+          onClose={() => setUserModalOpen(false)}
+          onSwitch={() => { setUserModalOpen(false); onSwitchToPortfolio && onSwitchToPortfolio(); }}
+          onLogout={() => { setUserModalOpen(false); onSignOut && onSignOut(); }}
+        />
+      )}
     </div>
 
     {/* Delete confirmation modal */}
@@ -6786,6 +7318,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
 
 // ── ETF Summary Bar ───────────────────────────────────────────────────────────
 function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
+  const { t } = useTranslation();
   const valid   = nodes.filter(n => n.perf != null);
   const totalW  = valid.reduce((s,n) => s+n.weight, 0) || 1;
   const avgPerf = valid.length
@@ -6801,14 +7334,14 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
       gap:24, flexShrink:0, flexWrap:"wrap" }}>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>ETF</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.screener").replace(" Screener","").replace("-Screener","")}</div>
         <div style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
           {etfMeta?.name ?? "—"}
         </div>
       </div>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>Avg Perf (weighted)</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.avgPerfWeighted")}</div>
         <div className="mono" style={{ fontSize:13, fontWeight:700,
           color: avgPerf==null?THEME.text3:avgPerf>=0?THEME.green:THEME.red }}>
           {avgPerf!=null ? `${avgPerf>=0?"+":""}${avgPerf.toFixed(2)}%` : "—"}
@@ -6816,7 +7349,7 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
       </div>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>Gainers / Losers</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.gainersLosers")}</div>
         <div className="mono" style={{ fontSize:13, fontWeight:700 }}>
           <span style={{ color:THEME.green }}>{gainers}↑</span>
           <span style={{ color:THEME.text3, margin:"0 4px" }}>/</span>
@@ -6825,7 +7358,7 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
       </div>
       <div>
         <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>Holdings</div>
+          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.topHoldings")}</div>
         <div className="mono" style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
           Top {nodes.length}
         </div>
@@ -6888,19 +7421,21 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
   const col = isPos ? "#4ade80" : "#f87171";
 
   return (
-    <svg width={W} height={H} style={{ display:"block" }}>
-      <defs>
-        <linearGradient id={`sg-${xs[0]}-${isPos}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={col} stopOpacity="0.3"/>
-          <stop offset="100%" stopColor={col} stopOpacity="0"/>
-        </linearGradient>
-      </defs>
-      <polyline
-        points={polyPts + ` ${W},${H} 0,${H}`}
-        fill={`url(#sg-${xs[0]}-${isPos})`}/>
-      <polyline points={polyPts} fill="none" stroke={col} strokeWidth="1.2"/>
-      <circle cx={lx} cy={ly} r="2" fill={col}/>
-    </svg>
+    <div style={{ background:"var(--surface-2)", borderRadius:5, overflow:"hidden", lineHeight:0 }}>
+      <svg width={W} height={H} style={{ display:"block" }}>
+        <defs>
+          <linearGradient id={`sg-${xs[0]}-${isPos}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={col} stopOpacity="0.30"/>
+            <stop offset="100%" stopColor={col} stopOpacity="0.03"/>
+          </linearGradient>
+        </defs>
+        <polyline
+          points={polyPts + ` ${W},${H} 0,${H}`}
+          fill={`url(#sg-${xs[0]}-${isPos})`}/>
+        <polyline points={polyPts} fill="none" stroke={col} strokeWidth="1.2"/>
+        <circle cx={lx} cy={ly} r="2" fill={col}/>
+      </svg>
+    </div>
   );
 }
 
@@ -6908,6 +7443,7 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
 function EtfHoldingsTable({ holdings, quotes, currency, rates,
                             onRefreshHoldings, refreshing, fetchedAt, period, onPeriod,
                             divCache, onFetchDiv }) {
+  const { t } = useTranslation();
   const rate = rates[currency] ?? 1;
   const cSym = CCY_SYM[currency] ?? "$";
 
@@ -6961,22 +7497,22 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       {/* Toolbar: period selector + refresh */}
       <div style={{ padding:"0 16px 0 16px", borderBottom:`1px solid ${THEME.border2}`,
-        display:"flex", alignItems:"center", gap:4, flexShrink:0, height:44 }}>
+        display:"flex", alignItems:"center", gap:8, flexShrink:0, height:44 }}>
         {/* Period buttons */}
-        {ETF_PERIODS.map(p => (
-          <button key={p.key} onClick={()=>onPeriod(p.key)} style={{
-            padding:"4px 10px", border:"none", cursor:"pointer",
-            background:period===p.key?"rgba(59,130,246,0.15)":"transparent",
-            color:period===p.key?THEME.accent:THEME.text3,
-            fontSize:11, fontWeight:700, fontFamily:"inherit",
-            borderBottom:period===p.key?`2px solid ${THEME.accent}`:"2px solid transparent",
-            borderRadius:"6px 6px 0 0", transition:"all 0.12s" }}>{p.label}</button>
-        ))}
+        <div className="rail-density-row" style={{ flexShrink:0 }}>
+          {ETF_PERIODS.map(p => (
+            <button key={p.key} className={"rail-density-btn" + (period===p.key ? " active" : "")}
+              onClick={() => onPeriod(p.key)}
+              style={{ padding:"4px 10px", fontFamily:"var(--font-mono)", letterSpacing:"0.03em" }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
         <div style={{ flex:1 }}/>
         {/* Holdings count + last update */}
         <div style={{ fontSize:10, color:THEME.text3, marginRight:8, textAlign:"right" }}>
-          {holdings.length} holdings
-          {lastUpdated && <span style={{ marginLeft:8 }}>· Updated {lastUpdated}</span>}
+          {holdings.length} {t("etf.holdingsCount")}
+          {lastUpdated && <span style={{ marginLeft:8 }}>· {t("etf.updated")} {lastUpdated}</span>}
         </div>
         {/* Refresh Holdings */}
         <button onClick={onRefreshHoldings}
@@ -6989,7 +7525,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
               ? <span className="spin" style={{ display:"flex" }}><RefreshCw size={12}/></span>
               : <RefreshCw size={12}/>}
           </span>
-          Refresh Holdings
+          {t("etf.refreshHoldings")}
         </button>
       </div>
 
@@ -6998,13 +7534,23 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
         <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
           <thead>
             <tr style={{ borderBottom:`1px solid ${THEME.border2}` }}>
-              {["#","Symbol","Name","Weight","Trend","Price",periodLabel,"Div. Yield","Ex-Date"].map(h => (
-                <th key={h} style={{ padding:"7px 12px",
-                  textAlign:["#","Weight","Price",periodLabel].includes(h)?"right":"left",
+              {[
+                { key:"#",        label:t("etf.colRank"),    right:true  },
+                { key:"symbol",   label:t("etf.colSymbol"),  right:false },
+                { key:"name",     label:t("etf.colName"),    right:false },
+                { key:"weight",   label:t("etf.colWeight"),  right:true  },
+                { key:"trend",    label:t("etf.colTrend"),   right:false },
+                { key:"price",    label:t("etf.colPrice"),   right:true  },
+                { key:"period",   label:periodLabel,         right:true  },
+                { key:"divyield", label:t("etf.colDivYield"),right:true  },
+                { key:"exdate",   label:t("etf.colExDate"),  right:false },
+              ].map(({key, label, right}) => (
+                <th key={key} style={{ padding:"7px 12px",
+                  textAlign:right?"right":"left",
                   fontSize:9, fontWeight:700, color:THEME.text3,
                   textTransform:"uppercase", letterSpacing:"0.07em",
                   position:"sticky", top:0, background:THEME.bg,
-                  whiteSpace:"nowrap" }}>{h}</th>
+                  whiteSpace:"nowrap" }}>{label}</th>
               ))}
             </tr>
           </thead>
@@ -7127,9 +7673,13 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
 // ── ETF Explorer main component ───────────────────────────────────────────────
 function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwitchToPortfolio, onSignOut,
+                       onSettings,
                        displayMode, onToggleDisplayMode,
-                       railOpen, onToggleRail }) {
+                       railOpen, onToggleRail,
+                       uiTheme, onToggleTheme,
+                       uiLanguage, onChangeLanguage }) {
   useGlobalStyles();
+  const { t } = useTranslation();
 
   const [selectedTicker,    setSelectedTicker]    = useState(() => {
     try { return localStorage.getItem(ETF_LS_KEY) || "ARKK"; } catch { return "ARKK"; }
@@ -7184,13 +7734,14 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
 
   useEffect(() => {
     if (selectedTicker) {
-        setHoldings([]);             // clear old holdings immediately
+      setHoldings([]);    // clear old holdings immediately
+      setQuotes({});      // clear quotes so stale prices don't bleed through
       loadHoldings(selectedTicker);
     }
   }, [selectedTicker, loadHoldings]);
 
   // Fetch quotes — use batch endpoint (returns parsed price/changePct/refs like portfolio mode)
-  const fetchQuotes = useCallback(async () => {
+  const fetchQuotes = useCallback(async (force = false) => {
     if (!holdings.length) return;
     setFetching(true); setFetchErrors({});
     try {
@@ -7198,7 +7749,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
       const res = await fetch(`${ETF_BASE}/quotes/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbols, source: "yahoo", force: !!force }),
+        body: JSON.stringify({ symbols, source: "yahoo", force }),
       }).then(r => r.json());
       setQuotes(prev => ({ ...prev, ...(res.results || {}) }));
       setFetchErrors(res.errors || {});
@@ -7223,25 +7774,42 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   useEffect(() => {
     if (!holdings.length) return;
     fetchQuotes();
-    // Preload dividend data — useDivCache hook handles this automatically
-    // Preload chart data for holdings — staggered to avoid flooding Yahoo/rate-limit.
-    // Only fetch symbols not already cached. Max 3 concurrent, 300ms between batches.
-    const toFetch = holdings.filter(h => !globalChartCache.has(h.symbol));
-    const CONCURRENCY = 3;
-    const fetchBatch = async (items) => {
-      for (let i = 0; i < items.length; i += CONCURRENCY) {
-        const batch = items.slice(i, i + CONCURRENCY);
-        await Promise.all(batch.map(h =>
-          quotesApi.raw(h.symbol)
-            .then(d => { if (d) globalChartCache.set(h.symbol, d); })
-            .catch(()=>{})
-        ));
-        if (i + CONCURRENCY < items.length) {
-          await new Promise(r => setTimeout(r, 300)); // 300ms pause between batches
-        }
+
+    // ── Fast path: seed from in-memory chart cache (symbols already loaded this session) ──
+    const seeded = {};
+    holdings.forEach(h => {
+      const cached = globalChartCache.get(h.symbol);
+      if (cached) {
+        const q = extractQuoteFromRaw(cached);
+        if (q) seeded[h.symbol] = q;
       }
-    };
-    fetchBatch(toFetch);
+    });
+    if (Object.keys(seeded).length > 0) {
+      setQuotes(prev => ({ ...seeded, ...prev }));
+    }
+
+    // ── Single-request path: ask the server for compiled price+refs for ALL holdings ──
+    // The server reads from etf_quote_summary_cache (TTL = smart quote TTL) for cached
+    // symbols and only calls Yahoo for symbols it doesn't have yet.  This replaces up to
+    // 50 individual /api/quotes/yahoo/:symbol calls with one POST round-trip.
+    const symbols = holdings.map(h => h.symbol);
+    fetch(`${ETF_BASE}/etf/quotes/summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols }),
+    })
+      .then(r => r.json())
+      .then(res => {
+        const extracted = {};
+        Object.entries(res.results || {}).forEach(([sym, q]) => {
+          if (q) extracted[sym] = q;
+        });
+        if (Object.keys(extracted).length > 0) {
+          // batch-endpoint (fetchQuotes) results take precedence via the spread order
+          setQuotes(prev => ({ ...extracted, ...prev }));
+        }
+      })
+      .catch(() => { /* non-fatal — batch endpoint or seeded cache still shows data */ });
   }, [holdings]); // eslint-disable-line
 
   // Nodes
@@ -7280,7 +7848,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         open={railOpen} onToggle={onToggleRail}
         selectedTicker={selectedTicker} onSelect={setSelectedTicker}
         currency={currency} onCurrency={setCurrency}
-        fetching={fetching} onRefreshQuotes={fetchQuotes}
+        fetching={fetching} onRefreshQuotes={() => fetchQuotes(true)}
         user={user}
         savedEtfs={savedEtfs}
         onSaveEtf={(etf, directList) => {
@@ -7302,8 +7870,11 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         onSwitchToPortfolio={onSwitchToPortfolio}
         onBack={onBack}
         onSignOut={onSignOut || (onSwitchToPortfolio ? () => { onBack(); } : null)}
+        onSettings={onSettings}
         displayMode={displayMode}
         onToggleDisplayMode={onToggleDisplayMode}
+        uiTheme={uiTheme} onToggleTheme={onToggleTheme}
+        uiLanguage={uiLanguage} onChangeLanguage={onChangeLanguage}
       />
 
       <div style={{ flex:1, display:"flex", flexDirection:"column",
@@ -7316,22 +7887,15 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
           gap:2, flexShrink:0 }}>
 
           {[
-            { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"   },
-            { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart" },
-            { key:"transactions", icon:<List size={14}/>,            label:"Holdings"  },
-            { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends" },
-            { key:"historic",     icon:<Clock size={14}/>,           label:"Historic Courses" },
-          ].map(t => (
-            <button key={t.key} onClick={()=>setActiveTab(t.key)}
-              style={{
-                display:"flex", alignItems:"center", gap:7,
-                padding:"7px 14px", border:"none", cursor:"pointer",
-                background:activeTab===t.key?"rgba(59,130,246,0.15)":"transparent",
-                color:activeTab===t.key?THEME.accent:THEME.text3,
-                borderRadius:9, fontSize:12,
-                fontWeight:activeTab===t.key?700:500,
-                fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
-              {t.icon}{t.label}
+            { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:t("nav.treemap")         },
+            { key:"chart",        icon:<BarChart2 size={14}/>,       label:t("nav.barChart")        },
+            { key:"transactions", icon:<List size={14}/>,            label:t("nav.holdings")        },
+            { key:"calendar",     icon:<CalendarDays size={14}/>,    label:t("nav.dividends")       },
+            { key:"historic",     icon:<Clock size={14}/>,           label:t("nav.historicCourses") },
+          ].map(tab => (
+            <button key={tab.key} onClick={()=>setActiveTab(tab.key)}
+              className={"app-nav-tab" + (activeTab===tab.key ? " active" : "")}>
+              {tab.icon}{tab.label}
             </button>
           ))}
           {/* ETF badge */}
@@ -7368,30 +7932,27 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
 
         {/* Period toolbar — shown for TreeMap and BarChart tabs */}
         {activeTab !== "transactions" && (
-          <div style={{ padding:"0 16px 0 22px", display:"flex", alignItems:"center",
+          <div style={{ padding:"0 16px 0 22px", display:"flex", alignItems:"center", gap:8,
             borderBottom:`1px solid ${THEME.border}`, height:46,
             background:THEME.surface, flexShrink:0 }}>
-            {ETF_PERIODS.map(p => (
-              <button key={p.key} onClick={()=>setPeriod(p.key)} style={{
-                padding:"5px 12px", border:"none", cursor:"pointer",
-                background:period===p.key?"rgba(59,130,246,0.15)":"transparent",
-                color:period===p.key?THEME.accent:THEME.text3,
-                fontSize:11, fontWeight:700, fontFamily:"inherit",
-                borderBottom:period===p.key?`2px solid ${THEME.accent}`:"2px solid transparent",
-                borderRadius:"7px 7px 0 0" }}>{p.label}</button>
-            ))}
+            <div className="rail-density-row" style={{ flexShrink:0 }}>
+              {ETF_PERIODS.map(p => (
+                <button key={p.key} className={"rail-density-btn" + (period===p.key ? " active" : "")}
+                  onClick={() => setPeriod(p.key)}
+                  style={{ padding:"4px 10px", fontFamily:"var(--font-mono)", letterSpacing:"0.03em" }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
             {activeTab==="chart" && (
               <>
-                <div style={{ width:1, height:20, background:THEME.border, margin:"0 12px" }}/>
-                <div style={{ display:"flex", gap:2, background:"rgba(0,0,0,0.25)",
-                  borderRadius:9, padding:3, border:`1px solid ${THEME.border}` }}>
-                  {[["perf","Performance"],["size","By Weight"]].map(([key,label])=>(
-                    <button key={key} onClick={()=>setBarSubView(key)} style={{
-                      padding:"4px 11px", border:"none", cursor:"pointer",
-                      borderRadius:7, fontSize:10, fontWeight:700,
-                      fontFamily:"inherit", transition:"all 0.15s",
-                      background:barSubView===key?"rgba(59,130,246,0.22)":"transparent",
-                      color:barSubView===key?THEME.accent:THEME.text3 }}>{label}</button>
+                <div style={{ width:1, height:20, background:THEME.border, flexShrink:0 }}/>
+                <div className="rail-density-row" style={{ flexShrink:0 }}>
+                  {[["perf",t("nav.performance")],["size",t("chart.byWeight")]].map(([key,label])=>(
+                    <button key={key} className={"rail-density-btn" + (barSubView===key ? " active" : "")}
+                      onClick={() => setBarSubView(key)}>
+                      {label}
+                    </button>
                   ))}
                 </div>
               </>
@@ -7409,7 +7970,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 <RefreshCw size={24}/>
               </span>
               <div style={{ color:THEME.text3, fontSize:13 }}>
-                Loading {selectedTicker} holdings…
+                {selectedTicker} — {t("etf.loadingHoldings")}
               </div>
             </div>
           ) : activeTab==="holdings" ? (
@@ -7427,7 +7988,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                       background:"transparent", color:THEME.text3, fontSize:11,
                       cursor:"pointer", fontFamily:"inherit", display:"flex",
                       alignItems:"center", gap:6 }}>
-                    <RefreshCw size={12}/> Retry
+                    <RefreshCw size={12}/> {t("etf.retry")}
                   </button>
                 </div>
               ) : nodes.length === 0 ? (
@@ -7435,20 +7996,18 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                   height:"100%", flexDirection:"column", gap:16 }}>
                   <div style={{ fontSize:36, opacity:0.25 }}>📊</div>
                   <div style={{ color:THEME.text2, fontSize:14, fontWeight:600 }}>
-                    No Holdings Data for {selectedTicker}
+                    {t("etf.noHoldingsTitle")} — {selectedTicker}
                   </div>
                   <div style={{ fontSize:11, color:THEME.text3, maxWidth:300,
                     textAlign:"center", lineHeight:1.7 }}>
-                    Holdings data is not available for this ETF via Alpha Vantage.
-                    Try switching to the <strong style={{color:THEME.text2}}>Holdings</strong> tab
-                    for more detail, or select a different ETF.
+                    {t("etf.noHoldingsHint")}
                   </div>
                   <button onClick={()=>loadHoldings(selectedTicker,true)}
                     style={{ marginTop:4, padding:"7px 18px", borderRadius:8,
                       border:`1px solid ${THEME.border}`, background:"transparent",
                       color:THEME.text3, fontSize:11, cursor:"pointer",
                       fontFamily:"inherit", display:"flex", alignItems:"center", gap:6 }}>
-                    <RefreshCw size={12}/> Retry
+                    <RefreshCw size={12}/> {t("etf.retry")}
                   </button>
                 </div>
               ) : (
@@ -7842,6 +8401,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
   useGlobalStyles();
+  const { t } = useTranslation();
   const { mode: displayMode, setMode: setDisplayMode, toggle: toggleDisplayMode } = useDisplayMode();
   // ── Auth state ────────────────────────────────────────────────────────────
   const [user,       setUser]       = useState(null);
@@ -7898,6 +8458,21 @@ export default function App() {
   const [initialized,     setInitialized]     = useState(false);
   // chartDataMap removed — globalChartCache handles this now (shared with ETF)
 
+  // ── Theme + Language state ─────────────────────────────────────────────────
+  const [uiTheme, setUiTheme] = useState(() => localStorage.getItem("pp-theme") || "dark");
+  useEffect(() => {
+    document.body.setAttribute("data-theme", uiTheme);
+    localStorage.setItem("pp-theme", uiTheme);
+  }, [uiTheme]);
+  const toggleTheme = useCallback(() => setUiTheme(t => t === "dark" ? "light" : "dark"), []);
+
+  const [uiLanguage, setUiLanguage] = useState(() => localStorage.getItem("pp-lang") || "en");
+  const changeLanguage = useCallback(async (lang) => {
+    i18n.changeLanguage(lang);
+    setUiLanguage(lang);
+    localStorage.setItem("pp-lang", lang);
+  }, []);
+
   const tooltipTimer = useRef(null);
 
   // ── Login handler ─────────────────────────────────────────────────────────
@@ -7915,6 +8490,13 @@ export default function App() {
       setAiEndpoint(userData.settings.api_keys?.ai?.endpoint  ?? "http://localhost:1234");
       setAiModel(   userData.settings.api_keys?.ai?.model     ?? "");
       setAiApiKey(  userData.settings.api_keys?.ai?.key       ?? "");
+      // Restore saved language preference
+      const savedLang = userData.settings?.ui_language ?? null;
+      if (savedLang) {
+        i18n.changeLanguage(savedLang);
+        setUiLanguage(savedLang);
+        localStorage.setItem("pp-lang", savedLang);
+      }
     }
     // Load FX
     try {
@@ -8281,21 +8863,49 @@ export default function App() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if (etfMode) return (
-    <EtfExplorer
-      onBack={() => setEtfMode(false)}
-      user={user}
-      savedEtfs={savedEtfs}
-      onLogin={(loggedIn) => {
-        // Use the full handleLogin flow so Portfolio view works immediately after switch
-        handleLogin(loggedIn);
-      }}
-      onSwitchToPortfolio={() => setEtfMode(false)}
-      onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
-      displayMode={displayMode}
-      onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
-      railOpen={railOpen}
-      onToggleRail={() => setRailOpen(v => !v)}
-    />
+    <>
+      <EtfExplorer
+        onBack={() => setEtfMode(false)}
+        user={user}
+        savedEtfs={savedEtfs}
+        onLogin={(loggedIn) => {
+          // Use the full handleLogin flow so Portfolio view works immediately after switch
+          handleLogin(loggedIn);
+        }}
+        onSwitchToPortfolio={() => setEtfMode(false)}
+        onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
+        onSettings={() => setShowSettings(true)}
+        displayMode={displayMode}
+        onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
+        railOpen={railOpen}
+        onToggleRail={() => setRailOpen(v => !v)}
+        uiTheme={uiTheme}
+        onToggleTheme={toggleTheme}
+        uiLanguage={uiLanguage}
+        onChangeLanguage={changeLanguage}
+      />
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)}
+          dataSource={dataSource} setDataSource={setDataSource}
+          avApiKey={avApiKey} setAvApiKey={setAvApiKey}
+          onSave={async () => {
+            try {
+              if (user) await userApi.saveSettings(user.id, {
+                data_source: dataSource,
+                api_keys: { alphavantage: avApiKey, ai: { provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+                display_ccy: currency,
+              });
+              setShowSettings(false);
+            } catch(e) {}
+          }}
+          avUsage={avUsage}
+          aiProvider={aiProvider}   setAiProvider={setAiProvider}
+          aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
+          aiModel={aiModel}         setAiModel={setAiModel}
+          aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
+          userId={user?.id}/>
+      )}
+    </>
   );
   if (!user) return <LoginScreen onLogin={handleLogin} onEtfMode={() => setEtfMode(true)}/>;
 
@@ -8334,6 +8944,8 @@ export default function App() {
           onEtfExplorer={() => setEtfMode(true)}
           displayMode={displayMode}
           onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
+          uiTheme={uiTheme} onToggleTheme={toggleTheme}
+          uiLanguage={uiLanguage} onChangeLanguage={changeLanguage}
         />
 
         {/* ── MAIN CONTENT ───────────────────────────────────────────── */}
@@ -8347,23 +8959,16 @@ export default function App() {
 
             {/* View tabs */}
             {[
-              { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:"TreeMap"    },
-              { key:"chart",        icon:<BarChart2 size={14}/>,       label:"Bar Chart"  },
-              { key:"performance",  icon:<TrendingUp  size={14}/>,     label:"Performance"},
-              { key:"transactions", icon:<List size={14}/>,            label:"Holdings"   },
-              { key:"calendar",     icon:<CalendarDays size={14}/>,    label:"Dividends"  },
-              { key:"historic",     icon:<Clock size={14}/>,           label:"Historic Courses" },
-            ].map(t => (
-              <button key={t.key} onClick={() => handleTab(t.key)}
-                style={{
-                  display:"flex", alignItems:"center", gap:7,
-                  padding:"7px 14px", border:"none", cursor:"pointer",
-                  background: activeTab===t.key ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: activeTab===t.key ? THEME.accent : THEME.text3,
-                  borderRadius:9, fontSize:12,
-                  fontWeight: activeTab===t.key ? 700 : 500,
-                  fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
-                {t.icon}{t.label}
+              { key:"holdings",     icon:<LayoutDashboard size={14}/>, label:t("nav.treemap")         },
+              { key:"chart",        icon:<BarChart2 size={14}/>,       label:t("nav.barChart")        },
+              { key:"performance",  icon:<TrendingUp  size={14}/>,     label:t("nav.performance")     },
+              { key:"transactions", icon:<List size={14}/>,            label:t("nav.holdings")        },
+              { key:"calendar",     icon:<CalendarDays size={14}/>,    label:t("nav.dividends")       },
+              { key:"historic",     icon:<Clock size={14}/>,           label:t("nav.historicCourses") },
+            ].map(tab => (
+              <button key={tab.key} onClick={() => handleTab(tab.key)}
+                className={"app-nav-tab" + (activeTab===tab.key ? " active" : "")}>
+                {tab.icon}{tab.label}
               </button>
             ))}
 
@@ -8372,20 +8977,13 @@ export default function App() {
 
             {/* Analytics tabs */}
             {[
-              { key:"correlation", icon:<GitFork size={14}/>, label:"Correlation" },
-              { key:"montecarlo",  icon:<Sigma size={14}/>,   label:"Monte Carlo" },
-              { key:"rebalance",   icon:<Target size={14}/>,  label:"Rebalance"   },
-            ].map(t => (
-              <button key={t.key} onClick={() => handleTab(t.key)}
-                style={{
-                  display:"flex", alignItems:"center", gap:7,
-                  padding:"7px 14px", border:"none", cursor:"pointer",
-                  background: activeTab===t.key ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: activeTab===t.key ? THEME.accent : THEME.text3,
-                  borderRadius:9, fontSize:12,
-                  fontWeight: activeTab===t.key ? 700 : 500,
-                  fontFamily:"inherit", transition:"background 0.3s ease, color 0.3s ease, font-weight 0.15s" }}>
-                {t.icon}{t.label}
+              { key:"correlation", icon:<GitFork size={14}/>, label:t("nav.correlation") },
+              { key:"montecarlo",  icon:<Sigma size={14}/>,   label:t("nav.monteCarlo")  },
+              { key:"rebalance",   icon:<Target size={14}/>,  label:t("nav.rebalance")   },
+            ].map(tab => (
+              <button key={tab.key} onClick={() => handleTab(tab.key)}
+                className={"app-nav-tab" + (activeTab===tab.key ? " active" : "")}>
+                {tab.icon}{tab.label}
               </button>
             ))}
 
@@ -8471,7 +9069,7 @@ export default function App() {
                       {perfSymbols.length > 0 && (
                         <>
                           <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
-                            textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>Instrumente</div>
+                            textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>{t("chart.viewInstruments")}</div>
                           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                             {perfSymbols.map((sym, i) => {
                               const active = instrOverlays.includes(sym);
