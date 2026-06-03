@@ -430,7 +430,7 @@ app.post('/api/portfolios/:id/transactions', async (req, res) => {
 });
 
 app.put('/api/transactions/:id', async (req, res) => {
-  const { symbol, name, isin, quantity, price, price_usd, date, type, currency, notes } = req.body;
+  const { symbol, name, isin, quantity, price, price_usd, date, type, currency, notes, portfolio_id } = req.body;
   let finalPriceUSD = price_usd && price_usd > 0 ? price_usd : price;
   const ccy = (currency || 'USD').toUpperCase();
   if (ccy !== 'USD' && !(price_usd > 0)) {
@@ -458,12 +458,18 @@ app.put('/api/transactions/:id', async (req, res) => {
       if (liveRate?.rate) finalPriceUSD = price / liveRate.rate;
     }
   }
+  // Build UPDATE dynamically — include portfolio_id only when explicitly provided (move transaction)
+  const portfolioClause = portfolio_id ? ', portfolio_id=?' : '';
+  const params = [symbol?.toUpperCase(), name||null, isin??null, quantity, price, finalPriceUSD, date, type?.toUpperCase(), ccy, notes||null];
+  if (portfolio_id) params.push(portfolio_id);
+  params.push(req.params.id);
   db.prepare(`
-    UPDATE transactions SET symbol=?, name=?, isin=?, quantity=?, price=?, price_usd=?, date=?, type=?, currency=?, notes=?
+    UPDATE transactions SET symbol=?, name=?, isin=?, quantity=?, price=?, price_usd=?, date=?, type=?, currency=?, notes=?${portfolioClause}
     WHERE id=?
-  `).run(symbol?.toUpperCase(), name||null, isin??null, quantity, price, finalPriceUSD, date, type?.toUpperCase(), ccy, notes||null, req.params.id);
+  `).run(...params);
   if (isin) db.prepare(`INSERT OR REPLACE INTO symbol_isin (symbol, isin, source, updated_at)
     VALUES (?, ?, 'user', CURRENT_TIMESTAMP)`).run(symbol?.toUpperCase(), isin);
+  if (portfolio_id) log.info(`TX ${req.params.id} moved to portfolio ${portfolio_id}`);
   res.json(db.prepare('SELECT * FROM transactions WHERE id=?').get(req.params.id));
 });
 
