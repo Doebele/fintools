@@ -90,6 +90,7 @@ function useGlobalStyles() {
         --font-sans:  'Syne', sans-serif;
         --font-mono:  'JetBrains Mono', monospace;
         --font-serif: 'DM Serif Display', Georgia, serif;
+        --row-accent-bg: #131928;  /* opaque equiv of rgba(59,130,246,0.08) over --surface */
         --scrollbar-thumb: rgba(255,255,255,0.12);
         --shadow-modal: 0 32px 80px rgba(0,0,0,0.60);
         --shadow-card:  0 4px 24px rgba(0,0,0,0.35);
@@ -122,6 +123,7 @@ function useGlobalStyles() {
         --font-sans:  'Fira Sans', sans-serif;
         --font-mono:  'JetBrains Mono', monospace;
         --font-serif: 'DM Serif Display', Georgia, serif;
+        --row-accent-bg: #edf2fe;  /* opaque equiv of rgba(59,130,246,0.08) over --surface */
         --scrollbar-thumb: rgba(15,17,22,0.15);
         --shadow-modal: 0 24px 64px rgba(15,17,22,0.16);
         --shadow-card:  0 1px 2px rgba(15,17,22,0.04), 0 4px 12px rgba(15,17,22,0.06);
@@ -1438,16 +1440,31 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 // RAIL NAVIGATION
 // ════════════════════════════════════════════════════════════════════════════
 // ─── Delayed tooltip for collapsed sidebar icons ──────────────────────────
-// ── Shared tooltip bubble renderer (portal, fixed, always-above with smart fallback) ──
-function _tipBubble(pos, width, title, body) {
-  // Always prefer above; fall back to below only if within 80px of viewport top
-  const above = pos.y > 80;
+// ── Shared tooltip bubble renderer (portal, fixed, viewport-safe) ──────────
+function _tipBubble(pos, width, title, body, side) {
+  const PAD = 8;
+  const EST_H = 80; // conservative estimated tooltip height in px
+
+  // Determine placement: explicit side wins; otherwise prefer above unless too close to top
+  let above;
+  if (side === "bottom") above = false;
+  else if (side === "top") above = true;
+  else above = pos.y > EST_H + PAD * 2;
+
+  // Also flip below→above if there's not enough room below
+  if (!above && pos.yBelow != null && pos.yBelow + EST_H + PAD > window.innerHeight) above = true;
+
+  // Clamp x so the bubble stays fully within the viewport
+  const halfW = width / 2;
+  const clampedX = Math.max(halfW + PAD, Math.min(window.innerWidth - halfW - PAD, pos.x));
+
   const style = above
     ? { bottom: window.innerHeight - pos.y }
     : { top: pos.yBelow ?? (pos.y + 12) };
+
   return createPortal(
     <div style={{
-      position:"fixed", left:pos.x, ...style,
+      position:"fixed", left:clampedX, ...style,
       transform:"translateX(-50%)", width, zIndex:9999,
       background:"var(--surface-2)", border:`1px solid var(--border)`,
       borderRadius:8, padding:"8px 10px", pointerEvents:"none",
@@ -1461,7 +1478,7 @@ function _tipBubble(pos, width, title, body) {
 }
 
 // ─── InfoTip — ℹ icon hover tooltip (standalone controls) ─────────────────────
-const InfoTip = ({ text, i18nKey, title, width=220 }) => {
+const InfoTip = ({ text, i18nKey, title, width=220, side }) => {
   const { t } = useTranslation();
   const resolvedText = i18nKey ? t(i18nKey) : text;
   const [vis, setVis] = useState(false);
@@ -1482,13 +1499,13 @@ const InfoTip = ({ text, i18nKey, title, width=220 }) => {
       onMouseEnter={handleEnter}
       onMouseLeave={() => setVis(false)}>
       <Info size={11} style={{ color:"var(--fg-3)", cursor:"help", flexShrink:0, opacity:0.55 }}/>
-      {vis && _tipBubble(pos, width, title, resolvedText)}
+      {vis && _tipBubble(pos, width, title, resolvedText, side)}
     </span>
   );
 };
 
 // ─── LabelTip — tooltip triggered by hovering the label text (no icon) ────────
-const LabelTip = ({ children, text, i18nKey, title, width=240 }) => {
+const LabelTip = ({ children, text, i18nKey, title, width=240, side }) => {
   const { t } = useTranslation();
   const resolvedText = i18nKey ? t(i18nKey) : text;
   const [vis, setVis] = useState(false);
@@ -1511,7 +1528,7 @@ const LabelTip = ({ children, text, i18nKey, title, width=240 }) => {
       onMouseEnter={handleEnter}
       onMouseLeave={() => setVis(false)}>
       {children}
-      {vis && _tipBubble(pos, width, title, resolvedText)}
+      {vis && _tipBubble(pos, width, title, resolvedText, side)}
     </span>
   );
 };
@@ -1525,12 +1542,14 @@ const SidebarTip = ({ children, label, open }) => {
     <div style={{ position:"relative" }}
       onMouseEnter={e => {
         const rect = e.currentTarget.getBoundingClientRect();
-        setPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
+        // Clamp vertically so it doesn't go below viewport
+        const tipY = Math.min(rect.top + rect.height / 2, window.innerHeight - 20);
+        setPos({ x: rect.right + 8, y: tipY });
         timerRef.current = setTimeout(() => setTip(true), 1200);
       }}
       onMouseLeave={() => { clearTimeout(timerRef.current); setTip(false); }}>
       {children}
-      {tip && (
+      {tip && createPortal(
         <div style={{
           position:"fixed", left:pos.x, top:pos.y,
           transform:"translateY(-50%)",
@@ -1538,7 +1557,8 @@ const SidebarTip = ({ children, label, open }) => {
           borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
           color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
           boxShadow:"var(--shadow-card)", pointerEvents:"none",
-        }}>{label}</div>
+        }}>{label}</div>,
+        document.body
       )}
     </div>
   );
@@ -1581,7 +1601,7 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
           }}>{badge}</span>
         )}
       </button>
-      {tip && !open && (
+      {tip && !open && createPortal(
         <div style={{
           position:"fixed", left:tipPos.x, top:tipPos.y,
           transform:"translateY(-50%)",
@@ -1589,7 +1609,8 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
           borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:600,
           color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
           boxShadow:"var(--shadow-card)", pointerEvents:"none",
-        }}>{label}</div>
+        }}>{label}</div>,
+        document.body
       )}
     </>
   );
@@ -4732,16 +4753,19 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
   });
 
-  const tdStyle = (col, solidBg = THEME.surface, extra={}) => ({
+  const tdStyle = (col, _solidBg = THEME.surface, extra={}) => ({
     padding:"0 10px", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
     width:colWidths[col.key], minWidth:colWidths[col.key], maxWidth:colWidths[col.key],
     borderRight:`1px solid ${THEME.border2}`,
     position: pinnedVisible.includes(col.key) ? "sticky" : undefined,
     left: pinnedVisible.includes(col.key) ? getPinnedLeft(col.key) : undefined,
     zIndex: pinnedVisible.includes(col.key) ? 2 : undefined,
-    background: pinnedVisible.includes(col.key) ? solidBg
+    // Pinned cells must inherit the <tr> background so they:
+    //  (a) always show an opaque colour that covers horizontally-scrolled content
+    //  (b) automatically pick up hover/selected row colour changes on the <tr>
+    background: pinnedVisible.includes(col.key) ? "inherit"
       : sortKey===col.key ? "rgba(59,130,246,0.03)" : "transparent",
-    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.14)" : undefined,
+    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
     ...extra,
   });
 
@@ -4927,7 +4951,8 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                 const grp = row;
                 const isExpanded = expandedGroups.has(grp._key);
                 const isBuy = grp.type === "BUY";
-                const rawBg = i%2===0 ? THEME.surface : "rgba(255,255,255,0.025)";
+                // Always opaque so pinned sticky cells don't bleed during horizontal scroll
+                const rawBg = i%2===0 ? "var(--surface)" : "var(--surface-2)";
 
                 const renderGroupCell = (col) => {
                   switch (col.key) {
@@ -5053,11 +5078,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                 return (
                   <tr key={grp._key}
                     style={{ height:36, background:rawBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
-                    onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--row-accent-bg)"}
                     onMouseLeave={e=>e.currentTarget.style.background=rawBg}
                   >
                     {orderedCols.map(col => (
-                      <td key={col.key} style={tdStyle(col, rawBg)}>
+                      <td key={col.key} style={tdStyle(col)}>
                         {renderGroupCell(col)}
                       </td>
                     ))}
@@ -5068,7 +5093,8 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               // ── FLAT or SUB-ROW ────────────────────────────────────────────
               const tx = row;
               const txIsBuy = tx.type === "BUY";
-              const rawBg = isSubrow ? "rgba(59,130,246,0.06)" : i%2===0 ? THEME.surface : "rgba(255,255,255,0.025)";
+              // Opaque backgrounds: pinned sticky cells inherit these to prevent bleed-through
+              const rawBg = isSubrow ? "var(--row-accent-bg)" : i%2===0 ? "var(--surface)" : "var(--surface-2)";
 
               const renderSubrowCell = (col) => {
                 switch (col.key) {
@@ -5213,12 +5239,12 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               return (
                 <tr key={isSubrow ? `sub-${tx.id}` : tx.id}
                   style={{ height:36, background:rawBg, borderBottom:`1px solid ${THEME.border2}`, transition:"background 0.08s" }}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.06)"}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--row-accent-bg)"}
                   onMouseLeave={e=>e.currentTarget.style.background=rawBg}
                 >
                   {orderedCols.map(col => (
                     <td key={col.key}
-                      style={tdStyle(col, rawBg, col.key==="type" && isSubrow ? { borderLeft:"2px solid rgba(59,130,246,0.3)", paddingLeft:8, opacity:0.85 } : {})}>
+                      style={tdStyle(col, undefined, col.key==="type" && isSubrow ? { borderLeft:"2px solid rgba(59,130,246,0.3)", paddingLeft:8, opacity:0.85 } : {})}>
                       {renderSubrowCell(col)}
                     </td>
                   ))}
@@ -5522,10 +5548,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
   return (
     <Modal title={editMode ? t("tx.edit") : t("tx.add")} onClose={onClose}>
-      {/* Portfolio selector — only in add mode with multiple portfolios */}
-      {!editMode && portfolios.length > 1 && (
+      {/* Portfolio selector — add mode: choose destination; edit mode: optionally move to another portfolio */}
+      {portfolios.length > 1 && (
         <div style={{ marginBottom:16 }}>
-          <FLabel>Portfolio</FLabel>
+          <FLabel>{editMode ? "Move to Portfolio" : "Portfolio"}</FLabel>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {portfolios.map(p => (
               <button key={p.id} onClick={() => setPortfolioId(p.id)} style={{
@@ -8762,11 +8788,20 @@ export default function App() {
     }));
   }, []);
 
-  const handleUpdateTx = useCallback(async (portfolioId, txId, data) => {
-    const updated = await txApi.update(txId, data);
-    setAllTransactions(prev => ({
-      ...prev, [portfolioId]: (prev[portfolioId]??[]).map(t => t.id===txId ? updated : t),
-    }));
+  const handleUpdateTx = useCallback(async (origPortfolioId, newPortfolioId, txId, data) => {
+    const payload = newPortfolioId !== origPortfolioId ? { ...data, portfolio_id: newPortfolioId } : data;
+    const updated = await txApi.update(txId, payload);
+    setAllTransactions(prev => {
+      const next = { ...prev };
+      if (newPortfolioId !== origPortfolioId) {
+        // Move: remove from old portfolio, prepend to new portfolio
+        next[origPortfolioId] = (prev[origPortfolioId]??[]).filter(t => t.id !== txId);
+        next[newPortfolioId]  = [updated, ...(prev[newPortfolioId]??[])];
+      } else {
+        next[origPortfolioId] = (prev[origPortfolioId]??[]).map(t => t.id===txId ? updated : t);
+      }
+      return next;
+    });
   }, []);
 
   const handleSavePlan = useCallback(async (portfolioId, planData) => {
@@ -9306,7 +9341,7 @@ export default function App() {
         )}
         {editTx && (
           <AddTxModal onClose={() => setEditTx(null)}
-            onAdd={(pid, data) => handleUpdateTx(pid, editTx.tx.id, data)}
+            onAdd={(pid, data) => handleUpdateTx(editTx.portfolioId, pid, editTx.tx.id, data)}
             rates={rates} portfolios={activePortfolios}
             defaultPortfolioId={editTx.portfolioId}
             initialTx={{ ...editTx.tx, portfolio_id:editTx.portfolioId }}

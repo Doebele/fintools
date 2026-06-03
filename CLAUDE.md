@@ -8,7 +8,7 @@ Self-hosted portfolio tracker. Node 18 + Express + better-sqlite3 backend talkin
 
 There are **no tests, no linter, no TypeScript, no CI pipeline**. The repo is two large files (`backend/server.js` ~2,600 lines, `frontend/src/App.jsx` ~9,200 lines) plus Docker plumbing.
 
-The active feature branch is **`feat/portfolio-pal-ui`** — this adds i18n (DE/EN), light/dark theming, and the ETF Screener view.
+The `feat/portfolio-pal-ui` branch (i18n DE/EN, light/dark theming, ETF Screener) has been merged to `main`. Active development continues on `main` via tactical commits.
 
 ## Common commands
 
@@ -66,7 +66,7 @@ Single-file Express app organised by big ASCII-banner sections — search for `/
 2. **Schema v3 + Migrations** — `db.exec(\`CREATE TABLE IF NOT EXISTS …\`)` runs every boot; columns/tables that were added later are also patched in with conditional `ALTER TABLE` blocks below
 3. **Middleware** — helmet, compression, cors, express-rate-limit (`RATE_LIMIT_MAX_REQUESTS`), JSON parser
 4. **USERS / PORTFOLIOS** routes — bcrypt PIN auth, soft-deletes via `deleted_at`
-5. **TRANSACTIONS / Savings Plans** — BUY/SELL records, `price_usd` is denormalised at insert time using the FX rate of the trade date
+5. **TRANSACTIONS / Savings Plans** — BUY/SELL records, `price_usd` is denormalised at insert time using the FX rate of the trade date. `PUT /api/transactions/:id` accepts an optional `portfolio_id` field to move a transaction to a different portfolio atomically.
 6. **SETTINGS** — per-user JSON KV
 7. **QUOTES** — Yahoo proxy + Alpha Vantage fallback + batch endpoint + intraday endpoint
 8. **FX ROUTES** — Frankfurter API proxy
@@ -128,6 +128,22 @@ Two classes defined in `useGlobalStyles()` must be used consistently across the 
 
 - **`rail-density-row` + `rail-density-btn[.active]`** — Segmented control for 2–4 equal-width toggle options (e.g. Export/Import, Portfolio/ETF switcher, Compact/Relaxed, DE/EN, Light/Dark). Do **not** use custom inline styles for new toggles.
 - **`app-nav-tab[.active]`** — Navigation tab for horizontal tab bars (top nav bar, ETF inner nav). Transparent background, accent colour on active.
+
+Key CSS custom properties for table row backgrounds (always opaque — required so sticky/pinned cells don't bleed through during horizontal scroll):
+
+- `--row-accent-bg` — blue-tinted row background used for hovered rows and sub-rows (expanded transaction groups). Opaque: `#131928` dark / `#edf2fe` light.
+- `--surface-2` — alternating odd-row background.
+
+Pinned `<td>` cells use `background: inherit` (not a hardcoded colour) so they always track their `<tr>` background including JavaScript-driven hover changes.
+
+#### Tooltip system
+
+All portal-rendered tooltips go through `_tipBubble(pos, width, title, body, side)`:
+
+- **Viewport clamping**: `left` is clamped to `[width/2 + 8, innerWidth - width/2 - 8]` to prevent overflow on left/right edges.
+- **`side` prop**: `"top"` or `"bottom"` forces placement. Omitting auto-detects: prefers above unless within `~80px + EST_H` of the top, then flips below; also flips above if below would overflow the bottom edge.
+- `InfoTip` and `LabelTip` both accept and forward `side`.
+- `SidebarTip` and `RailBtn` tooltips render via `createPortal(…, document.body)` so that CSS `transform` on a rail container cannot create a containing block for `position: fixed`.
 
 #### ETF Screener
 
@@ -193,7 +209,7 @@ Set in `docker-compose.yml` or via a real `.env` (the file `env.txt` in the repo
 
 History uses Conventional Commits (`feat:` / `fix:` / `chore:` / `feat(performance):` / `fix(backend):`). Commit bodies are paragraph-style with a wrapped explanation of the *why*, sometimes followed by `Co-Authored-By: Claude …`. Match this style for new commits.
 
-Commit directly to `main` for tactical fixes; for non-trivial feature work the convention has been one feature branch + PR (see PR #1 for an example).
+Commit directly to `main` for tactical fixes; for non-trivial feature work the convention has been one feature branch + PR (see PRs #1 and #2 for examples).
 
 ## Things that don't exist
 
