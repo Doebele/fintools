@@ -1445,22 +1445,34 @@ function _tipBubble(pos, width, title, body, side) {
   const PAD = 8;
   const EST_H = 80; // conservative estimated tooltip height in px
 
-  // Determine placement: explicit side wins; otherwise prefer above unless too close to top
+  // Comfort mode applies `zoom: 1.18` to <body>. CSS position:fixed coordinates
+  // inside a zoomed body are in the body's zoomed coordinate system, but
+  // getBoundingClientRect() and window.innerHeight return unzoomed viewport CSS pixels.
+  // Dividing all coordinates by zoom converts them to body-coord space so that
+  // `position:fixed; top/bottom/left` land at the right visual position.
+  const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+  const vH  = window.innerHeight / zoom;   // viewport height in body-coord space
+  const vW  = window.innerWidth  / zoom;   // viewport width  in body-coord space
+  const bx  = pos.x      / zoom;           // element x in body-coord space
+  const by  = pos.y      / zoom;           // element y (top edge) in body-coord space
+  const byB = pos.yBelow != null ? pos.yBelow / zoom : null; // element y (bottom edge)
+
+  // Determine placement
   let above;
   if (side === "bottom") above = false;
   else if (side === "top") above = true;
-  else above = pos.y > EST_H + PAD * 2;
+  else above = by > EST_H + PAD * 2;
 
-  // Also flip below→above if there's not enough room below
-  if (!above && pos.yBelow != null && pos.yBelow + EST_H + PAD > window.innerHeight) above = true;
+  // Flip below→above if not enough room below
+  if (!above && byB != null && byB + EST_H + PAD > vH) above = true;
 
-  // Clamp x so the bubble stays fully within the viewport
+  // Clamp x so the bubble stays fully within the viewport (body coords)
   const halfW = width / 2;
-  const clampedX = Math.max(halfW + PAD, Math.min(window.innerWidth - halfW - PAD, pos.x));
+  const clampedX = Math.max(halfW + PAD, Math.min(vW - halfW - PAD, bx));
 
   const style = above
-    ? { bottom: window.innerHeight - pos.y }
-    : { top: pos.yBelow ?? (pos.y + 12) };
+    ? { bottom: vH - by }
+    : { top: byB ?? (by + 12) };
 
   return createPortal(
     <div style={{
@@ -1542,9 +1554,9 @@ const SidebarTip = ({ children, label, open }) => {
     <div style={{ position:"relative" }}
       onMouseEnter={e => {
         const rect = e.currentTarget.getBoundingClientRect();
-        // Clamp vertically so it doesn't go below viewport
-        const tipY = Math.min(rect.top + rect.height / 2, window.innerHeight - 20);
-        setPos({ x: rect.right + 8, y: tipY });
+        const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+        const tipY = Math.min((rect.top + rect.height / 2) / zoom, window.innerHeight / zoom - 20);
+        setPos({ x: rect.right / zoom + 8, y: tipY });
         timerRef.current = setTimeout(() => setTip(true), 1200);
       }}
       onMouseLeave={() => { clearTimeout(timerRef.current); setTip(false); }}>
@@ -1572,7 +1584,8 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
   const showTip = (e) => {
     if (open) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    setTipPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
+    const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    setTipPos({ x: rect.right / zoom + 8, y: (rect.top + rect.height / 2) / zoom });
     timerRef.current = setTimeout(() => setTip(true), 600);
   };
   const hideTip = () => {
