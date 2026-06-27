@@ -1,5 +1,8 @@
 FROM node:18-alpine
 
+# tzdata so the TZ env var (set in docker-compose.yml) actually takes effect
+RUN apk add --no-cache tzdata
+
 # Security: run as non-root
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 

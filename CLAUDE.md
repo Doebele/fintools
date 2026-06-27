@@ -204,6 +204,9 @@ Set in `docker-compose.yml` or via a real `.env` (the file `env.txt` in the repo
 | `RATE_LIMIT_MAX_REQUESTS` | 200 | Express rate-limiter, per IP per 15 min |
 | `LOG_LEVEL` | info | error / warn / info / debug |
 | `AV_API_KEY` | (empty) | Optional Alpha Vantage key for fallback quotes |
+| `TZ` | Europe/Zurich | Backend container timezone (requires `tzdata` package, installed in `backend/Dockerfile`) |
+
+Backend timezone is set via `TZ` env var, not a host `/etc/localtime` bind mount — the host path is a macOS symlink into versioned tzdata (e.g. `/var/db/timezone/tz/2025c.1.0/...`) that breaks the container after macOS tzdata updates and blocks `docker compose up` entirely.
 
 ## Commit conventions
 
