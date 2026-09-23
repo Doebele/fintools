@@ -65,7 +65,7 @@ Single-file Express app organised by big ASCII-banner sections — search for `/
 1. **Config / Logger / DB Setup** — env-var driven; SQLite is opened with `journal_mode = WAL` and foreign keys on
 2. **Schema v3 + Migrations** — `db.exec(\`CREATE TABLE IF NOT EXISTS …\`)` runs every boot; columns/tables that were added later are also patched in with conditional `ALTER TABLE` blocks below
 3. **Middleware** — helmet, compression, cors, express-rate-limit (`RATE_LIMIT_MAX_REQUESTS`), JSON parser
-4. **USERS / PORTFOLIOS** routes — bcrypt PIN auth, soft-deletes via `deleted_at`
+4. **USERS / PORTFOLIOS** routes — bcrypt PIN auth, soft-deletes via `deleted_at`. Login/register return a session `token` (row in `sessions`, 30-day TTL); the frontend keeps it in the module-level `_token` (not persisted — reload means re-login) and `apiFetch` sends it as `Authorization: Bearer`. `getUserId(req)` resolves that token — it is the only identity source, so new user-scoped routes must call it (settings routes use `requireSelf`, which also checks `:userId`). Portfolio/transaction/plan routes are still unchecked.
 5. **TRANSACTIONS / Savings Plans** — BUY/SELL records, `price_usd` is denormalised at insert time using the FX rate of the trade date. `PUT /api/transactions/:id` accepts an optional `portfolio_id` field to move a transaction to a different portfolio atomically.
 6. **SETTINGS** — per-user JSON KV
 7. **QUOTES** — Yahoo proxy + Alpha Vantage fallback + batch endpoint + intraday endpoint
@@ -200,7 +200,7 @@ Key tables:
 - `savings_plans` (recurring buys)
 - `quotes_cache`, `parsed_quotes`, `fx_cache`, `av_usage` (rate-limit tracking for Alpha Vantage)
 - `etf_holdings_cache`, `etf_quote_summary_cache`, `etf_search_cache` (ETF Screener caches — see Caching layers above)
-- `user_kv` (per-user JSON KV), `user_etfs` (saved ETF screener picks), `settings` (display currency, API keys, **and `ui_language`**)
+- `user_kv` (per-user JSON KV), `user_etfs` (saved ETF screener picks), `settings` (display currency, API keys, **and `ui_language`**), `sessions` (login tokens)
 
 `make backup` produces gzipped SQL dumps in `backups/`. `make restore` recreates the DB from the newest dump.
 

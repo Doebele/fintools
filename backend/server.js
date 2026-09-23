@@ -20,6 +20,7 @@ const Database    = require('better-sqlite3');
 const bcrypt      = require('bcrypt');
 const fetch       = require('node-fetch');
 const path        = require('path');
+const crypto      = require('crypto');
 const fs          = require('fs');
 const ExcelJS     = require('exceljs');
 const pdfParse    = require('pdf-parse');
@@ -155,6 +156,11 @@ db.exec(`
     updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, key)
   );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT    PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS user_etfs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,
@@ -275,6 +281,27 @@ function avCountIncrement(n = 1) {
 // USER ROUTES
 // ════════════════════════════════════════════════════════════════════════════
 
+// Sessions: login/register issue a random token, the client sends it as
+// "Authorization: Bearer <token>". Stored in SQLite so rebuilds don't log tabs out.
+const SESSION_TTL = '-30 days';
+
+function newSession(userId) {
+  const token = crypto.randomBytes(32).toString('hex');
+  db.prepare('DELETE FROM sessions WHERE created_at < datetime(\'now\', ?)').run(SESSION_TTL);
+  db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, userId);
+  return token;
+}
+
+const bearerToken = req => req.headers.authorization?.match(/^Bearer ([0-9a-f]{64})$/)?.[1] ?? null;
+
+// Logged-in user id for this request, or null
+function getUserId(req) {
+  const token = bearerToken(req);
+  if (!token) return null;
+  return db.prepare('SELECT user_id FROM sessions WHERE token = ? AND created_at >= datetime(\'now\', ?)')
+           .get(token, SESSION_TTL)?.user_id ?? null;
+}
+
 // POST /api/users/register  — create new user
 app.post('/api/users/register', async (req, res) => {
   const { username, pin } = req.body;
@@ -293,7 +320,7 @@ app.post('/api/users/register', async (req, res) => {
     ).run(uname, pin_hash);
     const userId = result.lastInsertRowid;
     log.info('New user registered:', uname);
-    res.status(201).json({ id: userId, username: uname });
+    res.status(201).json({ id: userId, username: uname, token: newSession(userId) });
   } catch(e) {
     log.error('Register error:', e.message);
     err(res, 500, 'Registration failed');
@@ -325,6 +352,7 @@ app.post('/api/users/login', async (req, res) => {
   res.json({
     id: user.id,
     username: user.username,
+    token: newSession(user.id),
     portfolios,
     settings: settings ? JSON.parse(settings.data_source ? JSON.stringify({
       data_source: settings.data_source,
@@ -332,6 +360,13 @@ app.post('/api/users/login', async (req, res) => {
       display_ccy: settings.display_ccy,
     }) : '{}') : { data_source: 'yahoo', api_keys: {}, display_ccy: 'USD' },
   });
+});
+
+// POST /api/users/logout  — revoke the caller's session token
+app.post('/api/users/logout', (req, res) => {
+  const token = bearerToken(req);
+  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  res.json({ ok: true });
 });
 
 // GET /api/users/:userId/portfolios  — list portfolios for a user
@@ -576,12 +611,10 @@ app.post('/api/transactions/recalculate-fx', async (req, res) => {
 // SETTINGS ROUTES  (now user-scoped)
 // ════════════════════════════════════════════════════════════════════════════
 
-// Settings hold every API key in plain text — only the owner may read/write them.
-// ponytail: x-user-id is client-asserted, so this blocks header-less and cross-user
-// requests but not a forged header; a login-issued session token is the upgrade path.
+// Settings hold every API key in plain text — only the logged-in owner may read/write them.
 function requireSelf(req, res, next) {
   const uid = getUserId(req);
-  if (!uid) return err(res, 401, 'x-user-id header required');
+  if (!uid) return err(res, 401, 'Not logged in');
   if (uid !== parseInt(req.params.userId, 10)) return err(res, 403, 'Forbidden');
   next();
 }
@@ -779,10 +812,10 @@ async function aiChat(ai, system, user, maxTokens, timeout) {
 }
 
 // POST /api/tools/parse-pdf — extract transaction data from a broker PDF
-// Multipart: field "file" = PDF binary.  Header: x-user-id
+// Multipart: field "file" = PDF binary.  Requires login (Bearer token)
 app.post('/api/tools/parse-pdf', multerPdf.single('file'), async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   if (!req.file) return err(res, 400, 'No PDF file uploaded');
 
   // 1. Extract text from PDF
@@ -862,7 +895,7 @@ ${pdfText.slice(0, 4000)}`;
 // → { ok, models: string[]|null, model?, reply?, latencyMs? }
 app.post('/api/tools/test-ai', express.json(), async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
 
   const { provider, endpoint, model, key } = req.body || {};
   if (!endpoint) return err(res, 400, 'endpoint required');
@@ -2002,19 +2035,10 @@ app.post('/api/quotes/dividend/batch', async (req, res) => {
 // USER SAVED ETFs
 // ════════════════════════════════════════════════════════════════════════════
 
-// Simple user-id header auth (same pattern as rest of app — stateless, no JWT)
-function getUserId(req) {
-  // Accept header (standard for most requests) or query param (fallback for GET downloads)
-  const uid = req.headers['x-user-id'] || req.query['uid'];
-  if (!uid) return null;
-  const id = parseInt(uid, 10);
-  return isNaN(id) ? null : id;
-}
-
 // GET /api/user/etfs  — list saved ETFs for a user
 app.get('/api/user/etfs', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   const rows = db.prepare(
     'SELECT ticker, name, provider, created_at FROM user_etfs WHERE user_id=? ORDER BY created_at ASC'
   ).all(userId);
@@ -2024,7 +2048,7 @@ app.get('/api/user/etfs', (req, res) => {
 // POST /api/user/etfs  — save an ETF for a user
 app.post('/api/user/etfs', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   const body = req.body || {};
   const { ticker, name, provider } = body;
   log.debug?.('POST /user/etfs body:', body);
@@ -2048,7 +2072,7 @@ app.post('/api/user/etfs', (req, res) => {
 // DELETE /api/user/etfs/:ticker  — remove a saved ETF
 app.delete('/api/user/etfs/:ticker', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   db.prepare('DELETE FROM user_etfs WHERE user_id=? AND ticker=?')
     .run(userId, req.params.ticker.toUpperCase());
   const etfs = db.prepare(
@@ -2075,7 +2099,7 @@ app.get('/api/portfolios/import/template', (req, res) => {
 
 // ── GET /api/portfolios/:id/export  — download transactions as CSV ───────────
 app.get('/api/portfolios/:id/export', async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid  = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));
@@ -2205,7 +2229,7 @@ async function lookupPriceForImport(symbol, date) {
 // POST /api/portfolios/:id/import/preview  — parse file, detect conflicts, return preview
 // Body: multipart form with 'file' field
 app.post('/api/portfolios/:id/import/preview', upload.single('file'), async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));
@@ -2343,7 +2367,7 @@ app.post('/api/portfolios/:id/import/preview', upload.single('file'), async (req
 // POST /api/portfolios/:id/import/selective  — import with conflict resolutions
 // Body JSON: { rows: [{ symbol, date, type, quantity, price, currency, name, notes, resolution, conflictIds }] }
 app.post('/api/portfolios/:id/import/selective', async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));
@@ -2418,7 +2442,7 @@ app.post('/api/portfolios/:id/import/selective', async (req, res) => {
 });
 
 app.post('/api/portfolios/:id/import', upload.single('file'), async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));
