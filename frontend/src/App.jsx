@@ -5016,7 +5016,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     ) : <span style={{color:THEME.text3}}>—</span>;
                     case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._cost)}</span>);
                     case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(grp._curPriceUSD)}</span>);
-                    case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._curValue)}</span>);
+                    case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text1, fontWeight:700 }}>{fmtUSD(grp._curValue)}</span>);
                     case "glPct": return grp._glPct != null ? (
                       <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glPct>=0?THEME.green:THEME.red }}>
                         {grp._glPct>=0?"+":""}{grp._glPct.toFixed(1)}%
@@ -5167,7 +5167,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   );
                   case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._cost)}</span>);
                   case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curPriceUSD)}</span>);
-                  case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curValue)}</span>);
+                  case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text1, fontWeight:700 }}>{fmtUSD(tx._curValue)}</span>);
                   case "glPct": return tx._glPct != null
                     ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glPct>=0?THEME.green:THEME.red }}>
                         {tx._glPct>=0?"+":""}{tx._glPct.toFixed(1)}%
