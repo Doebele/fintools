@@ -382,10 +382,10 @@ const toolsApi = {
       headers: { "x-user-id": String(userId) },
     });
   },
-  testAi: (userId, endpoint, model, key) =>
+  testAi: (userId, provider, endpoint, model, key) =>
     apiFetch("/tools/test-ai", {
       method: "POST",
-      body: JSON.stringify({ endpoint, model, key }),
+      body: JSON.stringify({ provider, endpoint, model, key }),
       headers: { "Content-Type": "application/json", "x-user-id": String(userId) },
     }),
 };
@@ -640,11 +640,12 @@ const FInput = ({ style, ...props }) => (
   onBlur={e  => e.target.style.borderColor = THEME.border}
   />
 );
-const FSelect = ({ children, ...props }) => (
+const FSelect = ({ children, style, ...props }) => (
   <select {...props} style={{
     width:"100%", padding:"10px 12px", borderRadius:10,
     border:`1px solid ${THEME.border}`, background:THEME.surface2,
     color:THEME.text1, fontSize:13, outline:"none", fontFamily:THEME.font,
+    ...style,
   }}>{children}</select>
 );
 
@@ -6012,25 +6013,90 @@ function AddPortfolioModal({ onClose, onAdd }) {
 // ════════════════════════════════════════════════════════════════════════════
 // SETTINGS MODAL
 // ════════════════════════════════════════════════════════════════════════════
+// Provider list roughly follows the model creators leading artificialanalysis.ai.
+// keyUrl = where to create an API key; no keyUrl = local, no key needed.
+// Only "anthropic", "openai" and the local ids have special handling in the backend.
+const AI_PROVIDERS = [
+  { id:"lmstudio",   label:"LM Studio",                  url:"http://localhost:1234" },
+  { id:"ollama",     label:"Ollama",                     url:"http://localhost:11434" },
+  { id:"anthropic",  label:"Anthropic (Claude)",         url:"https://api.anthropic.com/v1",   ph:"sk-ant-...", keyUrl:"https://platform.claude.com/settings/keys" },
+  { id:"openai",     label:"OpenAI (GPT)",               url:"https://api.openai.com/v1",      ph:"sk-...",     keyUrl:"https://platform.openai.com/api-keys" },
+  { id:"gemini",     label:"Google (Gemini)",            url:"https://generativelanguage.googleapis.com/v1beta/openai", ph:"AIza...", keyUrl:"https://aistudio.google.com/apikey" },
+  { id:"xai",        label:"xAI (Grok)",                 url:"https://api.x.ai/v1",            ph:"xai-...",    keyUrl:"https://console.x.ai/" },
+  { id:"meta",       label:"Meta (Muse)",                url:"https://api.meta.ai/v1",                          keyUrl:"https://ai.developer.meta.com/" },
+  { id:"mistral",    label:"Mistral",                    url:"https://api.mistral.ai/v1",                       keyUrl:"https://console.mistral.ai/api-keys" },
+  { id:"deepseek",   label:"DeepSeek",                   url:"https://api.deepseek.com/v1",    ph:"sk-...",     keyUrl:"https://platform.deepseek.com/api_keys" },
+  { id:"qwen",       label:"Alibaba (Qwen)",             url:"https://dashscope-intl.aliyuncs.com/compatible-mode/v1", ph:"sk-...", keyUrl:"https://modelstudio.console.alibabacloud.com/?tab=playground#/api-key" },
+  { id:"moonshot",   label:"Kimi Platform (API)",        url:"https://api.moonshot.ai/v1",     ph:"sk-...",     keyUrl:"https://platform.kimi.ai/console/api-keys" },
+  { id:"kimi-code",  label:"Kimi Code (Coding Plan)",    url:"https://api.kimi.ai/coding/v1",  ph:"sk-kimi-...", keyUrl:"https://www.kimi.ai/code/console", note:"settings.kimiCodeNote" },
+  { id:"zai",        label:"Z.AI (GLM) — Global",        url:"https://api.z.ai/api/paas/v4",                    keyUrl:"https://z.ai/manage-apikey/apikey-list" },
+  { id:"zai-cn",     label:"BigModel (GLM) — China",     url:"https://open.bigmodel.cn/api/paas/v4",            keyUrl:"https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys" },
+  { id:"minimax",    label:"MiniMax",                    url:"https://api.minimax.io/v1",                       keyUrl:"https://platform.minimax.io/console/access" },
+  { id:"mimo",       label:"Xiaomi (MiMo)",              url:"https://api.xiaomimimo.com/v1",                   keyUrl:"https://platform.xiaomimimo.com/" },
+  { id:"stepfun",    label:"StepFun (Step)",             url:"https://api.stepfun.ai/v1",                       keyUrl:"https://platform.stepfun.ai/" },
+  { id:"openrouter", label:"OpenRouter", url:"https://openrouter.ai/api/v1",   ph:"sk-or-...",  keyUrl:"https://openrouter.ai/settings/keys" },
+];
+
 function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage,
-  aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey, userId }) {
+  aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey,
+  aiProfiles, setAiProfiles, userId }) {
   const { t } = useTranslation();
   const used = avUsage?.today ?? 0;
   const limit = 25;
   const pct   = Math.min(100, (used/limit)*100);
   const barColor = pct>=90?"#ef4444":pct>=70?"#f59e0b":"#22c55e";
-  const [aiTestState, setAiTestState] = useState(null); // null|"testing"|{ok,model,latencyMs}|{err}
+  const [aiTestState, setAiTestState] = useState(null); // null|"testing"|{ok,model,latencyMs,count}|{err}
+  const [aiModels,    setAiModels]    = useState([]);
+  const aiProv = AI_PROVIDERS.find(p => p.id === aiProvider);
+  const providerRef = useRef(aiProvider);
+  providerRef.current = aiProvider;
+
+  const patchProfile = (id, patch) => setAiProfiles(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  // Dropdown tag: ✓ = connection tested OK, 🔑 = key stored but not (successfully) tested
+  const aiMark = id => {
+    const key = id === aiProvider ? aiApiKey : aiProfiles[id]?.key;
+    return aiProfiles[id]?.ok ? "  ✓" : key ? "  🔑" : "";
+  };
+
+  // Silent model-list fetch; ignores the answer if the user switched provider meanwhile
+  const loadModels = (provider, endpoint, key) =>
+    toolsApi.testAi(userId, provider, endpoint, "", key)
+      .then(r => { if (providerRef.current === provider) setAiModels(r.models || []); })
+      .catch(() => {});
+
+  // Pre-load the model list for an already configured provider
+  useEffect(() => {
+    if (aiProvider !== "disabled" && aiEndpoint) loadModels(aiProvider, aiEndpoint, aiApiKey);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const switchProvider = (next) => {
+    const p = AI_PROVIDERS.find(x => x.id === next), saved = aiProfiles[next] ?? {};
+    // Stash the current provider's config, restore the next one's (keys are never carried across)
+    if (aiProvider !== "disabled") patchProfile(aiProvider, { endpoint: aiEndpoint, model: aiModel, key: aiApiKey });
+    setAiProvider(next);
+    setAiEndpoint(saved.endpoint || p?.url || "");
+    setAiModel(saved.model || "");
+    setAiApiKey(saved.key || "");
+    setAiModels([]); setAiTestState(null);
+    if (p && (!p.keyUrl || saved.key)) loadModels(next, saved.endpoint || p.url, saved.key || "");
+  };
+
+  // Editing endpoint/key invalidates a previous successful test
+  const invalidateTest = () => { if (aiProfiles[aiProvider]?.ok) patchProfile(aiProvider, { ok: false }); };
 
   const handleTestAi = useCallback(async () => {
     if (!aiEndpoint) return;
     setAiTestState("testing");
     try {
-      const result = await toolsApi.testAi(userId, aiEndpoint, aiModel, aiApiKey);
-      setAiTestState({ ok: true, model: result.model, latencyMs: result.latencyMs, reply: result.reply });
+      const result = await toolsApi.testAi(userId, aiProvider, aiEndpoint, aiModel, aiApiKey);
+      if (result.models) setAiModels(result.models);
+      setAiTestState({ ok: true, model: result.model, latencyMs: result.latencyMs, count: result.models?.length });
+      setAiProfiles(prev => ({ ...prev, [aiProvider]: { endpoint: aiEndpoint, model: aiModel, key: aiApiKey, ok: true } }));
     } catch(e) {
       setAiTestState({ err: e.message });
+      setAiProfiles(prev => ({ ...prev, [aiProvider]: { ...prev[aiProvider], ok: false } }));
     }
-  }, [userId, aiEndpoint, aiModel, aiApiKey]);
+  }, [userId, aiProvider, aiEndpoint, aiModel, aiApiKey, setAiProfiles]);
 
   return (
     <Modal title={t("settings.title")} onClose={onClose}>
@@ -6071,45 +6137,50 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         {/* ── KI-Modell für PDF-Import ─────────────────────────────────── */}
         <div style={{ borderTop:`1px solid ${THEME.border}`, paddingTop:16 }}>
           <FLabel style={{ display:"block", marginBottom:8 }}>{t("settings.aiSection")}</FLabel>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:10 }}>
-            {[
-              ["lmstudio",   "LM Studio"],
-              ["ollama",     "Ollama"],
-              ["openrouter", "OpenRouter"],
-              ["disabled",   t("settings.disabled")],
-            ].map(([val, label]) => (
-              <button key={val}
-                onClick={() => {
-                  setAiProvider(val);
-                  if (val === "lmstudio")   setAiEndpoint("http://localhost:1234");
-                  if (val === "ollama")     setAiEndpoint("http://localhost:11434");
-                  if (val === "openrouter") setAiEndpoint("https://openrouter.ai/api/v1");
-                }}
-                style={{
-                  padding:"9px 0", borderRadius:8, fontSize:11, fontWeight:700,
-                  border:`1.5px solid ${aiProvider===val ? THEME.accent : THEME.border}`,
-                  background: aiProvider===val ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: aiProvider===val ? THEME.accent : THEME.text3,
-                  cursor:"pointer",
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <FLabel>{t("settings.aiProvider")}</FLabel>
+          <FSelect value={aiProvider} style={{ marginBottom:4 }} onChange={e => switchProvider(e.target.value)}>
+            <optgroup label={t("settings.aiLocal")}>
+              {AI_PROVIDERS.filter(p => !p.keyUrl).map(p => <option key={p.id} value={p.id}>{p.label}{aiMark(p.id)}</option>)}
+            </optgroup>
+            <optgroup label={t("settings.aiCloud")}>
+              {AI_PROVIDERS.filter(p => p.keyUrl).map(p => <option key={p.id} value={p.id}>{p.label}{aiMark(p.id)}</option>)}
+            </optgroup>
+            <option value="disabled">{t("settings.disabled")}</option>
+          </FSelect>
+          <div style={{ fontSize:10, color:THEME.text3, marginBottom:10 }}>{t("settings.aiLegend")}</div>
           {aiProvider !== "disabled" && (<>
             <FLabel><LabelTip i18nKey="tips.aiEndpoint" width={240}>{t("settings.endpointUrl")}</LabelTip></FLabel>
-            <FInput value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)}
+            <FInput value={aiEndpoint} onChange={e => { setAiEndpoint(e.target.value); invalidateTest(); }}
               style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
               placeholder="http://localhost:1234"/>
-            <FLabel><LabelTip i18nKey="tips.aiModel" width={240}>{t("settings.modelName")}</LabelTip></FLabel>
-            <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
-              placeholder="e.g. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
-            {aiProvider === "openrouter" && (<>
-              <FLabel>{t("settings.apiKey")}</FLabel>
-              <FInput value={aiApiKey} onChange={e => setAiApiKey(e.target.value)}
-                style={{ fontFamily:THEME.mono, fontSize:11 }}
-                placeholder="sk-or-..."/>
+            {aiProv?.keyUrl && (<>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
+                <FLabel>{t("settings.apiKey")}</FLabel>
+                <a href={aiProv.keyUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize:10, fontWeight:700, color:THEME.accent, textDecoration:"none" }}>
+                  {t("settings.getKey")} ↗
+                </a>
+              </div>
+              <FInput type="password" autoComplete="off" value={aiApiKey} onChange={e => { setAiApiKey(e.target.value); invalidateTest(); }}
+                style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
+                placeholder={aiProv.ph || "API key"}/>
+              {aiProv.note && (
+                <div style={{ fontSize:10, color:THEME.yellow, lineHeight:1.4, marginTop:-2, marginBottom:8 }}>
+                  ⚠ {t(aiProv.note)}
+                </div>
+              )}
             </>)}
+            <FLabel><LabelTip i18nKey="tips.aiModel" width={240}>{t("settings.modelName")}</LabelTip></FLabel>
+            {aiModels.length ? (
+              <FSelect value={aiModel} onChange={e => setAiModel(e.target.value)}
+                style={{ fontFamily:THEME.mono, fontSize:11 }}>
+                {!aiModels.includes(aiModel) && <option value={aiModel}>{aiModel || t("settings.chooseModel")}</option>}
+                {aiModels.map(m => <option key={m} value={m}>{m}</option>)}
+              </FSelect>
+            ) : (
+              <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
+                placeholder={t("settings.modelHint")}/>
+            )}
             {/* Test connection */}
             <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:10 }}>
               <button
@@ -6129,10 +6200,10 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
               {aiTestState && aiTestState !== "testing" && (
                 aiTestState.ok
                   ? <span style={{ fontSize:11, color:"#22c55e" }}>
-                      ✓ {t("settings.connOk")} — {aiTestState.latencyMs}ms
-                      {aiTestState.model && aiTestState.model !== "unknown" && (
-                        <span style={{ color:THEME.text3 }}> ({aiTestState.model})</span>
-                      )}
+                      ✓ {t("settings.connOk")}
+                      {aiTestState.count != null && <> — {t("settings.modelsFound", { count: aiTestState.count })}</>}
+                      {aiTestState.model && <> — {aiTestState.latencyMs}ms
+                        <span style={{ color:THEME.text3 }}> ({aiTestState.model})</span></>}
                     </span>
                   : <span style={{ fontSize:11, color:THEME.red, flex:1, wordBreak:"break-word" }}
                       title={aiTestState.err}>
@@ -8489,6 +8560,13 @@ export default function App() {
   const [aiEndpoint,      setAiEndpoint]      = useState("http://localhost:1234");
   const [aiModel,         setAiModel]         = useState("");
   const [aiApiKey,        setAiApiKey]        = useState("");
+  const [aiProfiles,      setAiProfiles]      = useState({});   // per provider: { endpoint, model, key, ok }
+  // Active AI config (what the backend reads) + every provider's remembered config
+  const aiSettings = useMemo(() => ({
+    provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey,
+    profiles: aiProvider === "disabled" ? aiProfiles
+      : { ...aiProfiles, [aiProvider]: { ...aiProfiles[aiProvider], endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+  }), [aiProvider, aiEndpoint, aiModel, aiApiKey, aiProfiles]);
   const [avUsage,         setAvUsage]         = useState(null);
   const [fetchStatus,     setFetchStatus]     = useState("");
   const [fetchErrors,     setFetchErrors]     = useState({});
@@ -8529,6 +8607,10 @@ export default function App() {
       setAiEndpoint(userData.settings.api_keys?.ai?.endpoint  ?? "http://localhost:1234");
       setAiModel(   userData.settings.api_keys?.ai?.model     ?? "");
       setAiApiKey(  userData.settings.api_keys?.ai?.key       ?? "");
+      const ai = userData.settings.api_keys?.ai ?? {};
+      // Settings saved before per-provider profiles existed: seed from the active config
+      setAiProfiles(ai.profiles ?? (ai.provider && ai.provider !== "disabled"
+        ? { [ai.provider]: { endpoint: ai.endpoint, model: ai.model, key: ai.key } } : {}));
       // Restore saved language preference
       const savedLang = userData.settings?.ui_language ?? null;
       if (savedLang) {
@@ -8854,13 +8936,13 @@ export default function App() {
     try {
       await userApi.saveSettings(user.id, {
         data_source: dataSource,
-        api_keys: { alphavantage: avApiKey, ai: { provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+        api_keys: { alphavantage: avApiKey, ai: aiSettings },
         display_ccy: currency,
       });
       setShowSettings(false);
       fetchQuotes(allSymbols, true);
     } catch(e) {}
-  }, [user, dataSource, avApiKey, currency, allSymbols, fetchQuotes]);
+  }, [user, dataSource, avApiKey, aiSettings, currency, allSymbols, fetchQuotes]);
 
   // ── Tooltip hover handlers ────────────────────────────────────────────────
   const handleCellHover = useCallback((e, cell) => {
@@ -8940,7 +9022,7 @@ export default function App() {
             try {
               if (user) await userApi.saveSettings(user.id, {
                 data_source: dataSource,
-                api_keys: { alphavantage: avApiKey, ai: { provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+                api_keys: { alphavantage: avApiKey, ai: aiSettings },
                 display_ccy: currency,
               });
               setShowSettings(false);
@@ -8951,6 +9033,7 @@ export default function App() {
           aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
           aiModel={aiModel}         setAiModel={setAiModel}
           aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
+          aiProfiles={aiProfiles}   setAiProfiles={setAiProfiles}
           userId={user?.id}/>
       )}
     </>
@@ -9411,6 +9494,7 @@ export default function App() {
             aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
             aiModel={aiModel}         setAiModel={setAiModel}
             aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
+            aiProfiles={aiProfiles}   setAiProfiles={setAiProfiles}
             userId={user?.id}/>
         )}
       </div>

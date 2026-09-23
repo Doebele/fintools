@@ -9,6 +9,8 @@ services:
       - "${BACKEND_PORT:-3003}:3001"
     volumes:
       - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach LM Studio/Ollama on the host (Linux/Synology)
     environment:
       TZ:              "${TZ:-Europe/Zurich}"
       NODE_ENV:        production
