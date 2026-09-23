@@ -310,8 +310,9 @@ const userApi = {
   portfolios: (uid)           => apiFetch(`/users/${uid}/portfolios`),
   createPortfolio: (uid, name, color) => apiFetch(`/users/${uid}/portfolios`, { method:"POST", body: JSON.stringify({ name, color }) }),
   renamePortfolio: (pid, name) => apiFetch(`/portfolios/${pid}`, { method:"PUT", body: JSON.stringify({ name }) }),
-  settings: (uid)             => apiFetch(`/users/${uid}/settings`),
-  saveSettings: (uid, s)      => apiFetch(`/users/${uid}/settings`, { method:"PUT", body: JSON.stringify(s) }),
+  settings: (uid)             => apiFetch(`/users/${uid}/settings`, { headers:{ 'x-user-id': String(uid) } }),
+  saveSettings: (uid, s)      => apiFetch(`/users/${uid}/settings`, { method:"PUT", body: JSON.stringify(s),
+                                  headers:{ 'x-user-id': String(uid) } }),
 };
 const txApi = {
   list:      (pid)     => apiFetch(`/portfolios/${pid}/transactions`),

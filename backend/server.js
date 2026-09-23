@@ -576,13 +576,23 @@ app.post('/api/transactions/recalculate-fx', async (req, res) => {
 // SETTINGS ROUTES  (now user-scoped)
 // ════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/users/:userId/settings', (req, res) => {
+// Settings hold every API key in plain text — only the owner may read/write them.
+// ponytail: x-user-id is client-asserted, so this blocks header-less and cross-user
+// requests but not a forged header; a login-issued session token is the upgrade path.
+function requireSelf(req, res, next) {
+  const uid = getUserId(req);
+  if (!uid) return err(res, 401, 'x-user-id header required');
+  if (uid !== parseInt(req.params.userId, 10)) return err(res, 403, 'Forbidden');
+  next();
+}
+
+app.get('/api/users/:userId/settings', requireSelf, (req, res) => {
   const row = db.prepare('SELECT * FROM settings WHERE user_id=?').get(req.params.userId);
   if (!row) return res.json({ data_source:'yahoo', api_keys:{}, display_ccy:'USD' });
   res.json({ data_source: row.data_source, api_keys: JSON.parse(row.api_keys||'{}'), display_ccy: row.display_ccy });
 });
 
-app.put('/api/users/:userId/settings', (req, res) => {
+app.put('/api/users/:userId/settings', requireSelf, (req, res) => {
   const { data_source, api_keys, display_ccy } = req.body;
   db.prepare(`
     INSERT INTO settings (user_id, data_source, api_keys, display_ccy, updated_at)
