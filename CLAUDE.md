@@ -65,7 +65,7 @@ Single-file Express app organised by big ASCII-banner sections — search for `/
 1. **Config / Logger / DB Setup** — env-var driven; SQLite is opened with `journal_mode = WAL` and foreign keys on
 2. **Schema v3 + Migrations** — `db.exec(\`CREATE TABLE IF NOT EXISTS …\`)` runs every boot; columns/tables that were added later are also patched in with conditional `ALTER TABLE` blocks below
 3. **Middleware** — helmet, compression, cors, express-rate-limit (`RATE_LIMIT_MAX_REQUESTS`), JSON parser
-4. **USERS / PORTFOLIOS** routes — bcrypt PIN auth, soft-deletes via `deleted_at`
+4. **USERS / PORTFOLIOS** routes — bcrypt PIN auth, soft-deletes via `deleted_at`. Login/register return a session `token` (row in `sessions`, 30-day TTL); the frontend keeps it in the module-level `_token` (not persisted — reload means re-login) and `apiFetch` sends it as `Authorization: Bearer`. `getUserId(req)` resolves that token — it is the only identity source, so new user-scoped routes must call it (settings routes use `requireSelf`, which also checks `:userId`). Portfolio/transaction/plan routes are still unchecked.
 5. **TRANSACTIONS / Savings Plans** — BUY/SELL records, `price_usd` is denormalised at insert time using the FX rate of the trade date. `PUT /api/transactions/:id` accepts an optional `portfolio_id` field to move a transaction to a different portfolio atomically.
 6. **SETTINGS** — per-user JSON KV
 7. **QUOTES** — Yahoo proxy + Alpha Vantage fallback + batch endpoint + intraday endpoint
@@ -98,6 +98,20 @@ Errors are normalised back to three user-visible messages: `"Yahoo Finance rate 
 - `dedupFetch(key, fn)` — in-flight request coalescing so a burst of concurrent calls for the same symbol only triggers one upstream fetch
 
 `POST /api/etf/quotes/summary` — batch endpoint replacing per-symbol quote fetching in the ETF Screener. Reads from `etf_quote_summary_cache` → `quotes_cache` → Yahoo (three-level hierarchy). `extractSummaryFromRaw(raw)` on the backend mirrors the frontend's `extractQuoteFromRaw`.
+
+#### AI / PDF import
+
+`POST /api/tools/parse-pdf` extracts text with `pdf-parse`, sends it to the user's configured AI model (`settings.api_keys.ai = { provider, endpoint, model, key }`), and falls back to `tryComdirectRegex()` if no AI is configured or the call fails. All provider calls go through the adapter `aiBase()` / `aiHeaders()` / `aiListModels()` / `aiChat()`:
+
+- Settings shape: `api_keys.ai = { provider, endpoint, model, key, profiles: { [providerId]: { endpoint, model, key, ok } } }`. The top-level fields are the active config (the only part the backend reads); `profiles` remembers every provider's config so switching providers in `SettingsModal` restores its key/model, and `ok` (last connection test succeeded) drives the ✓ / 🔑 tags in the provider dropdown. Built by the `aiSettings` memo in `App`; old settings without `profiles` are seeded from the active config on login.
+- Settings backup: the Import/Export modal's "Settings" tab downloads `{ format: "portfolio-pal-settings", version: 1, settings }` (the saved `GET /api/users/:id/settings` payload, including every API key in plain text) and restores it via `PUT` + `applySettings()` — the same hydration function login uses.
+- The provider list (id, label, default endpoint, API-key console URL, optional warning note) lives in `AI_PROVIDERS` in `App.jsx`. Adding an OpenAI-compatible provider needs only a new entry there.
+- **Anthropic** uses the native Messages API (`x-api-key` + `anthropic-version`); every other provider uses OpenAI-compatible `/chat/completions` + `/models`.
+- `aiBase()` appends `/v1` only to a bare host (LM Studio/Ollama); endpoints with a path are used as-is (Z.AI `/api/paas/v4`, Gemini `/v1beta/openai`, Kimi Code `/coding/v1`). Inside Docker it rewrites `localhost` → `host.docker.internal` (the compose file adds `extra_hosts` for Linux/Synology).
+- Kimi has two separate products: Kimi Platform (`moonshot`, pay-as-you-go) and Kimi Code (`kimi-code`, coding subscription — Kimi restricts it to coding tools; never spoof the User-Agent). Z.AI has a global (`zai`) and a China-mainland (`zai-cn`, bigmodel.cn) entry with different key consoles.
+- Local providers get `reasoning_effort: 'none'` + `/no_think` — otherwise reasoning models (Qwen3) spend the whole token budget thinking and return empty content. Cloud requests omit `temperature`; OpenAI gets `max_completion_tokens` instead of `max_tokens`.
+- `POST /api/tools/test-ai` returns the model list (drives the model `<select>` in `SettingsModal`) and, if a model is set, pings it.
+- nginx gives `/api/tools/` a 180 s read timeout (the rest of `/api/` is 30 s) because local models can be slow.
 
 When debugging "stale data" issues, first check `/api/stats` for `cacheHits`/`cacheMisses`, then look at `updated_at` in the relevant `*_cache` table.
 
@@ -187,7 +201,7 @@ Key tables:
 - `savings_plans` (recurring buys)
 - `quotes_cache`, `parsed_quotes`, `fx_cache`, `av_usage` (rate-limit tracking for Alpha Vantage)
 - `etf_holdings_cache`, `etf_quote_summary_cache`, `etf_search_cache` (ETF Screener caches — see Caching layers above)
-- `user_kv` (per-user JSON KV), `user_etfs` (saved ETF screener picks), `settings` (display currency, API keys, **and `ui_language`**)
+- `user_kv` (per-user JSON KV), `user_etfs` (saved ETF screener picks), `settings` (display currency, API keys, **and `ui_language`**), `sessions` (login tokens)
 
 `make backup` produces gzipped SQL dumps in `backups/`. `make restore` recreates the DB from the newest dump.
 

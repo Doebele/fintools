@@ -20,6 +20,7 @@ const Database    = require('better-sqlite3');
 const bcrypt      = require('bcrypt');
 const fetch       = require('node-fetch');
 const path        = require('path');
+const crypto      = require('crypto');
 const fs          = require('fs');
 const ExcelJS     = require('exceljs');
 const pdfParse    = require('pdf-parse');
@@ -155,6 +156,11 @@ db.exec(`
     updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, key)
   );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT    PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS user_etfs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,
@@ -275,6 +281,27 @@ function avCountIncrement(n = 1) {
 // USER ROUTES
 // ════════════════════════════════════════════════════════════════════════════
 
+// Sessions: login/register issue a random token, the client sends it as
+// "Authorization: Bearer <token>". Stored in SQLite so rebuilds don't log tabs out.
+const SESSION_TTL = '-30 days';
+
+function newSession(userId) {
+  const token = crypto.randomBytes(32).toString('hex');
+  db.prepare('DELETE FROM sessions WHERE created_at < datetime(\'now\', ?)').run(SESSION_TTL);
+  db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)').run(token, userId);
+  return token;
+}
+
+const bearerToken = req => req.headers.authorization?.match(/^Bearer ([0-9a-f]{64})$/)?.[1] ?? null;
+
+// Logged-in user id for this request, or null
+function getUserId(req) {
+  const token = bearerToken(req);
+  if (!token) return null;
+  return db.prepare('SELECT user_id FROM sessions WHERE token = ? AND created_at >= datetime(\'now\', ?)')
+           .get(token, SESSION_TTL)?.user_id ?? null;
+}
+
 // POST /api/users/register  — create new user
 app.post('/api/users/register', async (req, res) => {
   const { username, pin } = req.body;
@@ -293,7 +320,7 @@ app.post('/api/users/register', async (req, res) => {
     ).run(uname, pin_hash);
     const userId = result.lastInsertRowid;
     log.info('New user registered:', uname);
-    res.status(201).json({ id: userId, username: uname });
+    res.status(201).json({ id: userId, username: uname, token: newSession(userId) });
   } catch(e) {
     log.error('Register error:', e.message);
     err(res, 500, 'Registration failed');
@@ -325,6 +352,7 @@ app.post('/api/users/login', async (req, res) => {
   res.json({
     id: user.id,
     username: user.username,
+    token: newSession(user.id),
     portfolios,
     settings: settings ? JSON.parse(settings.data_source ? JSON.stringify({
       data_source: settings.data_source,
@@ -332,6 +360,13 @@ app.post('/api/users/login', async (req, res) => {
       display_ccy: settings.display_ccy,
     }) : '{}') : { data_source: 'yahoo', api_keys: {}, display_ccy: 'USD' },
   });
+});
+
+// POST /api/users/logout  — revoke the caller's session token
+app.post('/api/users/logout', (req, res) => {
+  const token = bearerToken(req);
+  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  res.json({ ok: true });
 });
 
 // GET /api/users/:userId/portfolios  — list portfolios for a user
@@ -576,13 +611,21 @@ app.post('/api/transactions/recalculate-fx', async (req, res) => {
 // SETTINGS ROUTES  (now user-scoped)
 // ════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/users/:userId/settings', (req, res) => {
+// Settings hold every API key in plain text — only the logged-in owner may read/write them.
+function requireSelf(req, res, next) {
+  const uid = getUserId(req);
+  if (!uid) return err(res, 401, 'Not logged in');
+  if (uid !== parseInt(req.params.userId, 10)) return err(res, 403, 'Forbidden');
+  next();
+}
+
+app.get('/api/users/:userId/settings', requireSelf, (req, res) => {
   const row = db.prepare('SELECT * FROM settings WHERE user_id=?').get(req.params.userId);
   if (!row) return res.json({ data_source:'yahoo', api_keys:{}, display_ccy:'USD' });
   res.json({ data_source: row.data_source, api_keys: JSON.parse(row.api_keys||'{}'), display_ccy: row.display_ccy });
 });
 
-app.put('/api/users/:userId/settings', (req, res) => {
+app.put('/api/users/:userId/settings', requireSelf, (req, res) => {
   const { data_source, api_keys, display_ccy } = req.body;
   db.prepare(`
     INSERT INTO settings (user_id, data_source, api_keys, display_ccy, updated_at)
@@ -703,11 +746,76 @@ async function resolveSymbolFromIsin(isin, targetPrice, targetCurrency) {
   }
 }
 
+// ── AI provider adapter ──────────────────────────────────────────────────────
+// ai = { provider, endpoint, model, key }. Anthropic speaks its native Messages API,
+// every other provider (local, OpenAI, Gemini, xAI, Meta, Mistral, DeepSeek, Qwen, Kimi,
+// Z.AI, MiniMax, MiMo, StepFun, OpenRouter — list lives in AI_PROVIDERS in App.jsx)
+// the OpenAI-compatible /chat/completions + /models.
+const IN_DOCKER = require('fs').existsSync('/.dockerenv');
+const LOCAL_AI  = new Set(['lmstudio', 'ollama']);
+
+function aiBase(endpoint) {
+  let base = (endpoint || 'http://localhost:1234').replace(/\/+$/, '');
+  // Inside Docker, "localhost" is the container itself — LM Studio/Ollama run on the host.
+  if (IN_DOCKER) base = base.replace(/\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/, '//host.docker.internal');
+  // Bare host (LM Studio/Ollama) → /v1; otherwise the path is taken as-is
+  // (Z.AI …/paas/v4, Gemini …/v1beta/openai, Kimi Code …/coding/v1)
+  return /^https?:\/\/[^/]+$/.test(base) ? `${base}/v1` : base;
+}
+
+function aiHeaders(ai) {
+  if (ai.provider === 'anthropic')
+    return { 'Content-Type': 'application/json', 'x-api-key': ai.key || '', 'anthropic-version': '2023-06-01' };
+  return { 'Content-Type': 'application/json', ...(ai.key ? { Authorization: `Bearer ${ai.key}` } : {}) };
+}
+
+async function aiHttpError(resp) {
+  return new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+}
+
+// Chat-capable model ids for this provider + key, sorted
+async function aiListModels(ai) {
+  const qs   = ai.provider === 'anthropic' ? '?limit=1000' : '';
+  const resp = await fetch(`${aiBase(ai.endpoint)}/models${qs}`, { headers: aiHeaders(ai), timeout: 15000 });
+  if (!resp.ok) throw await aiHttpError(resp);
+  const json = await resp.json();
+  return (json.data || [])
+    .map(m => m.id?.replace(/^models\//, ''))   // Gemini prefixes ids with "models/"
+    .filter(id => id && !/embed|tts|whisper|dall-e|moderation|transcri|realtime|audio|image|rerank/i.test(id))
+    .sort();
+}
+
+// One-shot completion → { text, model }
+async function aiChat(ai, system, user, maxTokens, timeout) {
+  const base = aiBase(ai.endpoint);
+  let url = `${base}/chat/completions`, body;
+  if (ai.provider === 'anthropic') {
+    url  = `${base}/messages`;
+    body = { model: ai.model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] };
+  } else if (LOCAL_AI.has(ai.provider)) {
+    // Local reasoning models (Qwen3 etc.) otherwise burn the whole token budget on thinking
+    body = { model: ai.model || 'default', reasoning_effort: 'none', temperature: 0.1, max_tokens: maxTokens,
+             messages: [{ role: 'system', content: `/no_think ${system}` }, { role: 'user', content: user }] };
+  } else {
+    // Cloud: no temperature (OpenAI reasoning models reject non-default values);
+    // OpenAI's newer models reject max_tokens in favour of max_completion_tokens
+    body = { model: ai.model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+             [ai.provider === 'openai' ? 'max_completion_tokens' : 'max_tokens']: maxTokens };
+  }
+  const resp = await fetch(url, { method: 'POST', headers: aiHeaders(ai), body: JSON.stringify(body), timeout });
+  if (!resp.ok) throw await aiHttpError(resp);
+  const json = await resp.json();
+  const text = ai.provider === 'anthropic'
+    ? (json.content || []).filter(b => b.type === 'text').map(b => b.text).join('')
+    : json.choices?.[0]?.message?.content || '';
+  return { text, model: json.model || ai.model };
+}
+
 // POST /api/tools/parse-pdf — extract transaction data from a broker PDF
-// Multipart: field "file" = PDF binary.  Header: x-user-id
+// Multipart: field "file" = PDF binary.  Requires login (Bearer token)
 app.post('/api/tools/parse-pdf', multerPdf.single('file'), async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   if (!req.file) return err(res, 400, 'No PDF file uploaded');
 
   // 1. Extract text from PDF
@@ -742,7 +850,7 @@ app.post('/api/tools/parse-pdf', multerPdf.single('file'), async (req, res) => {
 
 Pflichtfelder:
 - type: "BUY" bei Kauf, "SELL" bei Verkauf
-- date: Handelsdatum (Geschäftstag) als "YYYY-MM-DD"
+- date: Handelsdatum als "YYYY-MM-DD". Bei mehreren Datumsangaben das Ausführungsdatum (Geschäftstag / Execution time / Trade date) nehmen, nie Valuta/Settlement date
 - name: vollständige Wertpapierbezeichnung
 - isin: ISIN-Code (12 Zeichen, z.B. "DE000EXAMPLE00")
 - quantity: Stückzahl als Zahl (kein Tausenderpunkt)
@@ -754,39 +862,23 @@ Deutsche Zahlenformatierung: "5.000" = 5000 (Tausendertrennzeichen), "16,85" = 1
 PDF-Inhalt:
 ${pdfText.slice(0, 4000)}`;
 
-  // 5. Call AI model via OpenAI-compat API
-  const endpoint = (ai.endpoint || 'http://localhost:1234').replace(/\/$/, '');
-  const aiUrl    = `${endpoint}/v1/chat/completions`;
-
+  // 5. Call AI model
   try {
-    const aiHeaders = { 'Content-Type': 'application/json' };
-    if (ai.key) aiHeaders['Authorization'] = `Bearer ${ai.key}`;
-
-    const aiResp = await fetch(aiUrl, {
-      method:  'POST',
-      headers: aiHeaders,
-      body: JSON.stringify({
-        model:    ai.model || 'default',
-        messages: [
-          { role: 'system', content: 'You are a precise financial document parser. Return only valid JSON, no explanation.' },
-          { role: 'user',   content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens:  500,
-      }),
-      timeout: 30000,
-    });
-
-    if (!aiResp.ok) {
-      const body = await aiResp.text();
-      throw new Error(`KI-Fehler ${aiResp.status}: ${body.slice(0, 200)}`);
-    }
-
-    const aiJson    = await aiResp.json();
-    const rawContent = aiJson.choices?.[0]?.message?.content || '';
-    // Strip markdown code fences if the model adds them
-    const jsonStr   = rawContent.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim();
+    const { text: rawContent } = await aiChat(ai,
+      'You are a precise financial document parser. Return only valid JSON, no explanation.',
+      prompt, 8000, 170000);   // generous: cloud reasoning models count thinking against this
+    // Take the outermost {...} — tolerates code fences and <think> blocks
+    const jsonStr   = rawContent.replace(/<think>[\s\S]*?<\/think>/g, '').match(/\{[\s\S]*\}/)?.[0];
+    if (!jsonStr) throw new Error('Modell lieferte kein JSON (evtl. max_tokens erreicht)');
     const parsed    = JSON.parse(jsonStr);
+    parsed.type     = String(parsed.type || '').toUpperCase().startsWith('S') ? 'SELL' : 'BUY';
+    // Small local models occasionally truncate the ISIN — snap it to the full one in the PDF text
+    if (/^[A-Z0-9]{8,11}$/.test(parsed.isin || ''))
+      parsed.isin = pdfText.match(new RegExp(`${parsed.isin.slice(0, 8)}[A-Z0-9]{4}`))?.[0] || parsed.isin;
+    if (parsed.date && !/^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) {
+      const d = new Date(parsed.date);   // e.g. "19 Aug 2026"
+      if (!isNaN(d)) parsed.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
 
     return sendParsed(parsed, 'ai');
   } catch(e) {
@@ -797,46 +889,26 @@ ${pdfText.slice(0, 4000)}`;
   }
 });
 
-// POST /api/tools/test-ai — ping an AI endpoint with a minimal request
-// Body: { endpoint, model, key }  (config values from the UI, not necessarily saved yet)
+// POST /api/tools/test-ai — validate endpoint/key, list available models, and
+// (if a model is chosen) ping it with a minimal request.
+// Body: { provider, endpoint, model, key }  (config values from the UI, not necessarily saved yet)
+// → { ok, models: string[]|null, model?, reply?, latencyMs? }
 app.post('/api/tools/test-ai', express.json(), async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
 
-  const { endpoint, model, key } = req.body || {};
+  const { provider, endpoint, model, key } = req.body || {};
   if (!endpoint) return err(res, 400, 'endpoint required');
+  const ai = { provider, endpoint, model, key };
 
-  const aiUrl = `${endpoint.replace(/\/$/, '')}/v1/chat/completions`;
+  let models = null, listErr = null;
+  try { models = await aiListModels(ai); } catch(e) { listErr = e; }
+  if (!model) return models ? res.json({ ok: true, models }) : err(res, 502, listErr.message);
+
   const t0 = Date.now();
-
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (key) headers['Authorization'] = `Bearer ${key}`;
-
-    const aiResp = await fetch(aiUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: model || 'default',
-        messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
-        max_tokens: 10,
-        temperature: 0,
-      }),
-      timeout: 15000,
-    });
-
-    const latencyMs = Date.now() - t0;
-
-    if (!aiResp.ok) {
-      const body = await aiResp.text();
-      return err(res, 502, `HTTP ${aiResp.status}: ${body.slice(0, 200)}`);
-    }
-
-    const json = await aiResp.json();
-    const reply = json.choices?.[0]?.message?.content?.trim() ?? '(empty)';
-    const usedModel = json.model || model || 'unknown';
-
-    res.json({ ok: true, model: usedModel, reply, latencyMs });
+    const r = await aiChat(ai, 'Reply with the single word OK.', 'OK?', 200, 30000);
+    res.json({ ok: true, models, model: r.model, reply: r.text.trim() || '(empty)', latencyMs: Date.now() - t0 });
   } catch(e) {
     err(res, 502, e.message);
   }
@@ -1963,19 +2035,10 @@ app.post('/api/quotes/dividend/batch', async (req, res) => {
 // USER SAVED ETFs
 // ════════════════════════════════════════════════════════════════════════════
 
-// Simple user-id header auth (same pattern as rest of app — stateless, no JWT)
-function getUserId(req) {
-  // Accept header (standard for most requests) or query param (fallback for GET downloads)
-  const uid = req.headers['x-user-id'] || req.query['uid'];
-  if (!uid) return null;
-  const id = parseInt(uid, 10);
-  return isNaN(id) ? null : id;
-}
-
 // GET /api/user/etfs  — list saved ETFs for a user
 app.get('/api/user/etfs', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   const rows = db.prepare(
     'SELECT ticker, name, provider, created_at FROM user_etfs WHERE user_id=? ORDER BY created_at ASC'
   ).all(userId);
@@ -1985,7 +2048,7 @@ app.get('/api/user/etfs', (req, res) => {
 // POST /api/user/etfs  — save an ETF for a user
 app.post('/api/user/etfs', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   const body = req.body || {};
   const { ticker, name, provider } = body;
   log.debug?.('POST /user/etfs body:', body);
@@ -2009,7 +2072,7 @@ app.post('/api/user/etfs', (req, res) => {
 // DELETE /api/user/etfs/:ticker  — remove a saved ETF
 app.delete('/api/user/etfs/:ticker', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return err(res, 401, 'x-user-id header required');
+  if (!userId) return err(res, 401, 'Not logged in');
   db.prepare('DELETE FROM user_etfs WHERE user_id=? AND ticker=?')
     .run(userId, req.params.ticker.toUpperCase());
   const etfs = db.prepare(
@@ -2036,7 +2099,7 @@ app.get('/api/portfolios/import/template', (req, res) => {
 
 // ── GET /api/portfolios/:id/export  — download transactions as CSV ───────────
 app.get('/api/portfolios/:id/export', async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid  = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));
@@ -2166,7 +2229,7 @@ async function lookupPriceForImport(symbol, date) {
 // POST /api/portfolios/:id/import/preview  — parse file, detect conflicts, return preview
 // Body: multipart form with 'file' field
 app.post('/api/portfolios/:id/import/preview', upload.single('file'), async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));
@@ -2304,7 +2367,7 @@ app.post('/api/portfolios/:id/import/preview', upload.single('file'), async (req
 // POST /api/portfolios/:id/import/selective  — import with conflict resolutions
 // Body JSON: { rows: [{ symbol, date, type, quantity, price, currency, name, notes, resolution, conflictIds }] }
 app.post('/api/portfolios/:id/import/selective', async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));
@@ -2379,7 +2442,7 @@ app.post('/api/portfolios/:id/import/selective', async (req, res) => {
 });
 
 app.post('/api/portfolios/:id/import', upload.single('file'), async (req, res) => {
-  if (!getUserId(req)) return err(res, 401, 'x-user-id header required');
+  if (!getUserId(req)) return err(res, 401, 'Not logged in');
   const pid = req.params.id;
   const port = db.prepare('SELECT * FROM portfolios WHERE id=? AND user_id=?')
                   .get(pid, getUserId(req));

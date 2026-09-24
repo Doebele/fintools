@@ -117,6 +117,15 @@
     "modelName": "Model Name",
     "apiKey": "API Key",
     "disabled": "Disabled",
+    "aiProvider": "Provider",
+    "aiLocal": "Local (no API key)",
+    "aiCloud": "Cloud (API key)",
+    "getKey": "Get API key",
+    "aiLegend": "✓ connection tested · 🔑 API key stored — settings are kept per provider",
+    "kimiCodeNote": "Kimi says the Kimi Code subscription is meant for coding tools. For your own applications Kimi recommends the Kimi Platform (API, pay-as-you-go).",
+    "chooseModel": "— Select model —",
+    "modelHint": "“Test Connection” loads the model list",
+    "modelsFound": "{{count}} models available",
     "quoteSource": "Quote Data Source"
   },
   "tips": {
@@ -132,8 +141,8 @@
     "getPrice": "Fetch the historical closing price for this date from Yahoo Finance",
     "recurrence": "How often to place a recurring buy order",
     "avKey": "Optional fallback quote source — free key at alphavantage.co",
-    "aiEndpoint": "OpenAI-compatible base URL for AI-powered PDF text extraction",
-    "aiModel": "Model name sent in the API request (e.g. llama-3.1-8b-instruct)",
+    "aiEndpoint": "Provider base URL — pre-filled when you pick a provider",
+    "aiModel": "Pick from the available models after “Test Connection”",
     "buyPrice": "Price per share at execution in the original transaction currency",
     "currency": "Original transaction currency — used for FX conversion to your display currency",
     "isin": "International Securities Identification Number (optional but enables auto symbol lookup)"
@@ -199,5 +208,15 @@
     "error": "Error",
     "ok": "OK",
     "total": "Total"
+  },
+  "backup": {
+    "tab": "Settings",
+    "hint": "Backs up your saved settings as a JSON file: quote source, display currency, Alpha Vantage key and every AI provider with endpoint, model and API key. Restoring it means no key has to be entered again.",
+    "warn": "The file contains your API keys in plain text. Store it safely and don't share it.",
+    "exportBtn": "Export settings as JSON",
+    "importBtn": "Restore settings from JSON",
+    "importHint": "Overwrites the currently saved settings.",
+    "restored": "Settings restored ({{count}} API keys).",
+    "invalid": "Not a valid Portfolio Pal settings file."
   }
 }

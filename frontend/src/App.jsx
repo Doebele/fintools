@@ -280,11 +280,16 @@ function useDisplayMode() {
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 const BASE = "/api";
+let _token = null;   // session token from login/register; not persisted, so a reload means re-login
+const authHeaders = () => _token ? { Authorization: `Bearer ${_token}` } : {};
+
 async function apiFetch(path, opts = {}) {
   const { isForm, headers: extraHeaders, ...fetchOpts } = opts;
-  const headers = isForm
-    ? (extraHeaders || {})  // let browser set multipart boundary
-    : { "Content-Type": "application/json", ...(extraHeaders || {}) };
+  const headers = {
+    ...(isForm ? {} : { "Content-Type": "application/json" }),  // form: browser sets multipart boundary
+    ...authHeaders(),
+    ...extraHeaders,
+  };
   const res = await fetch(BASE + path, { headers, ...fetchOpts });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -294,19 +299,20 @@ async function apiFetch(path, opts = {}) {
 }
 
 const etfApi = {
-  list:   (userId)           => apiFetch(`/user/etfs?uid=${userId}`, { headers:{ 'x-user-id': String(userId) } }),
-  save:   (userId, etf)      => apiFetch(`/user/etfs?uid=${userId}`, {
+  list:   (userId)           => apiFetch(`/user/etfs`),
+  save:   (userId, etf)      => apiFetch(`/user/etfs`, {
                                   method:"POST",
                                   body: JSON.stringify({ ticker: etf.ticker, name: etf.name||null, provider: etf.provider||null }),
-                                  headers:{ 'x-user-id': String(userId), 'Content-Type': 'application/json' },
                                 }),
-  remove: (userId, ticker)   => apiFetch(`/user/etfs/${encodeURIComponent(ticker)}?uid=${userId}`,
-                                  { method:"DELETE", headers:{ 'x-user-id': String(userId) } }),
+  remove: (userId, ticker)   => apiFetch(`/user/etfs/${encodeURIComponent(ticker)}`, { method:"DELETE" }),
 };
 
+const keepToken = (data) => { _token = data.token; return data; };
 const userApi = {
-  register: (username, pin)   => apiFetch("/users/register",   { method:"POST", body: JSON.stringify({ username, pin }) }),
-  login:    (username, pin)   => apiFetch("/users/login",       { method:"POST", body: JSON.stringify({ username, pin }) }),
+  register: (username, pin)   => apiFetch("/users/register",   { method:"POST", body: JSON.stringify({ username, pin }) }).then(keepToken),
+  login:    (username, pin)   => apiFetch("/users/login",       { method:"POST", body: JSON.stringify({ username, pin }) }).then(keepToken),
+  // apiFetch builds its headers synchronously, so clearing the token right after the call is safe
+  logout:   ()                => { const p = apiFetch("/users/logout", { method:"POST" }); _token = null; return p.catch(() => {}); },
   portfolios: (uid)           => apiFetch(`/users/${uid}/portfolios`),
   createPortfolio: (uid, name, color) => apiFetch(`/users/${uid}/portfolios`, { method:"POST", body: JSON.stringify({ name, color }) }),
   renamePortfolio: (pid, name) => apiFetch(`/portfolios/${pid}`, { method:"PUT", body: JSON.stringify({ name }) }),
@@ -320,8 +326,7 @@ const txApi = {
   delete:    (id)      => apiFetch(`/transactions/${id}`,            { method:"DELETE" }),
   recalcFX:  ()        => apiFetch(`/transactions/recalculate-fx`,   { method:"POST" }),
   exportCsv:   async (pid, userId) => {
-    const res = await fetch(`/api/portfolios/${pid}/export?uid=${userId}`,
-      { headers: { 'x-user-id': String(userId) } });
+    const res = await fetch(`/api/portfolios/${pid}/export`, { headers: authHeaders() });
     if (!res.ok) {
       const ct = res.headers.get('content-type') || '';
       const b  = ct.includes('json') ? await res.json().catch(()=>({})) : {};
@@ -334,18 +339,15 @@ const txApi = {
   },
   importXlsx:  (pid, file, userId)  => {
     const fd = new FormData(); fd.append("file", file);
-    return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true,
-      headers:{ "x-user-id": String(userId) } });
+    return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true });
   },
   importTemplate: () => `/api/portfolios/import/template`,
   importPreview: (pid, file, userId) => {
     const fd = new FormData(); fd.append("file", file);
-    return apiFetch(`/portfolios/${pid}/import/preview`, { method:"POST", body:fd, isForm:true,
-      headers:{ "x-user-id": String(userId) } });
+    return apiFetch(`/portfolios/${pid}/import/preview`, { method:"POST", body:fd, isForm:true });
   },
   importSelective: (pid, rows, userId) =>
-    apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }),
-      headers:{ "x-user-id": String(userId) } }),
+    apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }) }),
 };
 const plansApi = {
   list:   (pid)          => apiFetch(`/portfolios/${pid}/plans`),
@@ -379,14 +381,12 @@ const toolsApi = {
     fd.append("file", file);
     return apiFetch("/tools/parse-pdf", {
       method: "POST", body: fd, isForm: true,
-      headers: { "x-user-id": String(userId) },
     });
   },
-  testAi: (userId, endpoint, model, key) =>
+  testAi: (userId, provider, endpoint, model, key) =>
     apiFetch("/tools/test-ai", {
       method: "POST",
-      body: JSON.stringify({ endpoint, model, key }),
-      headers: { "Content-Type": "application/json", "x-user-id": String(userId) },
+      body: JSON.stringify({ provider, endpoint, model, key }),
     }),
 };
 
@@ -640,11 +640,12 @@ const FInput = ({ style, ...props }) => (
   onBlur={e  => e.target.style.borderColor = THEME.border}
   />
 );
-const FSelect = ({ children, ...props }) => (
+const FSelect = ({ children, style, ...props }) => (
   <select {...props} style={{
     width:"100%", padding:"10px 12px", borderRadius:10,
     border:`1px solid ${THEME.border}`, background:THEME.surface2,
     color:THEME.text1, fontSize:13, outline:"none", fontFamily:THEME.font,
+    ...style,
   }}>{children}</select>
 );
 
@@ -920,7 +921,9 @@ const RESOLUTION_LABELS = {
   add_new:       { label:"Als Neu",         color:"#4ade80", desc:"Add alongside existing (both kept)" },
 };
 
-function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone, onCreatePortfolio }) {
+const SETTINGS_BACKUP_FORMAT = "portfolio-pal-settings";
+
+function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone, onCreatePortfolio, onSettingsRestored }) {
   const { t } = useTranslation();
   const [tab,         setTab]         = useState("export");
   const [selPort,     setSelPort]     = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
@@ -957,6 +960,42 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch(e) { setExportErr(e.message || "Export failed"); }
     setExporting(false);
+  };
+
+  // ── Settings backup (JSON incl. all API keys) ───────────────────────────────
+  const [settingsMsg, setSettingsMsg] = useState(null);   // null | { ok, text }
+  const settingsFileRef = useRef(null);
+
+  const handleSettingsExport = async () => {
+    if (!user) return;
+    setSettingsMsg(null);
+    try {
+      const settings = await userApi.settings(user.id);   // saved state, not unsaved form edits
+      const doc = { format: SETTINGS_BACKUP_FORMAT, version: 1, exported_at: new Date().toISOString(),
+                    username: user.username, settings };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `portfolio-pal-settings_${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch(e) { setSettingsMsg({ ok: false, text: e.message }); }
+  };
+
+  const handleSettingsImport = async (f) => {
+    if (!f || !user) return;
+    setSettingsMsg(null);
+    try {
+      const doc = JSON.parse(await f.text());
+      const s = doc?.settings;
+      if (doc?.format !== SETTINGS_BACKUP_FORMAT || !s || typeof s.api_keys !== "object")
+        throw new Error(t("backup.invalid"));
+      await userApi.saveSettings(user.id, s);
+      onSettingsRestored?.(s);
+      const ai = s.api_keys.ai ?? {};
+      const keyCount = Object.values(ai.profiles ?? { active: ai }).filter(p => p?.key).length
+                     + (s.api_keys.alphavantage ? 1 : 0);
+      setSettingsMsg({ ok: true, text: t("backup.restored", { count: keyCount }) });
+    } catch(e) { setSettingsMsg({ ok: false, text: e instanceof SyntaxError ? t("backup.invalid") : e.message }); }
   };
 
   // ── Preview / Import flow ─────────────────────────────────────────────────
@@ -1118,6 +1157,10 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               onClick={()=>{ setTab("import"); setPreviewData(null); setResult(null); }}>
               <Upload size={13}/> Import Excel
             </button>
+            <button className={"rail-density-btn" + (tab==="settings" ? " active" : "")}
+              onClick={()=>{ setTab("settings"); setPreviewData(null); setResult(null); setSettingsMsg(null); }}>
+              <Settings size={13}/> {t("backup.tab")}
+            </button>
           </div>
         </div>
 
@@ -1145,6 +1188,42 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={15}/></span> Exportiere…</>
                   : <><FileDown size={15}/> {selectedPort ? `"${selectedPort.name}" als CSV laden` : "Portfolio wählen"}</>}
               </button>
+            </div>
+          )}
+
+          {/* ── SETTINGS BACKUP TAB ────────────────────────────────────────── */}
+          {tab === "settings" && (
+            <div>
+              <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 10px", lineHeight:1.5 }}>
+                {t("backup.hint")}
+              </p>
+              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:14, fontSize:11, lineHeight:1.5,
+                background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.3)", color:THEME.yellow }}>
+                ⚠ {t("backup.warn")}
+              </div>
+              <button onClick={handleSettingsExport}
+                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none", marginBottom:10,
+                  background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
+                  fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                <FileDown size={15}/> {t("backup.exportBtn")}
+              </button>
+              <input ref={settingsFileRef} type="file" accept=".json,application/json" style={{ display:"none" }}
+                onChange={e => { handleSettingsImport(e.target.files?.[0]); e.target.value = ""; }}/>
+              <button onClick={() => settingsFileRef.current?.click()}
+                style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1.5px solid ${THEME.border}`,
+                  background:"transparent", color:THEME.text2, fontSize:12, fontWeight:700, cursor:"pointer",
+                  fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                <Upload size={14}/> {t("backup.importBtn")}
+              </button>
+              <p style={{ fontSize:10, color:THEME.text3, margin:"8px 0 0", lineHeight:1.5 }}>{t("backup.importHint")}</p>
+              {settingsMsg && (
+                <div style={{ padding:"8px 10px", borderRadius:8, marginTop:10, fontSize:11,
+                  background: settingsMsg.ok ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                  border: `1px solid ${settingsMsg.ok ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+                  color: settingsMsg.ok ? THEME.green : THEME.red }}>
+                  {settingsMsg.ok ? "✓" : "✗"} {settingsMsg.text}
+                </div>
+              )}
             </div>
           )}
 
@@ -5016,7 +5095,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     ) : <span style={{color:THEME.text3}}>—</span>;
                     case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._cost)}</span>);
                     case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(grp._curPriceUSD)}</span>);
-                    case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2, fontWeight:600 }}>{fmtUSD(grp._curValue)}</span>);
+                    case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text1, fontWeight:700 }}>{fmtUSD(grp._curValue)}</span>);
                     case "glPct": return grp._glPct != null ? (
                       <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:grp._glPct>=0?THEME.green:THEME.red }}>
                         {grp._glPct>=0?"+":""}{grp._glPct.toFixed(1)}%
@@ -5167,7 +5246,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   );
                   case "cost": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._cost)}</span>);
                   case "curPrice": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curPriceUSD)}</span>);
-                  case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text2 }}>{fmtUSD(tx._curValue)}</span>);
+                  case "curValue": return (<span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text1, fontWeight:700 }}>{fmtUSD(tx._curValue)}</span>);
                   case "glPct": return tx._glPct != null
                     ? <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600, color:tx._glPct>=0?THEME.green:THEME.red }}>
                         {tx._glPct>=0?"+":""}{tx._glPct.toFixed(1)}%
@@ -6012,25 +6091,90 @@ function AddPortfolioModal({ onClose, onAdd }) {
 // ════════════════════════════════════════════════════════════════════════════
 // SETTINGS MODAL
 // ════════════════════════════════════════════════════════════════════════════
+// Provider list roughly follows the model creators leading artificialanalysis.ai.
+// keyUrl = where to create an API key; no keyUrl = local, no key needed.
+// Only "anthropic", "openai" and the local ids have special handling in the backend.
+const AI_PROVIDERS = [
+  { id:"lmstudio",   label:"LM Studio",                  url:"http://localhost:1234" },
+  { id:"ollama",     label:"Ollama",                     url:"http://localhost:11434" },
+  { id:"anthropic",  label:"Anthropic (Claude)",         url:"https://api.anthropic.com/v1",   ph:"sk-ant-...", keyUrl:"https://platform.claude.com/settings/keys" },
+  { id:"openai",     label:"OpenAI (GPT)",               url:"https://api.openai.com/v1",      ph:"sk-...",     keyUrl:"https://platform.openai.com/api-keys" },
+  { id:"gemini",     label:"Google (Gemini)",            url:"https://generativelanguage.googleapis.com/v1beta/openai", ph:"AIza...", keyUrl:"https://aistudio.google.com/apikey" },
+  { id:"xai",        label:"xAI (Grok)",                 url:"https://api.x.ai/v1",            ph:"xai-...",    keyUrl:"https://console.x.ai/" },
+  { id:"meta",       label:"Meta (Muse)",                url:"https://api.meta.ai/v1",                          keyUrl:"https://ai.developer.meta.com/" },
+  { id:"mistral",    label:"Mistral",                    url:"https://api.mistral.ai/v1",                       keyUrl:"https://console.mistral.ai/api-keys" },
+  { id:"deepseek",   label:"DeepSeek",                   url:"https://api.deepseek.com/v1",    ph:"sk-...",     keyUrl:"https://platform.deepseek.com/api_keys" },
+  { id:"qwen",       label:"Alibaba (Qwen)",             url:"https://dashscope-intl.aliyuncs.com/compatible-mode/v1", ph:"sk-...", keyUrl:"https://modelstudio.console.alibabacloud.com/?tab=playground#/api-key" },
+  { id:"moonshot",   label:"Kimi Platform (API)",        url:"https://api.moonshot.ai/v1",     ph:"sk-...",     keyUrl:"https://platform.kimi.ai/console/api-keys" },
+  { id:"kimi-code",  label:"Kimi Code (Coding Plan)",    url:"https://api.kimi.ai/coding/v1",  ph:"sk-kimi-...", keyUrl:"https://www.kimi.ai/code/console", note:"settings.kimiCodeNote" },
+  { id:"zai",        label:"Z.AI (GLM) — Global",        url:"https://api.z.ai/api/paas/v4",                    keyUrl:"https://z.ai/manage-apikey/apikey-list" },
+  { id:"zai-cn",     label:"BigModel (GLM) — China",     url:"https://open.bigmodel.cn/api/paas/v4",            keyUrl:"https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys" },
+  { id:"minimax",    label:"MiniMax",                    url:"https://api.minimax.io/v1",                       keyUrl:"https://platform.minimax.io/console/access" },
+  { id:"mimo",       label:"Xiaomi (MiMo)",              url:"https://api.xiaomimimo.com/v1",                   keyUrl:"https://platform.xiaomimimo.com/" },
+  { id:"stepfun",    label:"StepFun (Step)",             url:"https://api.stepfun.ai/v1",                       keyUrl:"https://platform.stepfun.ai/" },
+  { id:"openrouter", label:"OpenRouter", url:"https://openrouter.ai/api/v1",   ph:"sk-or-...",  keyUrl:"https://openrouter.ai/settings/keys" },
+];
+
 function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage,
-  aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey, userId }) {
+  aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey,
+  aiProfiles, setAiProfiles, userId }) {
   const { t } = useTranslation();
   const used = avUsage?.today ?? 0;
   const limit = 25;
   const pct   = Math.min(100, (used/limit)*100);
   const barColor = pct>=90?"#ef4444":pct>=70?"#f59e0b":"#22c55e";
-  const [aiTestState, setAiTestState] = useState(null); // null|"testing"|{ok,model,latencyMs}|{err}
+  const [aiTestState, setAiTestState] = useState(null); // null|"testing"|{ok,model,latencyMs,count}|{err}
+  const [aiModels,    setAiModels]    = useState([]);
+  const aiProv = AI_PROVIDERS.find(p => p.id === aiProvider);
+  const providerRef = useRef(aiProvider);
+  providerRef.current = aiProvider;
+
+  const patchProfile = (id, patch) => setAiProfiles(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  // Dropdown tag: ✓ = connection tested OK, 🔑 = key stored but not (successfully) tested
+  const aiMark = id => {
+    const key = id === aiProvider ? aiApiKey : aiProfiles[id]?.key;
+    return aiProfiles[id]?.ok ? "  ✓" : key ? "  🔑" : "";
+  };
+
+  // Silent model-list fetch; ignores the answer if the user switched provider meanwhile
+  const loadModels = (provider, endpoint, key) =>
+    toolsApi.testAi(userId, provider, endpoint, "", key)
+      .then(r => { if (providerRef.current === provider) setAiModels(r.models || []); })
+      .catch(() => {});
+
+  // Pre-load the model list for an already configured provider
+  useEffect(() => {
+    if (aiProvider !== "disabled" && aiEndpoint) loadModels(aiProvider, aiEndpoint, aiApiKey);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const switchProvider = (next) => {
+    const p = AI_PROVIDERS.find(x => x.id === next), saved = aiProfiles[next] ?? {};
+    // Stash the current provider's config, restore the next one's (keys are never carried across)
+    if (aiProvider !== "disabled") patchProfile(aiProvider, { endpoint: aiEndpoint, model: aiModel, key: aiApiKey });
+    setAiProvider(next);
+    setAiEndpoint(saved.endpoint || p?.url || "");
+    setAiModel(saved.model || "");
+    setAiApiKey(saved.key || "");
+    setAiModels([]); setAiTestState(null);
+    if (p && (!p.keyUrl || saved.key)) loadModels(next, saved.endpoint || p.url, saved.key || "");
+  };
+
+  // Editing endpoint/key invalidates a previous successful test
+  const invalidateTest = () => { if (aiProfiles[aiProvider]?.ok) patchProfile(aiProvider, { ok: false }); };
 
   const handleTestAi = useCallback(async () => {
     if (!aiEndpoint) return;
     setAiTestState("testing");
     try {
-      const result = await toolsApi.testAi(userId, aiEndpoint, aiModel, aiApiKey);
-      setAiTestState({ ok: true, model: result.model, latencyMs: result.latencyMs, reply: result.reply });
+      const result = await toolsApi.testAi(userId, aiProvider, aiEndpoint, aiModel, aiApiKey);
+      if (result.models) setAiModels(result.models);
+      setAiTestState({ ok: true, model: result.model, latencyMs: result.latencyMs, count: result.models?.length });
+      setAiProfiles(prev => ({ ...prev, [aiProvider]: { endpoint: aiEndpoint, model: aiModel, key: aiApiKey, ok: true } }));
     } catch(e) {
       setAiTestState({ err: e.message });
+      setAiProfiles(prev => ({ ...prev, [aiProvider]: { ...prev[aiProvider], ok: false } }));
     }
-  }, [userId, aiEndpoint, aiModel, aiApiKey]);
+  }, [userId, aiProvider, aiEndpoint, aiModel, aiApiKey, setAiProfiles]);
 
   return (
     <Modal title={t("settings.title")} onClose={onClose}>
@@ -6071,45 +6215,50 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         {/* ── KI-Modell für PDF-Import ─────────────────────────────────── */}
         <div style={{ borderTop:`1px solid ${THEME.border}`, paddingTop:16 }}>
           <FLabel style={{ display:"block", marginBottom:8 }}>{t("settings.aiSection")}</FLabel>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:10 }}>
-            {[
-              ["lmstudio",   "LM Studio"],
-              ["ollama",     "Ollama"],
-              ["openrouter", "OpenRouter"],
-              ["disabled",   t("settings.disabled")],
-            ].map(([val, label]) => (
-              <button key={val}
-                onClick={() => {
-                  setAiProvider(val);
-                  if (val === "lmstudio")   setAiEndpoint("http://localhost:1234");
-                  if (val === "ollama")     setAiEndpoint("http://localhost:11434");
-                  if (val === "openrouter") setAiEndpoint("https://openrouter.ai/api/v1");
-                }}
-                style={{
-                  padding:"9px 0", borderRadius:8, fontSize:11, fontWeight:700,
-                  border:`1.5px solid ${aiProvider===val ? THEME.accent : THEME.border}`,
-                  background: aiProvider===val ? "rgba(59,130,246,0.15)" : "transparent",
-                  color: aiProvider===val ? THEME.accent : THEME.text3,
-                  cursor:"pointer",
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <FLabel>{t("settings.aiProvider")}</FLabel>
+          <FSelect value={aiProvider} style={{ marginBottom:4 }} onChange={e => switchProvider(e.target.value)}>
+            <optgroup label={t("settings.aiLocal")}>
+              {AI_PROVIDERS.filter(p => !p.keyUrl).map(p => <option key={p.id} value={p.id}>{p.label}{aiMark(p.id)}</option>)}
+            </optgroup>
+            <optgroup label={t("settings.aiCloud")}>
+              {AI_PROVIDERS.filter(p => p.keyUrl).map(p => <option key={p.id} value={p.id}>{p.label}{aiMark(p.id)}</option>)}
+            </optgroup>
+            <option value="disabled">{t("settings.disabled")}</option>
+          </FSelect>
+          <div style={{ fontSize:10, color:THEME.text3, marginBottom:10 }}>{t("settings.aiLegend")}</div>
           {aiProvider !== "disabled" && (<>
             <FLabel><LabelTip i18nKey="tips.aiEndpoint" width={240}>{t("settings.endpointUrl")}</LabelTip></FLabel>
-            <FInput value={aiEndpoint} onChange={e => setAiEndpoint(e.target.value)}
+            <FInput value={aiEndpoint} onChange={e => { setAiEndpoint(e.target.value); invalidateTest(); }}
               style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
               placeholder="http://localhost:1234"/>
-            <FLabel><LabelTip i18nKey="tips.aiModel" width={240}>{t("settings.modelName")}</LabelTip></FLabel>
-            <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
-              placeholder="e.g. llama-3.1-8b-instruct" style={{ marginBottom: aiProvider==="openrouter" ? 8 : 0 }}/>
-            {aiProvider === "openrouter" && (<>
-              <FLabel>{t("settings.apiKey")}</FLabel>
-              <FInput value={aiApiKey} onChange={e => setAiApiKey(e.target.value)}
-                style={{ fontFamily:THEME.mono, fontSize:11 }}
-                placeholder="sk-or-..."/>
+            {aiProv?.keyUrl && (<>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
+                <FLabel>{t("settings.apiKey")}</FLabel>
+                <a href={aiProv.keyUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize:10, fontWeight:700, color:THEME.accent, textDecoration:"none" }}>
+                  {t("settings.getKey")} ↗
+                </a>
+              </div>
+              <FInput type="password" autoComplete="off" value={aiApiKey} onChange={e => { setAiApiKey(e.target.value); invalidateTest(); }}
+                style={{ fontFamily:THEME.mono, fontSize:11, marginBottom:8 }}
+                placeholder={aiProv.ph || "API key"}/>
+              {aiProv.note && (
+                <div style={{ fontSize:10, color:THEME.yellow, lineHeight:1.4, marginTop:-2, marginBottom:8 }}>
+                  ⚠ {t(aiProv.note)}
+                </div>
+              )}
             </>)}
+            <FLabel><LabelTip i18nKey="tips.aiModel" width={240}>{t("settings.modelName")}</LabelTip></FLabel>
+            {aiModels.length ? (
+              <FSelect value={aiModel} onChange={e => setAiModel(e.target.value)}
+                style={{ fontFamily:THEME.mono, fontSize:11 }}>
+                {!aiModels.includes(aiModel) && <option value={aiModel}>{aiModel || t("settings.chooseModel")}</option>}
+                {aiModels.map(m => <option key={m} value={m}>{m}</option>)}
+              </FSelect>
+            ) : (
+              <FInput value={aiModel} onChange={e => setAiModel(e.target.value)}
+                placeholder={t("settings.modelHint")}/>
+            )}
             {/* Test connection */}
             <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:10 }}>
               <button
@@ -6129,10 +6278,10 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
               {aiTestState && aiTestState !== "testing" && (
                 aiTestState.ok
                   ? <span style={{ fontSize:11, color:"#22c55e" }}>
-                      ✓ {t("settings.connOk")} — {aiTestState.latencyMs}ms
-                      {aiTestState.model && aiTestState.model !== "unknown" && (
-                        <span style={{ color:THEME.text3 }}> ({aiTestState.model})</span>
-                      )}
+                      ✓ {t("settings.connOk")}
+                      {aiTestState.count != null && <> — {t("settings.modelsFound", { count: aiTestState.count })}</>}
+                      {aiTestState.model && <> — {aiTestState.latencyMs}ms
+                        <span style={{ color:THEME.text3 }}> ({aiTestState.model})</span></>}
                     </span>
                   : <span style={{ fontSize:11, color:THEME.red, flex:1, wordBreak:"break-word" }}
                       title={aiTestState.err}>
@@ -8489,6 +8638,13 @@ export default function App() {
   const [aiEndpoint,      setAiEndpoint]      = useState("http://localhost:1234");
   const [aiModel,         setAiModel]         = useState("");
   const [aiApiKey,        setAiApiKey]        = useState("");
+  const [aiProfiles,      setAiProfiles]      = useState({});   // per provider: { endpoint, model, key, ok }
+  // Active AI config (what the backend reads) + every provider's remembered config
+  const aiSettings = useMemo(() => ({
+    provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey,
+    profiles: aiProvider === "disabled" ? aiProfiles
+      : { ...aiProfiles, [aiProvider]: { ...aiProfiles[aiProvider], endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+  }), [aiProvider, aiEndpoint, aiModel, aiApiKey, aiProfiles]);
   const [avUsage,         setAvUsage]         = useState(null);
   const [fetchStatus,     setFetchStatus]     = useState("");
   const [fetchErrors,     setFetchErrors]     = useState({});
@@ -8515,28 +8671,34 @@ export default function App() {
   const tooltipTimer = useRef(null);
 
   // ── Login handler ─────────────────────────────────────────────────────────
+  // Hydrate UI state from a settings object (login, or restore from a JSON backup)
+  const applySettings = useCallback((s) => {
+    setDataSource(s.data_source ?? "yahoo");
+    setAvApiKey(s.api_keys?.alphavantage ?? "");
+    setCurrency(s.display_ccy ?? "USD");
+    const ai = s.api_keys?.ai ?? {};
+    setAiProvider(ai.provider ?? "disabled");
+    setAiEndpoint(ai.endpoint ?? "http://localhost:1234");
+    setAiModel(   ai.model    ?? "");
+    setAiApiKey(  ai.key      ?? "");
+    // Settings saved before per-provider profiles existed: seed from the active config
+    setAiProfiles(ai.profiles ?? (ai.provider && ai.provider !== "disabled"
+      ? { [ai.provider]: { endpoint: ai.endpoint, model: ai.model, key: ai.key } } : {}));
+    // Restore saved language preference
+    if (s.ui_language) {
+      i18n.changeLanguage(s.ui_language);
+      setUiLanguage(s.ui_language);
+      localStorage.setItem("pp-lang", s.ui_language);
+    }
+  }, []);
+
   const handleLogin = useCallback(async (userData) => {
     setUser(userData);
     etfApi.list(userData.id).then(res => setSavedEtfs(res.etfs || [])).catch(()=>{});
     const ports = userData.portfolios ?? [];
     setPortfolios(ports);
     setActivePortfolioIds(ports.map(p => p.id)); // all active by default
-    if (userData.settings) {
-      setDataSource(userData.settings.data_source ?? "yahoo");
-      setAvApiKey(userData.settings.api_keys?.alphavantage ?? "");
-      setCurrency(userData.settings.display_ccy ?? "USD");
-      setAiProvider(userData.settings.api_keys?.ai?.provider  ?? "disabled");
-      setAiEndpoint(userData.settings.api_keys?.ai?.endpoint  ?? "http://localhost:1234");
-      setAiModel(   userData.settings.api_keys?.ai?.model     ?? "");
-      setAiApiKey(  userData.settings.api_keys?.ai?.key       ?? "");
-      // Restore saved language preference
-      const savedLang = userData.settings?.ui_language ?? null;
-      if (savedLang) {
-        i18n.changeLanguage(savedLang);
-        setUiLanguage(savedLang);
-        localStorage.setItem("pp-lang", savedLang);
-      }
-    }
+    if (userData.settings) applySettings(userData.settings);
     // Load FX
     try {
       const fx = await fxApi.all();
@@ -8557,6 +8719,7 @@ export default function App() {
   }, []);
 
   const handleLogout = () => {
+    userApi.logout();
     setUser(null); setPortfolios([]); setInitialized(false);
     setAllTransactions({}); setAllSavingsPlans({}); setQuotes({});
     setActivePortfolioIds([]);
@@ -8854,13 +9017,13 @@ export default function App() {
     try {
       await userApi.saveSettings(user.id, {
         data_source: dataSource,
-        api_keys: { alphavantage: avApiKey, ai: { provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+        api_keys: { alphavantage: avApiKey, ai: aiSettings },
         display_ccy: currency,
       });
       setShowSettings(false);
       fetchQuotes(allSymbols, true);
     } catch(e) {}
-  }, [user, dataSource, avApiKey, currency, allSymbols, fetchQuotes]);
+  }, [user, dataSource, avApiKey, aiSettings, currency, allSymbols, fetchQuotes]);
 
   // ── Tooltip hover handlers ────────────────────────────────────────────────
   const handleCellHover = useCallback((e, cell) => {
@@ -8921,7 +9084,7 @@ export default function App() {
           handleLogin(loggedIn);
         }}
         onSwitchToPortfolio={() => setEtfMode(false)}
-        onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
+        onSignOut={user ? () => { userApi.logout(); setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
         onSettings={() => setShowSettings(true)}
         displayMode={displayMode}
         onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
@@ -8940,7 +9103,7 @@ export default function App() {
             try {
               if (user) await userApi.saveSettings(user.id, {
                 data_source: dataSource,
-                api_keys: { alphavantage: avApiKey, ai: { provider: aiProvider, endpoint: aiEndpoint, model: aiModel, key: aiApiKey } },
+                api_keys: { alphavantage: avApiKey, ai: aiSettings },
                 display_ccy: currency,
               });
               setShowSettings(false);
@@ -8951,6 +9114,7 @@ export default function App() {
           aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
           aiModel={aiModel}         setAiModel={setAiModel}
           aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
+          aiProfiles={aiProfiles}   setAiProfiles={setAiProfiles}
           userId={user?.id}/>
       )}
     </>
@@ -9375,6 +9539,7 @@ export default function App() {
             activePortfolioIds={activePortfolioIds}
             user={user}
             onClose={() => setShowImportExport(false)}
+            onSettingsRestored={applySettings}
             onImportDone={async (newPortId) => {
               setShowImportExport(false);
               // Reload transactions for all portfolios (new data was imported)
@@ -9411,6 +9576,7 @@ export default function App() {
             aiEndpoint={aiEndpoint}   setAiEndpoint={setAiEndpoint}
             aiModel={aiModel}         setAiModel={setAiModel}
             aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
+            aiProfiles={aiProfiles}   setAiProfiles={setAiProfiles}
             userId={user?.id}/>
         )}
       </div>

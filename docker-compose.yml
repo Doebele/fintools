@@ -9,6 +9,8 @@ services:
       - "${BACKEND_PORT:-3003}:3001"
     volumes:
       - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach LM Studio/Ollama on the host (Linux/Synology)
     environment:
       TZ:              "${TZ:-Europe/Zurich}"
       NODE_ENV:        production
@@ -42,7 +44,8 @@ services:
     networks:
       - portfolio-network-v3
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      # 127.0.0.1, not localhost: localhost resolves to ::1 and nginx listens on IPv4 only
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 30s
       timeout:  5s
       retries:  3

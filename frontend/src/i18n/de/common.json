@@ -117,6 +117,15 @@
     "modelName": "Modell-Name",
     "apiKey": "API Key",
     "disabled": "Deaktiviert",
+    "aiProvider": "Anbieter",
+    "aiLocal": "Lokal (ohne API-Key)",
+    "aiCloud": "Cloud (API-Key)",
+    "getKey": "API-Key holen",
+    "aiLegend": "✓ Verbindung getestet · 🔑 API-Key gespeichert — Einstellungen je Anbieter bleiben erhalten",
+    "kimiCodeNote": "Das Kimi-Code-Abo ist laut Kimi für Coding-Tools gedacht. Für eigene Anwendungen empfiehlt Kimi die Kimi Platform (API, Pay-as-you-go).",
+    "chooseModel": "— Modell wählen —",
+    "modelHint": "„Verbindung testen“ lädt die Modellliste",
+    "modelsFound": "{{count}} Modelle verfügbar",
     "quoteSource": "Kursdatenquelle"
   },
   "tips": {
@@ -132,8 +141,8 @@
     "getPrice": "Historischen Schlusskurs für dieses Datum von Yahoo Finance abrufen",
     "recurrence": "Wie oft ein wiederkehrender Kaufauftrag ausgeführt werden soll",
     "avKey": "Optionale Ersatzquelle für Kursdaten — kostenloser Key auf alphavantage.co",
-    "aiEndpoint": "OpenAI-kompatibler Base-URL für KI-gestützte PDF-Textextraktion",
-    "aiModel": "Modellname für die API-Anfrage (z.B. llama-3.1-8b-instruct)",
+    "aiEndpoint": "Base-URL des Anbieters — wird bei Anbieterwahl vorausgefüllt",
+    "aiModel": "Nach „Verbindung testen“ aus der Liste der verfügbaren Modelle wählen",
     "buyPrice": "Kaufpreis je Aktie zum Ausführungszeitpunkt in der Original-Transaktionswährung",
     "currency": "Original-Transaktionswährung — wird für FX-Umrechnung zur Anzeige-Währung verwendet",
     "isin": "Internationale Wertpapierkennnummer (optional, ermöglicht automatische Symbol-Suche)"
@@ -199,5 +208,15 @@
     "error": "Fehler",
     "ok": "OK",
     "total": "Gesamt"
+  },
+  "backup": {
+    "tab": "Einstellungen",
+    "hint": "Sichert die gespeicherten Einstellungen als JSON-Datei: Kursdatenquelle, Anzeigewährung, Alpha-Vantage-Key und alle KI-Anbieter mit Endpoint, Modell und API-Key. Beim Wiederherstellen muss kein Key neu eingegeben werden.",
+    "warn": "Die Datei enthält deine API-Keys im Klartext. Sicher aufbewahren und nicht weitergeben.",
+    "exportBtn": "Einstellungen als JSON exportieren",
+    "importBtn": "Einstellungen aus JSON wiederherstellen",
+    "importHint": "Überschreibt die aktuell gespeicherten Einstellungen.",
+    "restored": "Einstellungen wiederhergestellt ({{count}} API-Keys).",
+    "invalid": "Keine gültige Portfolio-Pal-Einstellungsdatei."
   }
 }
