@@ -921,7 +921,9 @@ const RESOLUTION_LABELS = {
   add_new:       { label:"Als Neu",         color:"#4ade80", desc:"Add alongside existing (both kept)" },
 };
 
-function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone, onCreatePortfolio }) {
+const SETTINGS_BACKUP_FORMAT = "portfolio-pal-settings";
+
+function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onImportDone, onCreatePortfolio, onSettingsRestored }) {
   const { t } = useTranslation();
   const [tab,         setTab]         = useState("export");
   const [selPort,     setSelPort]     = useState(() => activePortfolioIds[0] ?? portfolios[0]?.id ?? "");
@@ -958,6 +960,42 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch(e) { setExportErr(e.message || "Export failed"); }
     setExporting(false);
+  };
+
+  // ── Settings backup (JSON incl. all API keys) ───────────────────────────────
+  const [settingsMsg, setSettingsMsg] = useState(null);   // null | { ok, text }
+  const settingsFileRef = useRef(null);
+
+  const handleSettingsExport = async () => {
+    if (!user) return;
+    setSettingsMsg(null);
+    try {
+      const settings = await userApi.settings(user.id);   // saved state, not unsaved form edits
+      const doc = { format: SETTINGS_BACKUP_FORMAT, version: 1, exported_at: new Date().toISOString(),
+                    username: user.username, settings };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `portfolio-pal-settings_${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch(e) { setSettingsMsg({ ok: false, text: e.message }); }
+  };
+
+  const handleSettingsImport = async (f) => {
+    if (!f || !user) return;
+    setSettingsMsg(null);
+    try {
+      const doc = JSON.parse(await f.text());
+      const s = doc?.settings;
+      if (doc?.format !== SETTINGS_BACKUP_FORMAT || !s || typeof s.api_keys !== "object")
+        throw new Error(t("backup.invalid"));
+      await userApi.saveSettings(user.id, s);
+      onSettingsRestored?.(s);
+      const ai = s.api_keys.ai ?? {};
+      const keyCount = Object.values(ai.profiles ?? { active: ai }).filter(p => p?.key).length
+                     + (s.api_keys.alphavantage ? 1 : 0);
+      setSettingsMsg({ ok: true, text: t("backup.restored", { count: keyCount }) });
+    } catch(e) { setSettingsMsg({ ok: false, text: e instanceof SyntaxError ? t("backup.invalid") : e.message }); }
   };
 
   // ── Preview / Import flow ─────────────────────────────────────────────────
@@ -1119,6 +1157,10 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               onClick={()=>{ setTab("import"); setPreviewData(null); setResult(null); }}>
               <Upload size={13}/> Import Excel
             </button>
+            <button className={"rail-density-btn" + (tab==="settings" ? " active" : "")}
+              onClick={()=>{ setTab("settings"); setPreviewData(null); setResult(null); setSettingsMsg(null); }}>
+              <Settings size={13}/> {t("backup.tab")}
+            </button>
           </div>
         </div>
 
@@ -1146,6 +1188,42 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   ? <><span className="spin" style={{display:"flex"}}><RefreshCw size={15}/></span> Exportiere…</>
                   : <><FileDown size={15}/> {selectedPort ? `"${selectedPort.name}" als CSV laden` : "Portfolio wählen"}</>}
               </button>
+            </div>
+          )}
+
+          {/* ── SETTINGS BACKUP TAB ────────────────────────────────────────── */}
+          {tab === "settings" && (
+            <div>
+              <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 10px", lineHeight:1.5 }}>
+                {t("backup.hint")}
+              </p>
+              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:14, fontSize:11, lineHeight:1.5,
+                background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.3)", color:THEME.yellow }}>
+                ⚠ {t("backup.warn")}
+              </div>
+              <button onClick={handleSettingsExport}
+                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none", marginBottom:10,
+                  background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
+                  fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                <FileDown size={15}/> {t("backup.exportBtn")}
+              </button>
+              <input ref={settingsFileRef} type="file" accept=".json,application/json" style={{ display:"none" }}
+                onChange={e => { handleSettingsImport(e.target.files?.[0]); e.target.value = ""; }}/>
+              <button onClick={() => settingsFileRef.current?.click()}
+                style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1.5px solid ${THEME.border}`,
+                  background:"transparent", color:THEME.text2, fontSize:12, fontWeight:700, cursor:"pointer",
+                  fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                <Upload size={14}/> {t("backup.importBtn")}
+              </button>
+              <p style={{ fontSize:10, color:THEME.text3, margin:"8px 0 0", lineHeight:1.5 }}>{t("backup.importHint")}</p>
+              {settingsMsg && (
+                <div style={{ padding:"8px 10px", borderRadius:8, marginTop:10, fontSize:11,
+                  background: settingsMsg.ok ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                  border: `1px solid ${settingsMsg.ok ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+                  color: settingsMsg.ok ? THEME.green : THEME.red }}>
+                  {settingsMsg.ok ? "✓" : "✗"} {settingsMsg.text}
+                </div>
+              )}
             </div>
           )}
 
@@ -8593,32 +8671,34 @@ export default function App() {
   const tooltipTimer = useRef(null);
 
   // ── Login handler ─────────────────────────────────────────────────────────
+  // Hydrate UI state from a settings object (login, or restore from a JSON backup)
+  const applySettings = useCallback((s) => {
+    setDataSource(s.data_source ?? "yahoo");
+    setAvApiKey(s.api_keys?.alphavantage ?? "");
+    setCurrency(s.display_ccy ?? "USD");
+    const ai = s.api_keys?.ai ?? {};
+    setAiProvider(ai.provider ?? "disabled");
+    setAiEndpoint(ai.endpoint ?? "http://localhost:1234");
+    setAiModel(   ai.model    ?? "");
+    setAiApiKey(  ai.key      ?? "");
+    // Settings saved before per-provider profiles existed: seed from the active config
+    setAiProfiles(ai.profiles ?? (ai.provider && ai.provider !== "disabled"
+      ? { [ai.provider]: { endpoint: ai.endpoint, model: ai.model, key: ai.key } } : {}));
+    // Restore saved language preference
+    if (s.ui_language) {
+      i18n.changeLanguage(s.ui_language);
+      setUiLanguage(s.ui_language);
+      localStorage.setItem("pp-lang", s.ui_language);
+    }
+  }, []);
+
   const handleLogin = useCallback(async (userData) => {
     setUser(userData);
     etfApi.list(userData.id).then(res => setSavedEtfs(res.etfs || [])).catch(()=>{});
     const ports = userData.portfolios ?? [];
     setPortfolios(ports);
     setActivePortfolioIds(ports.map(p => p.id)); // all active by default
-    if (userData.settings) {
-      setDataSource(userData.settings.data_source ?? "yahoo");
-      setAvApiKey(userData.settings.api_keys?.alphavantage ?? "");
-      setCurrency(userData.settings.display_ccy ?? "USD");
-      setAiProvider(userData.settings.api_keys?.ai?.provider  ?? "disabled");
-      setAiEndpoint(userData.settings.api_keys?.ai?.endpoint  ?? "http://localhost:1234");
-      setAiModel(   userData.settings.api_keys?.ai?.model     ?? "");
-      setAiApiKey(  userData.settings.api_keys?.ai?.key       ?? "");
-      const ai = userData.settings.api_keys?.ai ?? {};
-      // Settings saved before per-provider profiles existed: seed from the active config
-      setAiProfiles(ai.profiles ?? (ai.provider && ai.provider !== "disabled"
-        ? { [ai.provider]: { endpoint: ai.endpoint, model: ai.model, key: ai.key } } : {}));
-      // Restore saved language preference
-      const savedLang = userData.settings?.ui_language ?? null;
-      if (savedLang) {
-        i18n.changeLanguage(savedLang);
-        setUiLanguage(savedLang);
-        localStorage.setItem("pp-lang", savedLang);
-      }
-    }
+    if (userData.settings) applySettings(userData.settings);
     // Load FX
     try {
       const fx = await fxApi.all();
@@ -9458,6 +9538,7 @@ export default function App() {
             activePortfolioIds={activePortfolioIds}
             user={user}
             onClose={() => setShowImportExport(false)}
+            onSettingsRestored={applySettings}
             onImportDone={async (newPortId) => {
               setShowImportExport(false);
               // Reload transactions for all portfolios (new data was imported)

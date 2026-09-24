@@ -208,5 +208,15 @@
     "error": "Fehler",
     "ok": "OK",
     "total": "Gesamt"
+  },
+  "backup": {
+    "tab": "Einstellungen",
+    "hint": "Sichert die gespeicherten Einstellungen als JSON-Datei: Kursdatenquelle, Anzeigewährung, Alpha-Vantage-Key und alle KI-Anbieter mit Endpoint, Modell und API-Key. Beim Wiederherstellen muss kein Key neu eingegeben werden.",
+    "warn": "Die Datei enthält deine API-Keys im Klartext. Sicher aufbewahren und nicht weitergeben.",
+    "exportBtn": "Einstellungen als JSON exportieren",
+    "importBtn": "Einstellungen aus JSON wiederherstellen",
+    "importHint": "Überschreibt die aktuell gespeicherten Einstellungen.",
+    "restored": "Einstellungen wiederhergestellt ({{count}} API-Keys).",
+    "invalid": "Keine gültige Portfolio-Pal-Einstellungsdatei."
   }
 }

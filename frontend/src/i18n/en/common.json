@@ -208,5 +208,15 @@
     "error": "Error",
     "ok": "OK",
     "total": "Total"
+  },
+  "backup": {
+    "tab": "Settings",
+    "hint": "Backs up your saved settings as a JSON file: quote source, display currency, Alpha Vantage key and every AI provider with endpoint, model and API key. Restoring it means no key has to be entered again.",
+    "warn": "The file contains your API keys in plain text. Store it safely and don't share it.",
+    "exportBtn": "Export settings as JSON",
+    "importBtn": "Restore settings from JSON",
+    "importHint": "Overwrites the currently saved settings.",
+    "restored": "Settings restored ({{count}} API keys).",
+    "invalid": "Not a valid Portfolio Pal settings file."
   }
 }
