@@ -28,7 +28,7 @@ services:
       interval: 30s
       timeout:  5s
       retries:  3
-      start_period: 45s
+      start_period: 60s   # the Strato VPS needs longer than 45s on a cold start
 
   portfolio-frontend-v3:
     build:

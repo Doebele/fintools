@@ -1,4 +1,4 @@
-.PHONY: help start stop restart logs build backup restore clean stats
+.PHONY: help start stop restart logs build backup restore clean stats deploy
 
 help:
 	@echo "Portfolio Tracker v2.0 — Synology NAS"
@@ -11,6 +11,7 @@ help:
 	@echo "  make backup   — Create DB backup"
 	@echo "  make restore  — Restore last backup"
 	@echo "  make stats    — Show /api/stats"
+	@echo "  make deploy   — Deploy origin/main to the Strato VPS (see .env.deploy)"
 	@echo "  make clean    — ⚠ Delete containers + data"
 
 start:
@@ -52,3 +53,6 @@ clean:
 
 stats:
 	@curl -s http://localhost:3001/api/stats | python3 -m json.tool
+
+deploy:
+	@./deploy.sh

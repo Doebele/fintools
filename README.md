@@ -153,6 +153,20 @@ make restore    # restore newest backup
 make stats      # curl /api/stats  (cache hit rate, uptime)
 ```
 
+### Deploying to Strato
+
+The production instance runs as a git checkout on a Strato VPS. `./deploy.sh` (or `make deploy`) rolls out `origin/main`:
+
+```bash
+cp .env.deploy.example .env.deploy   # once: SSH host/user, REMOTE_DIR, PUBLIC_URL (git-ignored)
+./deploy.sh --dry-run                # show incoming commits, change nothing
+./deploy.sh                          # deploy
+```
+
+It refuses to run with uncommitted or unpushed work on local `main`, then in a single SSH session: aborts if the server checkout has hand-edited tracked files (never stashes automatically), takes a consistent SQLite backup to `backups/pre-deploy_*.db.gz`, fast-forwards to `origin/main`, runs `docker compose up -d --build`, waits until both containers are healthy (prints a rollback command if not), and finally checks `PUBLIC_URL/api/health`.
+
+If the server has local edits, resolve them once by hand: `git diff` to inspect, then `git checkout -- <file>` if the change is already in the repo, or `git stash` / `git pull` / `git stash pop` to keep it.
+
 **Faster backend iteration** (no full rebuild):
 ```bash
 docker cp backend/server.js portfolio-backend-v3:/app/server.js

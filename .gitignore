@@ -22,6 +22,7 @@ backups/*
 .env
 .env.local
 env.txt
+.env.deploy
 # Settings exports from Import/Export → Settings (contain API keys in plain text)
 portfolio-pal-settings*.json
 

@@ -21,6 +21,7 @@ make logs           # tail logs from both containers
 make backup         # SQLite dump → backups/*.db.gz (also wired to cron)
 make restore        # restore newest backup, recreates containers
 make stats          # curl /api/stats for cache + uptime numbers
+make deploy         # ./deploy.sh — roll out origin/main to the Strato VPS (config in git-ignored .env.deploy; --dry-run to preview)
 ```
 
 NPM scripts inside each subproject (rarely run directly — Docker drives everything):
