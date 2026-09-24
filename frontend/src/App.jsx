@@ -6195,7 +6195,13 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         </div>
         {dataSource==="alphavantage" && (
           <div>
-            <FLabel><LabelTip i18nKey="tips.avKey" width={240}>Alpha Vantage API Key</LabelTip></FLabel>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
+              <FLabel><LabelTip i18nKey="tips.avKey" width={240}>Alpha Vantage API Key</LabelTip></FLabel>
+              <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener noreferrer"
+                style={{ fontSize:10, fontWeight:700, color:THEME.accent, textDecoration:"none" }}>
+                {t("settings.getKey")} ↗
+              </a>
+            </div>
             <FInput placeholder="Free key at alphavantage.co"
               value={avApiKey} onChange={e => setAvApiKey(e.target.value)}
               style={{ fontFamily:THEME.mono, fontSize:12 }}/>
