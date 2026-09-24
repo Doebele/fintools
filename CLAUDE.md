@@ -207,7 +207,7 @@ Key tables:
 
 ## Environment variables
 
-Set in `docker-compose.yml` or via a real `.env` (the file `env.txt` in the repo is a stub holding only `AV_API_KEY`):
+Set in `docker-compose.yml` or via a real `.env` (git-ignored, as are `env.txt`, `backups/*` and settings-export JSON files — never commit keys; the repo is public):
 
 | Var | Default | What it does |
 |---|---|---|

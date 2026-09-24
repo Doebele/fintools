@@ -66,21 +66,30 @@ Correlation heatmap, Monte Carlo simulation and portfolio rebalancing assistant 
 ### Transactions — PDF import
 Upload a broker settlement PDF directly in the Add Transaction dialog. The backend extracts text with `pdf-parse` and either:
 - Parses it with a **regex fallback** (Comdirect Wertpapierabrechnung format)
-- Sends the text to a **configurable AI model** (LM Studio, Ollama, or OpenRouter) for structured extraction from any broker format
+- Sends the text to a **configurable AI model** (local or cloud, see below) for structured extraction from any broker format — tested with Comdirect and Revolut trade confirmations
 
-Extracted fields (type, date, ISIN, quantity, price, currency) pre-fill the form automatically.
+Extracted fields (type, execution date, ISIN, quantity, price, currency) pre-fill the form automatically; the Yahoo symbol is resolved from the ISIN. If the AI call fails, the regex fallback is tried before giving up.
 
 ### ISIN → Symbol lookup
 Enter an ISIN and click the search button. The backend queries Yahoo Finance and returns up to 10 ticker candidates with exchange, name and current price. If there are multiple matches a pick-list appears; if there is only one it is applied automatically.
 
 ### AI model settings
 Configure a local or cloud AI model for PDF parsing in the Settings dialog:
-- **LM Studio** — local inference server on `localhost:1234`
-- **Ollama** — local inference server on `localhost:11434`  
-- **OpenRouter** — cloud endpoint with API key
-- **Disabled** — regex-only fallback (works for Comdirect PDFs without any AI)
 
-A "Test Connection" button fires a lightweight request to confirm the model is reachable before saving.
+| Group | Providers |
+|---|---|
+| **Local** (no key) | LM Studio (`localhost:1234`), Ollama (`localhost:11434`) — reached from the container via `host.docker.internal` |
+| **Cloud** (API key) | Anthropic (Claude), OpenAI, Google Gemini, xAI (Grok), Meta (Muse), Mistral, DeepSeek, Alibaba Qwen, Kimi Platform (API), Kimi Code (coding plan), Z.AI (global), BigModel (China mainland), MiniMax, Xiaomi MiMo, StepFun, OpenRouter |
+| **Disabled** | regex-only fallback (Comdirect PDFs) |
+
+- Picking a provider pre-fills its endpoint; a **“Get API key ↗”** link opens that provider's key console.
+- **Test Connection** validates the key and loads the provider's **model list** into a dropdown; with a model selected it also pings the model and shows latency.
+- Endpoint, key, model and test result are **remembered per provider**, so switching providers never requires re-entering a key. The dropdown tags providers with **✓** (connection tested) or **🔑** (key stored).
+- Local reasoning models (e.g. Qwen3) are called with thinking disabled so they return JSON quickly.
+- Note: Kimi Code is a coding subscription that Kimi restricts to coding tools; for app integrations Kimi recommends the Kimi Platform API.
+
+### Settings backup
+Import / Export → **Settings** tab exports all saved settings — quote source, display currency, Alpha Vantage key and every AI provider profile incl. API keys — as a JSON file, and restores them from it. Useful after a reinstall so no key has to be entered again. **The file contains the keys in plain text** — store it safely and never commit it.
 
 ---
 
@@ -159,7 +168,11 @@ docker restart portfolio-backend-v3
 |---|---|---|
 | GET | `/api/users` | List users |
 | POST | `/api/users` | Create user `{username, pin}` |
-| POST | `/api/users/login` | Login `{username, pin}` → user + settings |
+| POST | `/api/users/login` | Login `{username, pin}` → user + settings + session `token` |
+| POST | `/api/users/logout` | Revoke the session token |
+| GET / PUT | `/api/users/:id/settings` | Read / save settings (token required, own user only) |
+
+User-scoped endpoints (settings, tools, saved ETFs, CSV import/export) require `Authorization: Bearer <token>` from login; tokens are valid for 30 days.
 
 ### Portfolios
 | Method | Endpoint | Description |
@@ -192,8 +205,8 @@ docker restart portfolio-backend-v3
 ### Tools
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/tools/parse-pdf` | Extract transaction from broker PDF |
-| POST | `/api/tools/test-ai` | Test AI model connectivity |
+| POST | `/api/tools/parse-pdf` | Extract transaction from broker PDF (multipart `file`) |
+| POST | `/api/tools/test-ai` | `{provider, endpoint, key, model?}` → available models, and a ping if `model` is set |
 
 ### System
 | Method | Endpoint | Description |
@@ -226,6 +239,8 @@ browser  ──►  :3002  nginx (React SPA)
 ## Security
 
 - PINs hashed with bcrypt (cost 10) — never stored in plain text
+- Login issues a random session token (30-day TTL); settings (incl. stored API keys), AI tools, saved ETFs and CSV import/export require it. Portfolio/transaction routes are not yet token-protected — don't expose the app to the internet without a reverse proxy with its own authentication
+- AI/Alpha Vantage API keys are stored in the local SQLite database (plain text) and never in the repository; `data/`, `backups/*` and `.env` are git-ignored
 - Backend container runs as non-root user
 - Helmet + rate limiting (200 req / 15 min / IP) on all routes
 - PDF parsing runs server-side; uploaded files are never written to disk (memory storage)

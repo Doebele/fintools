@@ -14,9 +14,16 @@ data/*.db-wal
 # Claude Code session state
 .claude/
 
-# Environment / local overrides
+# DB dumps from `make backup` (contain stored API keys)
+backups/*
+!backups/.gitkeep
+
+# Environment / local overrides / secrets
 .env
 .env.local
+env.txt
+# Settings exports from Import/Export → Settings (contain API keys in plain text)
+portfolio-pal-settings*.json
 
 # Editor / IDE
 .vscode/
