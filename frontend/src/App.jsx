@@ -280,11 +280,16 @@ function useDisplayMode() {
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 const BASE = "/api";
+let _token = null;   // session token from login/register; not persisted, so a reload means re-login
+const authHeaders = () => _token ? { Authorization: `Bearer ${_token}` } : {};
+
 async function apiFetch(path, opts = {}) {
   const { isForm, headers: extraHeaders, ...fetchOpts } = opts;
-  const headers = isForm
-    ? (extraHeaders || {})  // let browser set multipart boundary
-    : { "Content-Type": "application/json", ...(extraHeaders || {}) };
+  const headers = {
+    ...(isForm ? {} : { "Content-Type": "application/json" }),  // form: browser sets multipart boundary
+    ...authHeaders(),
+    ...extraHeaders,
+  };
   const res = await fetch(BASE + path, { headers, ...fetchOpts });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -294,19 +299,20 @@ async function apiFetch(path, opts = {}) {
 }
 
 const etfApi = {
-  list:   (userId)           => apiFetch(`/user/etfs?uid=${userId}`, { headers:{ 'x-user-id': String(userId) } }),
-  save:   (userId, etf)      => apiFetch(`/user/etfs?uid=${userId}`, {
+  list:   (userId)           => apiFetch(`/user/etfs`),
+  save:   (userId, etf)      => apiFetch(`/user/etfs`, {
                                   method:"POST",
                                   body: JSON.stringify({ ticker: etf.ticker, name: etf.name||null, provider: etf.provider||null }),
-                                  headers:{ 'x-user-id': String(userId), 'Content-Type': 'application/json' },
                                 }),
-  remove: (userId, ticker)   => apiFetch(`/user/etfs/${encodeURIComponent(ticker)}?uid=${userId}`,
-                                  { method:"DELETE", headers:{ 'x-user-id': String(userId) } }),
+  remove: (userId, ticker)   => apiFetch(`/user/etfs/${encodeURIComponent(ticker)}`, { method:"DELETE" }),
 };
 
+const keepToken = (data) => { _token = data.token; return data; };
 const userApi = {
-  register: (username, pin)   => apiFetch("/users/register",   { method:"POST", body: JSON.stringify({ username, pin }) }),
-  login:    (username, pin)   => apiFetch("/users/login",       { method:"POST", body: JSON.stringify({ username, pin }) }),
+  register: (username, pin)   => apiFetch("/users/register",   { method:"POST", body: JSON.stringify({ username, pin }) }).then(keepToken),
+  login:    (username, pin)   => apiFetch("/users/login",       { method:"POST", body: JSON.stringify({ username, pin }) }).then(keepToken),
+  // apiFetch builds its headers synchronously, so clearing the token right after the call is safe
+  logout:   ()                => { const p = apiFetch("/users/logout", { method:"POST" }); _token = null; return p.catch(() => {}); },
   portfolios: (uid)           => apiFetch(`/users/${uid}/portfolios`),
   createPortfolio: (uid, name, color) => apiFetch(`/users/${uid}/portfolios`, { method:"POST", body: JSON.stringify({ name, color }) }),
   renamePortfolio: (pid, name) => apiFetch(`/portfolios/${pid}`, { method:"PUT", body: JSON.stringify({ name }) }),
@@ -320,8 +326,7 @@ const txApi = {
   delete:    (id)      => apiFetch(`/transactions/${id}`,            { method:"DELETE" }),
   recalcFX:  ()        => apiFetch(`/transactions/recalculate-fx`,   { method:"POST" }),
   exportCsv:   async (pid, userId) => {
-    const res = await fetch(`/api/portfolios/${pid}/export?uid=${userId}`,
-      { headers: { 'x-user-id': String(userId) } });
+    const res = await fetch(`/api/portfolios/${pid}/export`, { headers: authHeaders() });
     if (!res.ok) {
       const ct = res.headers.get('content-type') || '';
       const b  = ct.includes('json') ? await res.json().catch(()=>({})) : {};
@@ -334,18 +339,15 @@ const txApi = {
   },
   importXlsx:  (pid, file, userId)  => {
     const fd = new FormData(); fd.append("file", file);
-    return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true,
-      headers:{ "x-user-id": String(userId) } });
+    return apiFetch(`/portfolios/${pid}/import`, { method:"POST", body:fd, isForm:true });
   },
   importTemplate: () => `/api/portfolios/import/template`,
   importPreview: (pid, file, userId) => {
     const fd = new FormData(); fd.append("file", file);
-    return apiFetch(`/portfolios/${pid}/import/preview`, { method:"POST", body:fd, isForm:true,
-      headers:{ "x-user-id": String(userId) } });
+    return apiFetch(`/portfolios/${pid}/import/preview`, { method:"POST", body:fd, isForm:true });
   },
   importSelective: (pid, rows, userId) =>
-    apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }),
-      headers:{ "x-user-id": String(userId) } }),
+    apiFetch(`/portfolios/${pid}/import/selective`, { method:"POST", body: JSON.stringify({ rows }) }),
 };
 const plansApi = {
   list:   (pid)          => apiFetch(`/portfolios/${pid}/plans`),
@@ -379,14 +381,12 @@ const toolsApi = {
     fd.append("file", file);
     return apiFetch("/tools/parse-pdf", {
       method: "POST", body: fd, isForm: true,
-      headers: { "x-user-id": String(userId) },
     });
   },
   testAi: (userId, provider, endpoint, model, key) =>
     apiFetch("/tools/test-ai", {
       method: "POST",
       body: JSON.stringify({ provider, endpoint, model, key }),
-      headers: { "Content-Type": "application/json", "x-user-id": String(userId) },
     }),
 };
 
@@ -8719,6 +8719,7 @@ export default function App() {
   }, []);
 
   const handleLogout = () => {
+    userApi.logout();
     setUser(null); setPortfolios([]); setInitialized(false);
     setAllTransactions({}); setAllSavingsPlans({}); setQuotes({});
     setActivePortfolioIds([]);
@@ -9083,7 +9084,7 @@ export default function App() {
           handleLogin(loggedIn);
         }}
         onSwitchToPortfolio={() => setEtfMode(false)}
-        onSignOut={user ? () => { setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
+        onSignOut={user ? () => { userApi.logout(); setUser(null); setPortfolios([]); setSavedEtfs([]); setEtfMode(false); } : null}
         onSettings={() => setShowSettings(true)}
         displayMode={displayMode}
         onToggleDisplayMode={(m) => typeof m==="string" ? setDisplayMode(m) : toggleDisplayMode()}
