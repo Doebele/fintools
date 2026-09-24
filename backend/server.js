@@ -302,6 +302,39 @@ function getUserId(req) {
            .get(token, SESSION_TTL)?.user_id ?? null;
 }
 
+// ── Route guards ─────────────────────────────────────────────────────────────
+// 401 without a valid session. Resources of other users answer 404 (not 403) so
+// their ids aren't confirmed. Each guard sets req.uid for the handler.
+function requireLogin(req, res, next) {
+  req.uid = getUserId(req);
+  if (!req.uid) return err(res, 401, 'Not logged in');
+  next();
+}
+
+// :userId (or :id on /users/:id/…) must be the logged-in user
+function requireSelf(req, res, next) {
+  requireLogin(req, res, () => {
+    if (req.uid !== parseInt(req.params.userId ?? req.params.id, 10)) return err(res, 403, 'Forbidden');
+    next();
+  });
+}
+
+const ownsPortfolio = (uid, pid) =>
+  !!db.prepare('SELECT 1 FROM portfolios WHERE id=? AND user_id=?').get(pid, uid);
+
+// Builds a guard: `lookup(id, uid)` must find a row owned by the caller
+const requireOwned = (what, lookup) => (req, res, next) => {
+  requireLogin(req, res, () => {
+    if (!lookup(req.params.id, req.uid)) return err(res, 404, `${what} not found`);
+    next();
+  });
+};
+const requirePortfolio   = requireOwned('Portfolio',   (id, uid) => ownsPortfolio(uid, id));
+const requireTransaction = requireOwned('Transaction', (id, uid) => db.prepare(
+  'SELECT 1 FROM transactions t JOIN portfolios p ON p.id = t.portfolio_id WHERE t.id=? AND p.user_id=?').get(id, uid));
+const requirePlan        = requireOwned('Savings plan', (id, uid) => db.prepare(
+  'SELECT 1 FROM savings_plans s JOIN portfolios p ON p.id = s.portfolio_id WHERE s.id=? AND p.user_id=?').get(id, uid));
+
 // POST /api/users/register  — create new user
 app.post('/api/users/register', async (req, res) => {
   const { username, pin } = req.body;
@@ -370,7 +403,7 @@ app.post('/api/users/logout', (req, res) => {
 });
 
 // GET /api/users/:userId/portfolios  — list portfolios for a user
-app.get('/api/users/:userId/portfolios', (req, res) => {
+app.get('/api/users/:userId/portfolios', requireSelf, (req, res) => {
   const rows = db.prepare(`
     SELECT id, name, color, created_at FROM portfolios
     WHERE user_id = ? AND deleted_at IS NULL
@@ -380,7 +413,7 @@ app.get('/api/users/:userId/portfolios', (req, res) => {
 });
 
 // POST /api/users/:userId/portfolios  — create portfolio for user
-app.post('/api/users/:userId/portfolios', (req, res) => {
+app.post('/api/users/:userId/portfolios', requireSelf, (req, res) => {
   const { name, color } = req.body;
   if (!name?.trim()) return err(res, 400, 'name required');
   const result = db.prepare(
@@ -390,7 +423,7 @@ app.post('/api/users/:userId/portfolios', (req, res) => {
 });
 
 // PUT /api/portfolios/:id  — rename or recolor portfolio
-app.put('/api/portfolios/:id', (req, res) => {
+app.put('/api/portfolios/:id', requirePortfolio, (req, res) => {
   const { name, color } = req.body;
   if (name) db.prepare('UPDATE portfolios SET name=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(name, req.params.id);
   if (color) db.prepare('UPDATE portfolios SET color=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(color, req.params.id);
@@ -398,7 +431,7 @@ app.put('/api/portfolios/:id', (req, res) => {
 });
 
 // DELETE /api/portfolios/:id
-app.delete('/api/portfolios/:id', (req, res) => {
+app.delete('/api/portfolios/:id', requirePortfolio, (req, res) => {
   db.prepare('UPDATE portfolios SET deleted_at=CURRENT_TIMESTAMP WHERE id=?').run(req.params.id);
   res.json({ ok: true });
 });
@@ -407,7 +440,7 @@ app.delete('/api/portfolios/:id', (req, res) => {
 // TRANSACTION ROUTES  (unchanged from v2)
 // ════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/portfolios/:id/transactions', (req, res) => {
+app.get('/api/portfolios/:id/transactions', requirePortfolio, (req, res) => {
   const rows = db.prepare(`
     SELECT id, portfolio_id, symbol, name, isin, quantity, price, price_usd, date, type, currency, notes, created_at
     FROM transactions WHERE portfolio_id = ? ORDER BY date DESC, created_at DESC
@@ -415,7 +448,7 @@ app.get('/api/portfolios/:id/transactions', (req, res) => {
   res.json(rows);
 });
 
-app.post('/api/portfolios/:id/transactions', async (req, res) => {
+app.post('/api/portfolios/:id/transactions', requirePortfolio, async (req, res) => {
   const { symbol, name, isin, quantity, price, price_usd, date, type, currency, notes } = req.body;
   if (!symbol||!quantity||!price||!date||!type) return err(res, 400, 'symbol, quantity, price, date, type required');
 
@@ -464,8 +497,9 @@ app.post('/api/portfolios/:id/transactions', async (req, res) => {
   res.status(201).json(tx);
 });
 
-app.put('/api/transactions/:id', async (req, res) => {
+app.put('/api/transactions/:id', requireTransaction, async (req, res) => {
   const { symbol, name, isin, quantity, price, price_usd, date, type, currency, notes, portfolio_id } = req.body;
+  if (portfolio_id && !ownsPortfolio(req.uid, portfolio_id)) return err(res, 404, 'Portfolio not found');
   let finalPriceUSD = price_usd && price_usd > 0 ? price_usd : price;
   const ccy = (currency || 'USD').toUpperCase();
   if (ccy !== 'USD' && !(price_usd > 0)) {
@@ -508,20 +542,20 @@ app.put('/api/transactions/:id', async (req, res) => {
   res.json(db.prepare('SELECT * FROM transactions WHERE id=?').get(req.params.id));
 });
 
-app.delete('/api/transactions/:id', (req, res) => {
+app.delete('/api/transactions/:id', requireTransaction, (req, res) => {
   db.prepare('DELETE FROM transactions WHERE id=?').run(req.params.id);
   res.json({ ok: true });
 });
 
 // ── Savings Plans ────────────────────────────────────────────────────────────
-app.get('/api/portfolios/:id/plans', (req, res) => {
+app.get('/api/portfolios/:id/plans', requirePortfolio, (req, res) => {
   const plans = db.prepare(
     'SELECT * FROM savings_plans WHERE portfolio_id = ? ORDER BY created_at DESC'
   ).all(req.params.id);
   res.json(plans);
 });
 
-app.post('/api/portfolios/:id/plans', (req, res) => {
+app.post('/api/portfolios/:id/plans', requirePortfolio, (req, res) => {
   const { symbol, name, currency, start_date, end_date, periodicity, budget_per_period, last_booked_date } = req.body;
   if (!symbol || !start_date || !end_date || !periodicity || !budget_per_period)
     return err(res, 400, 'symbol, start_date, end_date, periodicity and budget_per_period are required');
@@ -533,7 +567,7 @@ app.post('/api/portfolios/:id/plans', (req, res) => {
   res.json(plan);
 });
 
-app.put('/api/plans/:id', (req, res) => {
+app.put('/api/plans/:id', requirePlan, (req, res) => {
   const { end_date, periodicity, budget_per_period, last_booked_date } = req.body;
   db.prepare(`
     UPDATE savings_plans
@@ -548,20 +582,21 @@ app.put('/api/plans/:id', (req, res) => {
   res.json(plan);
 });
 
-app.delete('/api/plans/:id', (req, res) => {
+app.delete('/api/plans/:id', requirePlan, (req, res) => {
   db.prepare('DELETE FROM savings_plans WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 
 // POST /api/transactions/recalculate-fx
-// Recalculates price_usd for all transactions where currency != 'USD' and price_usd = price
+// Recalculates price_usd for the caller's transactions where currency != 'USD' and price_usd = price
 // (meaning it was saved without proper FX conversion).
 // This can be called once to fix existing data.
-app.post('/api/transactions/recalculate-fx', async (req, res) => {
+app.post('/api/transactions/recalculate-fx', requireLogin, async (req, res) => {
   const txs = db.prepare(
-    `SELECT id, price, price_usd, currency, date FROM transactions
-     WHERE currency IS NOT NULL AND currency != 'USD'`
-  ).all();
+    `SELECT t.id, t.price, t.price_usd, t.currency, t.date FROM transactions t
+     JOIN portfolios p ON p.id = t.portfolio_id
+     WHERE p.user_id = ? AND t.currency IS NOT NULL AND t.currency != 'USD'`
+  ).all(req.uid);
 
   let fixed = 0, skipped = 0, failed = 0;
   for (const tx of txs) {
@@ -611,14 +646,7 @@ app.post('/api/transactions/recalculate-fx', async (req, res) => {
 // SETTINGS ROUTES  (now user-scoped)
 // ════════════════════════════════════════════════════════════════════════════
 
-// Settings hold every API key in plain text — only the logged-in owner may read/write them.
-function requireSelf(req, res, next) {
-  const uid = getUserId(req);
-  if (!uid) return err(res, 401, 'Not logged in');
-  if (uid !== parseInt(req.params.userId, 10)) return err(res, 403, 'Forbidden');
-  next();
-}
-
+// Settings hold every API key in plain text — only the logged-in owner may read/write them (requireSelf).
 app.get('/api/users/:userId/settings', requireSelf, (req, res) => {
   const row = db.prepare('SELECT * FROM settings WHERE user_id=?').get(req.params.userId);
   if (!row) return res.json({ data_source:'yahoo', api_keys:{}, display_ccy:'USD' });
@@ -3064,14 +3092,14 @@ app.post('/api/quotes/historic-course', async (req, res) => {
 });
 
 // GET/PUT /api/users/:id/rebalance-targets  — store per-user rebalance targets
-app.get('/api/users/:id/rebalance-targets', (req, res) => {
+app.get('/api/users/:id/rebalance-targets', requireSelf, (req, res) => {
   const userId = parseInt(req.params.id);
   if (!userId) return err(res, 400, 'invalid id');
   const row = db.prepare('SELECT value FROM user_kv WHERE user_id=? AND key=?').get(userId, 'rebalance_targets');
   res.json({ targets: row ? JSON.parse(row.value) : {} });
 });
 
-app.put('/api/users/:id/rebalance-targets', (req, res) => {
+app.put('/api/users/:id/rebalance-targets', requireSelf, (req, res) => {
   const userId = parseInt(req.params.id);
   if (!userId) return err(res, 400, 'invalid id');
   const { targets } = req.body;

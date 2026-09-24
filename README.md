@@ -186,7 +186,7 @@ docker restart portfolio-backend-v3
 | POST | `/api/users/logout` | Revoke the session token |
 | GET / PUT | `/api/users/:id/settings` | Read / save settings (token required, own user only) |
 
-User-scoped endpoints (settings, tools, saved ETFs, CSV import/export) require `Authorization: Bearer <token>` from login; tokens are valid for 30 days.
+All user-scoped endpoints (portfolios, transactions, plans, rebalancing targets, settings, tools, saved ETFs, CSV import/export) require `Authorization: Bearer <token>` from login and only touch the caller's own data; tokens are valid for 30 days.
 
 ### Portfolios
 | Method | Endpoint | Description |
@@ -253,7 +253,8 @@ browser  ──►  :3002  nginx (React SPA)
 ## Security
 
 - PINs hashed with bcrypt (cost 10) — never stored in plain text
-- Login issues a random session token (30-day TTL); settings (incl. stored API keys), AI tools, saved ETFs and CSV import/export require it. Portfolio/transaction routes are not yet token-protected — don't expose the app to the internet without a reverse proxy with its own authentication
+- Login issues a random session token (30-day TTL). Every user-scoped route requires it — portfolios, transactions, savings plans, rebalancing targets, settings (incl. stored API keys), AI tools, saved ETFs, CSV import/export — and only returns or changes the caller's own data (other users' ids answer 404). Open without login: login/register, public market data (quotes, FX, ETF search), health
+- Registration is open to anyone who can reach the app; on a public server, restrict access at the reverse proxy if you don't want new sign-ups
 - AI/Alpha Vantage API keys are stored in the local SQLite database (plain text) and never in the repository; `data/`, `backups/*` and `.env` are git-ignored
 - Backend container runs as non-root user
 - Helmet + rate limiting (200 req / 15 min / IP) on all routes

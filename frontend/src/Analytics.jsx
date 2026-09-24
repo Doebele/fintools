@@ -1316,7 +1316,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
   // Load saved targets
   useEffect(() => {
     if (!user) return;
-    fetch(`${BASE}/users/${user.id}/rebalance-targets`)
+    fetch(`${BASE}/users/${user.id}/rebalance-targets`, { headers: { Authorization: `Bearer ${user.token}` } })
       .then(r=>r.json())
       .then(d => { if (d.targets && Object.keys(d.targets).length) setTargets(d.targets); })
       .catch(()=>{});
@@ -1327,7 +1327,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
     setSaving(true);
     try {
       await fetch(`${BASE}/users/${user.id}/rebalance-targets`, {
-        method:"PUT", headers:{"Content-Type":"application/json"},
+        method:"PUT", headers:{"Content-Type":"application/json", Authorization:`Bearer ${user.token}`},
         body:JSON.stringify({ targets }),
       });
       setSaved(true); setTimeout(()=>setSaved(false),2000);
