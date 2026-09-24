@@ -21,6 +21,15 @@ services:
       LOG_LEVEL:       "${LOG_LEVEL:-info}"
       RATE_LIMIT_MAX_REQUESTS: "${RATE_LIMIT_MAX_REQUESTS:-200}"
       AV_API_KEY: "${AV_API_KEY:-}"
+      # Password-reset mails via one SMTP mailbox (values from the git-ignored .env,
+      # see .env.example). Empty SMTP_HOST = no mail is sent.
+      SMTP_HOST:     "${SMTP_HOST:-}"
+      SMTP_PORT:     "${SMTP_PORT:-465}"
+      SMTP_USER:     "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM:     "${SMTP_FROM:-}"
+      # Base for links in mails — fixed, never taken from the request's Host header
+      APP_BASE_URL:  "${APP_BASE_URL:-http://localhost:3002}"
     networks:
       - portfolio-network-v3
     healthcheck:

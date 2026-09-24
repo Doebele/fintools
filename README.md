@@ -40,7 +40,8 @@ Correlation heatmap, Monte Carlo simulation and portfolio rebalancing assistant 
 ## Features
 
 ### Portfolio management
-- **Multi-portfolio** — any number of named portfolios, each PIN-protected (bcrypt server-side)
+- **Multi-portfolio** — any number of named portfolios per account
+- **Accounts** — invite-only registration, profile (username, email), password change and email-based password reset (see [Accounts & invitations](#accounts--invitations))
 - **Multi-currency** — USD, EUR, GBP, CHF, JPY, HKD, CNY, SGD, CAD, AUD, SEK, NOK, DKK — correct FX conversion for all positions
 - **Transactions** — BUY and SELL records with quantity, price, date and original currency
 - **Savings plans** — recurring buy schedules with budget-per-period
@@ -88,6 +89,13 @@ Configure a local or cloud AI model for PDF parsing in the Settings dialog:
 - Local reasoning models (e.g. Qwen3) are called with thinking disabled so they return JSON quickly.
 - Note: Kimi Code is a coding subscription that Kimi restricts to coding tools; for app integrations Kimi recommends the Kimi Platform API.
 
+### Accounts & invitations
+- **Invite-only** — new accounts need a one-time invite code (6 characters, e.g. `K7M-Q2P`, valid 7 days). Every logged-in user creates codes under Settings → *Invitations* and can copy an invite link (`/?invite=CODE`) or revoke unused codes. The very first account on an empty database needs no code.
+- **Profile** — Settings → *Profile*: change username and email. Changing the email requires the current password (it decides where reset links go).
+- **Passwords** — at least 8 characters for new or changed passwords (existing short PINs keep working). *Change password* signs out every other device and sends a notice mail.
+- **Forgot password** — the login screen sends a reset link to the account's email: valid 30 minutes, works once, only its SHA-256 is stored, the token travels in the URL fragment. The answer never reveals whether an address exists. After a reset every session ends.
+- Mail goes out via SMTP (e.g. a Strato mailbox, see [Configuration](#configuration)); without `SMTP_HOST` nothing is sent. The concept matches Budget-Pal's password reset.
+
 ### Settings backup
 Import / Export → **Settings** tab exports all saved settings — quote source, display currency, Alpha Vantage key and every AI provider profile incl. API keys — as a JSON file, and restores them from it. Useful after a reinstall so no key has to be entered again. **The file contains the keys in plain text** — store it safely and never commit it.
 
@@ -132,6 +140,11 @@ All options are environment variables (set in `docker-compose.yml`):
 | `RATE_LIMIT_MAX_REQUESTS` | 200 | Express rate limit per IP per 15 min |
 | `LOG_LEVEL` | info | `error` / `warn` / `info` / `debug` |
 | `AV_API_KEY` | _(empty)_ | Alpha Vantage key for quote fallback |
+| `SMTP_HOST` / `SMTP_PORT` | _(empty)_ / 465 | Mailbox for password-reset mails (Strato: `smtp.strato.de`, 465 = SSL, else STARTTLS). Empty = no mail |
+| `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | _(empty)_ | Mailbox login and sender address |
+| `APP_BASE_URL` | `http://localhost:3002` | Base for links in mails — set to the public URL in production; never taken from the request |
+
+Secrets such as `SMTP_PASSWORD` go into a git-ignored `.env` next to `docker-compose.yml` (template: `.env.example`), never into the compose file.
 
 ### Reverse proxy (HTTPS on Synology)
 1. Control Panel → Login Portal → Advanced → Reverse Proxy → Create
@@ -180,11 +193,15 @@ docker restart portfolio-backend-v3
 ### Users & auth
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/users` | List users |
-| POST | `/api/users` | Create user `{username, pin}` |
+| POST | `/api/users/register` | `{username, pin, email, invite}` — invite-only (no code needed only for the first account), password ≥ 8 |
 | POST | `/api/users/login` | Login `{username, pin}` → user + settings + session `token` |
 | POST | `/api/users/logout` | Revoke the session token |
 | GET / PUT | `/api/users/:id/settings` | Read / save settings (token required, own user only) |
+| GET / PUT | `/api/users/me` | Own profile; changing `email` needs `current_password` |
+| POST | `/api/users/password/change` | `{current_password, new_password}` — other sessions end |
+| POST | `/api/users/password/forgot` | `{email}` — always 202, mails a reset link if the account exists |
+| POST | `/api/users/password/reset` | `{token, new_password}` — link works once, every session ends |
+| GET / POST / DELETE | `/api/invites[/:code]` | Own invite codes: list, create (max. 10 open), revoke unused |
 
 All user-scoped endpoints (portfolios, transactions, plans, rebalancing targets, settings, tools, saved ETFs, CSV import/export) require `Authorization: Bearer <token>` from login and only touch the caller's own data; tokens are valid for 30 days.
 
@@ -252,9 +269,10 @@ browser  ──►  :3002  nginx (React SPA)
 
 ## Security
 
-- PINs hashed with bcrypt (cost 10) — never stored in plain text
+- Passwords hashed with bcrypt (cost 10) — never stored in plain text; password-reset tokens only as SHA-256
+- Rate limits on register (10 / 15 min / IP), forgot password (10 / 15 min / IP and 3 / 15 min / address), reset and password change
 - Login issues a random session token (30-day TTL). Every user-scoped route requires it — portfolios, transactions, savings plans, rebalancing targets, settings (incl. stored API keys), AI tools, saved ETFs, CSV import/export — and only returns or changes the caller's own data (other users' ids answer 404). Open without login: login/register, public market data (quotes, FX, ETF search), health
-- Registration is open to anyone who can reach the app; on a public server, restrict access at the reverse proxy if you don't want new sign-ups
+- Registration is invite-only; only the first account on an empty database can be created without a code
 - AI/Alpha Vantage API keys are stored in the local SQLite database (plain text) and never in the repository; `data/`, `backups/*` and `.env` are git-ignored
 - Backend container runs as non-root user
 - Helmet + rate limiting (200 req / 15 min / IP) on all routes

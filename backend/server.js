@@ -21,6 +21,7 @@ const bcrypt      = require('bcrypt');
 const fetch       = require('node-fetch');
 const path        = require('path');
 const crypto      = require('crypto');
+const nodemailer  = require('nodemailer');
 const fs          = require('fs');
 const ExcelJS     = require('exceljs');
 const pdfParse    = require('pdf-parse');
@@ -161,6 +162,15 @@ db.exec(`
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  -- Registration is invite-only: one-time codes created by logged-in users
+  CREATE TABLE IF NOT EXISTS invites (
+    code       TEXT    PRIMARY KEY,               -- normalised: 6 chars, no dash
+    created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT    NOT NULL,
+    used_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    used_at    TEXT
+  );
   CREATE TABLE IF NOT EXISTS user_etfs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,
@@ -228,6 +238,12 @@ try { db.exec(`ALTER TABLE portfolios ADD COLUMN color TEXT DEFAULT '#3b82f6'`);
 try { db.exec(`ALTER TABLE transactions ADD COLUMN name TEXT`); log.info('Migration: transactions.name added'); } catch {}
 // Settings: migrate from portfolio_id to user_id scope (keep old column for compat)
 try { db.exec(`ALTER TABLE settings ADD COLUMN user_id INTEGER`); log.info('Migration: settings.user_id added'); } catch {}
+// Profile + password reset. email is NULL for accounts created before it existed.
+// The reset token itself is never stored, only its SHA-256.
+try { db.exec(`ALTER TABLE users ADD COLUMN email TEXT`); log.info('Migration: users.email added'); } catch {}
+try { db.exec(`ALTER TABLE users ADD COLUMN password_reset_hash TEXT`); log.info('Migration: users.password_reset_hash added'); } catch {}
+try { db.exec(`ALTER TABLE users ADD COLUMN password_reset_expires TEXT`); log.info('Migration: users.password_reset_expires added'); } catch {}
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(lower(email)) WHERE email IS NOT NULL`);
 
 log.info('Database ready:', DB_PATH);
 
@@ -335,25 +351,112 @@ const requireTransaction = requireOwned('Transaction', (id, uid) => db.prepare(
 const requirePlan        = requireOwned('Savings plan', (id, uid) => db.prepare(
   'SELECT 1 FROM savings_plans s JOIN portfolios p ON p.id = s.portfolio_id WHERE s.id=? AND p.user_id=?').get(id, uid));
 
-// POST /api/users/register  — create new user
-app.post('/api/users/register', async (req, res) => {
-  const { username, pin } = req.body;
-  if (!username?.trim() || !pin) return err(res, 400, 'username and pin required');
-  const uname = username.trim();
-  if (uname.length < 2 || uname.length > 32) return err(res, 400, 'username must be 2–32 chars');
-  if (String(pin).length < 4) return err(res, 400, 'PIN must be at least 4 digits');
+// ── Accounts: invites, passwords, mail ───────────────────────────────────────
+// Same concept as Budget-Pal's password reset: reset tokens are stored only as
+// SHA-256, live 30 min, travel in the URL fragment, and links are built from
+// APP_BASE_URL — never from the request's Host header.
+const MIN_PASSWORD = 8;
+const EMAIL_RE     = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const APP_BASE_URL = (process.env.APP_BASE_URL || 'http://localhost:3002').replace(/\/+$/, '');
+const sha256       = s => crypto.createHash('sha256').update(s).digest('hex');
+const normEmail    = s => String(s ?? '').trim().toLowerCase();
 
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(uname);
-  if (existing) return err(res, 409, 'Username already taken');
+// Plain SMTP through one mailbox (production: Strato, smtp.strato.de:465 SSL).
+// Without SMTP_HOST nothing is sent; outside production the mail goes to the log.
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
+const mailer = process.env.SMTP_HOST ? nodemailer.createTransport({
+  host: process.env.SMTP_HOST, port: SMTP_PORT, secure: SMTP_PORT === 465,   // 465 = SSL, else STARTTLS
+  auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } : undefined,
+}) : null;
+
+// Fire-and-forget: never throws, and never logs the body in production (it may hold a reset link)
+function sendMail(to, [subject, text]) {
+  if (!mailer) {
+    if (process.env.NODE_ENV === 'production') log.warn(`No SMTP configured — mail to ${to} not sent (${subject})`);
+    else log.warn(`No SMTP configured — mail to ${to}:\n${subject}\n${text}`);
+    return;
+  }
+  mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text })
+    .catch(e => log.error(`Mail to ${to} failed: ${e.message}`));
+}
+
+const MAILS = {
+  de: {
+    reset: ['Fintools: Passwort zurücksetzen',
+      'Hallo {name}\n\nFür dein Fintools-Konto wurde ein neues Passwort angefordert. Mit diesem Link setzt du es. Er gilt 30 Minuten und nur einmal:\n\n{link}\n\nHast du das nicht angefordert, ignoriere diese Mail. Dein Passwort bleibt, wie es ist.'],
+    changed: ['Fintools: Passwort geändert',
+      'Hallo {name}\n\nDas Passwort deines Fintools-Kontos wurde eben geändert. Alle anderen Geräte sind abgemeldet.\n\nWarst du das nicht, setze das Passwort sofort über „Passwort vergessen?“ zurück:\n{link}'],
+  },
+  en: {
+    reset: ['Fintools: reset your password',
+      'Hello {name}\n\nA new password was requested for your Fintools account. Use this link to set it. It is valid for 30 minutes and works once:\n\n{link}\n\nIf you did not request this, ignore this email. Your password stays as it is.'],
+    changed: ['Fintools: password changed',
+      'Hello {name}\n\nThe password of your Fintools account was just changed. All other devices have been signed out.\n\nIf this wasn\'t you, reset your password right away via “Forgot password?”:\n{link}'],
+  },
+};
+const mailText = (lang, kind, name, link) => {
+  const [subject, text] = (MAILS[lang] ?? MAILS.en)[kind];
+  return [subject, text.replace('{name}', name).replace('{link}', link)];
+};
+
+// The only way to set a password: ends every other session (all of them when
+// keepToken is null) and invalidates an open reset link.
+async function setPassword(userId, password, keepToken = null) {
+  const hash = await bcrypt.hash(String(password), BCRYPT_ROUNDS);
+  db.prepare(`UPDATE users SET pin_hash=?, password_reset_hash=NULL, password_reset_expires=NULL,
+              updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(hash, userId);
+  db.prepare('DELETE FROM sessions WHERE user_id=? AND token IS NOT ?').run(userId, keepToken);
+}
+
+// Invite codes: 6 chars without look-alikes (0/O, 1/I) → 32^6 ≈ 1e9 possibilities
+const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newInviteCode   = () => Array.from({ length: 6 }, () => INVITE_ALPHABET[crypto.randomInt(INVITE_ALPHABET.length)]).join('');
+const normInvite      = s => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const inviteIsOpen    = code => !!db.prepare(
+  `SELECT 1 FROM invites WHERE code=? AND used_at IS NULL AND expires_at > datetime('now')`).get(code);
+
+// Per-route limits on top of the global /api limiter (in-memory, per process)
+const limit = (max, minutes, keyGenerator) => rateLimit({
+  windowMs: minutes * 60 * 1000, max, standardHeaders: true, legacyHeaders: false,
+  ...(keyGenerator ? { keyGenerator } : {}),
+  message: { error: 'Too many attempts. Try again later.' },
+});
+const registerLimiter    = limit(10, 15);
+const forgotIpLimiter    = limit(10, 15);
+const forgotEmailLimiter = limit(3, 15, req => normEmail(req.body?.email));   // nobody floods one mailbox
+const resetLimiter       = limit(10, 15);
+const changeLimiter      = limit(5, 5, req => `user:${req.uid}`);             // after requireLogin
+
+// POST /api/users/register  — invite-only; the very first account (empty DB) needs no code
+app.post('/api/users/register', registerLimiter, async (req, res) => {
+  const { username, pin, email, invite } = req.body;
+  const code = normInvite(invite);
+  const isBootstrap = () => db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0;
+  // Invite first, so uninvited callers learn nothing about existing names or addresses
+  if (!isBootstrap() && !inviteIsOpen(code)) return err(res, 403, 'Invalid or expired invite code');
+
+  const uname = String(username ?? '').trim();
+  const mail  = normEmail(email);
+  if (uname.length < 2 || uname.length > 32) return err(res, 400, 'username must be 2–32 chars');
+  if (!EMAIL_RE.test(mail) || mail.length > 254) return err(res, 400, 'A valid email address is required');
+  if (String(pin ?? '').length < MIN_PASSWORD) return err(res, 400, `Password must be at least ${MIN_PASSWORD} characters`);
+  if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(uname)) return err(res, 409, 'Username already taken');
+  if (db.prepare('SELECT 1 FROM users WHERE lower(email) = ?').get(mail)) return err(res, 409, 'Email address already in use');
 
   try {
     const pin_hash = await bcrypt.hash(String(pin), BCRYPT_ROUNDS);
-    const result   = db.prepare(
-      'INSERT INTO users (username, pin_hash) VALUES (?, ?)'
-    ).run(uname, pin_hash);
-    const userId = result.lastInsertRowid;
-    log.info('New user registered:', uname);
-    res.status(201).json({ id: userId, username: uname, token: newSession(userId) });
+    // Re-check and consume the invite atomically: it may have been used while bcrypt ran
+    const userId = db.transaction(() => {
+      const bootstrap = isBootstrap();
+      if (!bootstrap && !inviteIsOpen(code)) return null;
+      const id = db.prepare('INSERT INTO users (username, pin_hash, email) VALUES (?, ?, ?)')
+                   .run(uname, pin_hash, mail).lastInsertRowid;
+      if (!bootstrap) db.prepare('UPDATE invites SET used_by=?, used_at=CURRENT_TIMESTAMP WHERE code=?').run(id, code);
+      return id;
+    })();
+    if (!userId) return err(res, 403, 'Invalid or expired invite code');
+    log.info('New user registered:', uname, code ? `(invite ${code})` : '(bootstrap)');
+    res.status(201).json({ id: userId, username: uname, email: mail, token: newSession(userId) });
   } catch(e) {
     log.error('Register error:', e.message);
     err(res, 500, 'Registration failed');
@@ -385,6 +488,7 @@ app.post('/api/users/login', async (req, res) => {
   res.json({
     id: user.id,
     username: user.username,
+    email: user.email,
     token: newSession(user.id),
     portfolios,
     settings: settings ? JSON.parse(settings.data_source ? JSON.stringify({
@@ -399,6 +503,104 @@ app.post('/api/users/login', async (req, res) => {
 app.post('/api/users/logout', (req, res) => {
   const token = bearerToken(req);
   if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  res.json({ ok: true });
+});
+
+// GET/PUT /api/users/me  — own profile (username, email)
+const profileOf = id => db.prepare('SELECT id, username, email, created_at FROM users WHERE id=?').get(id);
+
+app.get('/api/users/me', requireLogin, (req, res) => res.json(profileOf(req.uid)));
+
+app.put('/api/users/me', requireLogin, async (req, res) => {
+  const { username, email, current_password } = req.body;
+  const user  = db.prepare('SELECT * FROM users WHERE id=?').get(req.uid);
+  const uname = username === undefined ? user.username : String(username).trim();
+  const mail  = email === undefined ? user.email : normEmail(email);
+  if (uname.length < 2 || uname.length > 32) return err(res, 400, 'username must be 2–32 chars');
+  if (mail !== user.email) {
+    if (!EMAIL_RE.test(mail || '') || mail.length > 254) return err(res, 400, 'A valid email address is required');
+    // The email decides where reset links go: changing it needs the password, so a
+    // hijacked session can't redirect them and take over the account.
+    if (!await bcrypt.compare(String(current_password ?? ''), user.pin_hash))
+      return err(res, 400, 'Current password is incorrect');
+    if (db.prepare('SELECT 1 FROM users WHERE lower(email)=? AND id!=?').get(mail, req.uid))
+      return err(res, 409, 'Email address already in use');
+  }
+  if (db.prepare('SELECT 1 FROM users WHERE username=? AND id!=?').get(uname, req.uid))
+    return err(res, 409, 'Username already taken');
+  db.prepare('UPDATE users SET username=?, email=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(uname, mail, req.uid);
+  res.json(profileOf(req.uid));
+});
+
+// POST /api/users/password/change  — {current_password, new_password, lang}
+// Wrong current password is 400, not 401: a 401 would sign the frontend out.
+app.post('/api/users/password/change', requireLogin, changeLimiter, async (req, res) => {
+  const { current_password, new_password, lang } = req.body;
+  if (String(new_password ?? '').length < MIN_PASSWORD) return err(res, 400, `Password must be at least ${MIN_PASSWORD} characters`);
+  const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.uid);
+  if (!await bcrypt.compare(String(current_password ?? ''), user.pin_hash))
+    return err(res, 400, 'Current password is incorrect');
+  await setPassword(user.id, new_password, bearerToken(req));   // this session stays, all others end
+  if (user.email) sendMail(user.email, mailText(lang, 'changed', user.username, `${APP_BASE_URL}/forgot-password`));
+  res.json({ ok: true });
+});
+
+// POST /api/users/password/forgot  — {email, lang}. Always the same answer, so it
+// doesn't reveal whether an account exists; the mail goes out in the background.
+app.post('/api/users/password/forgot', forgotIpLimiter, forgotEmailLimiter, (req, res) => {
+  const mail = normEmail(req.body?.email);
+  const user = EMAIL_RE.test(mail) && db.prepare('SELECT id, username, email FROM users WHERE lower(email)=?').get(mail);
+  if (user) {
+    const token = crypto.randomBytes(32).toString('base64url');
+    db.prepare(`UPDATE users SET password_reset_hash=?, password_reset_expires=datetime('now', '+30 minutes') WHERE id=?`)
+      .run(sha256(token), user.id);
+    // Token in the fragment: browsers never send it to a server, so it's in no access log or Referer
+    sendMail(user.email, mailText(req.body.lang, 'reset', user.username, `${APP_BASE_URL}/reset-password#token=${token}`));
+  }
+  res.status(202).json({ detail: 'If an account exists for this address, an email is on its way.' });
+});
+
+// POST /api/users/password/reset  — {token, new_password, lang}. Link works once; every session ends.
+app.post('/api/users/password/reset', resetLimiter, async (req, res) => {
+  const { token, new_password, lang } = req.body ?? {};
+  if (String(new_password ?? '').length < MIN_PASSWORD) return err(res, 400, `Password must be at least ${MIN_PASSWORD} characters`);
+  const hash = sha256(String(token ?? ''));
+  const user = db.prepare(`SELECT id, username, email FROM users
+                           WHERE password_reset_hash=? AND password_reset_expires > datetime('now')`).get(hash);
+  // Consume the link before the slow bcrypt, so two parallel requests can't both use it
+  if (!user || !db.prepare('UPDATE users SET password_reset_hash=NULL WHERE id=? AND password_reset_hash=?').run(user.id, hash).changes)
+    return err(res, 400, 'This link is invalid or has expired.');
+  await setPassword(user.id, new_password);
+  if (user.email) sendMail(user.email, mailText(lang, 'changed', user.username, `${APP_BASE_URL}/forgot-password`));
+  res.json({ ok: true });
+});
+
+// ── Invites  — every logged-in user can invite; codes are one-time, 7 days ──
+const INVITE_STATUS = `CASE WHEN i.used_at IS NOT NULL THEN 'used'
+                           WHEN i.expires_at <= datetime('now') THEN 'expired' ELSE 'open' END`;
+
+app.get('/api/invites', requireLogin, (req, res) => {
+  res.json(db.prepare(`
+    SELECT i.code, i.created_at, i.expires_at, i.used_at, u.username AS used_by, ${INVITE_STATUS} AS status
+    FROM invites i LEFT JOIN users u ON u.id = i.used_by
+    WHERE i.created_by = ? ORDER BY i.created_at DESC`).all(req.uid));
+});
+
+app.post('/api/invites', requireLogin, (req, res) => {
+  const open = db.prepare(`SELECT COUNT(*) AS n FROM invites
+                           WHERE created_by=? AND used_at IS NULL AND expires_at > datetime('now')`).get(req.uid).n;
+  if (open >= 10) return err(res, 429, 'Too many open invites. Revoke some or let them expire.');
+  let code;
+  do { code = newInviteCode(); } while (db.prepare('SELECT 1 FROM invites WHERE code=?').get(code));
+  db.prepare(`INSERT INTO invites (code, created_by, expires_at) VALUES (?, ?, datetime('now', '+7 days'))`).run(code, req.uid);
+  res.status(201).json(db.prepare(`SELECT i.code, i.created_at, i.expires_at, i.used_at, NULL AS used_by, ${INVITE_STATUS} AS status
+                                   FROM invites i WHERE i.code=?`).get(code));
+});
+
+app.delete('/api/invites/:code', requireLogin, (req, res) => {
+  const r = db.prepare('DELETE FROM invites WHERE code=? AND created_by=? AND used_at IS NULL')
+              .run(normInvite(req.params.code), req.uid);
+  if (!r.changes) return err(res, 404, 'Invite not found');
   res.json({ ok: true });
 });
 

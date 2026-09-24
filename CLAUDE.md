@@ -67,6 +67,7 @@ Single-file Express app organised by big ASCII-banner sections — search for `/
 2. **Schema v3 + Migrations** — `db.exec(\`CREATE TABLE IF NOT EXISTS …\`)` runs every boot; columns/tables that were added later are also patched in with conditional `ALTER TABLE` blocks below
 3. **Middleware** — helmet, compression, cors, express-rate-limit (`RATE_LIMIT_MAX_REQUESTS`), JSON parser
 4. **USERS / PORTFOLIOS** routes — bcrypt PIN auth, soft-deletes via `deleted_at`. Login/register return a session `token` (row in `sessions`, 30-day TTL); the frontend keeps it in the module-level `_token` (not persisted — reload means re-login) and `apiFetch` sends it as `Authorization: Bearer`. `getUserId(req)` resolves that token — it is the only identity source. Guards live right below it: `requireLogin` (sets `req.uid`), `requireSelf` (`:userId`/`:id` must be the caller — 403), and `requirePortfolio` / `requireTransaction` / `requirePlan` (`:id` must belong to the caller — 404, so foreign ids aren't confirmed). **Every new user-scoped route must use one of them**; `PUT /api/transactions/:id` additionally checks the target `portfolio_id` via `ownsPortfolio()`. `Analytics.jsx` uses raw `fetch` and sends `user.token` itself.
+   **Accounts:** registration is invite-only (`invites` table, 6-char codes; an empty DB lets the first account register without one — keep that bootstrap). Set passwords **only via `setPassword()`**: it re-hashes, clears an open reset link and deletes the user's other sessions (all of them after a reset). Reset tokens are stored only as SHA-256, links are built from `APP_BASE_URL` (never the Host header) with the token in the URL fragment; mail goes through `sendMail()` (nodemailer, SMTP from env; no `SMTP_HOST` = logged, not sent). Same concept as Budget-Pal's `feat/passwort-reset`. The login screen switches mode from the URL: `?invite=`, `/forgot-password`, `/reset-password#token=` and then clears it with `history.replaceState`.
 5. **TRANSACTIONS / Savings Plans** — BUY/SELL records, `price_usd` is denormalised at insert time using the FX rate of the trade date. `PUT /api/transactions/:id` accepts an optional `portfolio_id` field to move a transaction to a different portfolio atomically.
 6. **SETTINGS** — per-user JSON KV
 7. **QUOTES** — Yahoo proxy + Alpha Vantage fallback + batch endpoint + intraday endpoint
@@ -220,6 +221,7 @@ Set in `docker-compose.yml` or via a real `.env` (git-ignored, as are `env.txt`,
 | `LOG_LEVEL` | info | error / warn / info / debug |
 | `AV_API_KEY` | (empty) | Optional Alpha Vantage key for fallback quotes |
 | `TZ` | Europe/Zurich | Backend container timezone (requires `tzdata` package, installed in `backend/Dockerfile`) |
+| `SMTP_HOST` … `SMTP_FROM`, `APP_BASE_URL` | empty / `http://localhost:3002` | Password-reset mail; values from the git-ignored `.env` (template `.env.example`) |
 
 Backend timezone is set via `TZ` env var, not a host `/etc/localtime` bind mount — the host path is a macOS symlink into versioned tzdata (e.g. `/var/db/timezone/tz/2025c.1.0/...`) that breaks the container after macOS tzdata updates and blocks `docker compose up` entirely.
 

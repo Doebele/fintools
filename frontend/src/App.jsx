@@ -309,7 +309,18 @@ const etfApi = {
 
 const keepToken = (data) => { _token = data.token; return data; };
 const userApi = {
-  register: (username, pin)   => apiFetch("/users/register",   { method:"POST", body: JSON.stringify({ username, pin }) }).then(keepToken),
+  register: (username, pin, email, invite) =>
+    apiFetch("/users/register", { method:"POST", body: JSON.stringify({ username, pin, email, invite }) }).then(keepToken),
+  me:             ()                   => apiFetch("/users/me"),
+  updateMe:       (data)               => apiFetch("/users/me", { method:"PUT", body: JSON.stringify(data) }),
+  changePassword: (current_password, new_password, lang) =>
+    apiFetch("/users/password/change", { method:"POST", body: JSON.stringify({ current_password, new_password, lang }) }),
+  forgotPassword: (email, lang)        => apiFetch("/users/password/forgot", { method:"POST", body: JSON.stringify({ email, lang }) }),
+  resetPassword:  (token, new_password, lang) =>
+    apiFetch("/users/password/reset", { method:"POST", body: JSON.stringify({ token, new_password, lang }) }),
+  invites:        ()                   => apiFetch("/invites"),
+  createInvite:   ()                   => apiFetch("/invites", { method:"POST" }),
+  revokeInvite:   (code)               => apiFetch(`/invites/${encodeURIComponent(code)}`, { method:"DELETE" }),
   login:    (username, pin)   => apiFetch("/users/login",       { method:"POST", body: JSON.stringify({ username, pin }) }).then(keepToken),
   // apiFetch builds its headers synchronously, so clearing the token right after the call is safe
   logout:   ()                => { const p = apiFetch("/users/logout", { method:"POST" }); _token = null; return p.catch(() => {}); },
@@ -686,32 +697,82 @@ function Modal({ title, onClose, children, width=460 }) {
 // ════════════════════════════════════════════════════════════════════════════
 function LoginScreen({ onLogin, onEtfMode }) {
   useGlobalStyles();
-  const [mode,        setMode]        = useState("login"); // "login" | "register"
-  const [username,    setUsername]    = useState("");
-  const [pin,         setPin]         = useState("");
-  const [showPin,     setShowPin]     = useState(false);
-  const [busy,        setBusy]        = useState(false);
-  const [error,       setError]       = useState("");
+  const { t, i18n } = useTranslation();
+  // Entry points from links: /reset-password#token=… (mail), /forgot-password (mail), ?invite=CODE
+  const [start] = useState(() => {
+    const token  = new URLSearchParams(location.hash.slice(1)).get("token");
+    const invite = new URLSearchParams(location.search).get("invite");
+    const mode   = token ? "reset" : location.pathname === "/forgot-password" ? "forgot" : invite ? "register" : "login";
+    return { token, invite: invite ?? "", mode };
+  });
+  // Take token/invite out of the address bar (and history) right away
+  useEffect(() => {
+    if (location.pathname !== "/" || location.search || location.hash) history.replaceState(null, "", "/");
+  }, []);
+
+  const [mode,         setMode]         = useState(start.mode);   // "login" | "register" | "forgot" | "reset"
+  const [username,     setUsername]     = useState("");
+  const [email,        setEmail]        = useState("");
+  const [invite,       setInvite]       = useState(start.invite);
+  const [pin,          setPin]          = useState("");
+  const [pin2,         setPin2]         = useState("");
+  const [showPin,      setShowPin]      = useState(false);
+  const [busy,         setBusy]         = useState(false);
+  const [error,        setError]        = useState("");
+  const [info,         setInfo]         = useState("");
   const [disclaimerOk, setDisclaimerOk] = useState(false);
 
-  // Reset disclaimer when switching modes
-  const switchMode = (m) => { setMode(m); setDisclaimerOk(false); setError(""); };
+  const switchMode = (m) => { setMode(m); setDisclaimerOk(false); setError(""); setInfo(""); setPin(""); setPin2(""); };
+  const lang = i18n.language?.slice(0, 2);
 
-  const canSubmit = username.trim() && pin && !busy && (mode === "login" || disclaimerOk);
+  const canSubmit = !busy && {
+    login:    username.trim() && pin,
+    register: username.trim() && email.trim() && pin && disclaimerOk,
+    forgot:   email.trim(),
+    reset:    pin && pin2,
+  }[mode];
 
   const handle = async () => {
     if (!canSubmit) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setInfo("");
     try {
-      if (mode === "register") {
-        await userApi.register(username.trim(), pin);
-        // Auto-login after register
+      if (mode === "forgot") {
+        await userApi.forgotPassword(email.trim(), lang);
+        setInfo(t("auth.forgotSent"));          // same answer whether or not the address exists
+      } else if (mode === "reset") {
+        if (pin !== pin2) throw new Error(t("auth.pinMismatch"));
+        await userApi.resetPassword(start.token, pin, lang);
+        switchMode("login");                    // no auto-login after a reset (as in Budget-Pal)
+        setInfo(t("auth.resetDone"));
+      } else {
+        if (mode === "register") await userApi.register(username.trim(), pin, email.trim(), invite);
+        onLogin(await userApi.login(username.trim(), pin));
       }
-      const data = await userApi.login(username.trim(), pin);
-      onLogin(data);
     } catch(e) { setError(e.message); }
     setBusy(false);
   };
+
+  const onEnter = e => e.key === "Enter" && handle();
+  const linkBtn = { background:"none", border:"none", color:THEME.accent, cursor:"pointer",
+                    fontSize:12, fontFamily:"inherit", fontWeight:600, padding:0 };
+  const pinField = (value, setValue, label, placeholder) => (
+    <div>
+      <FLabel>{label}</FLabel>
+      <div style={{ position:"relative" }}>
+        <Lock size={14} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:THEME.text3 }}/>
+        <FInput type={showPin ? "text" : "password"} placeholder={placeholder}
+          value={value} style={{ paddingLeft:34, paddingRight:40, letterSpacing:"0.2em" }}
+          onChange={e => { setValue(e.target.value); setError(""); }}
+          onKeyDown={onEnter}
+          autoComplete={mode === "login" ? "current-password" : "new-password"}/>
+        <button onClick={() => setShowPin(v => !v)} style={{
+          position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
+          background:"none", border:"none", cursor:"pointer", color:THEME.text3,
+          display:"flex", padding:0,
+        }}>{showPin ? <EyeOff size={14}/> : <Eye size={14}/>}</button>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{
@@ -729,44 +790,67 @@ function LoginScreen({ onLogin, onEtfMode }) {
             Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
           </div>
           <div style={{ fontSize:11, color:THEME.text3, marginTop:4, letterSpacing:"0.06em", textTransform:"uppercase" }}>
-            {mode === "login" ? "Sign in to your account" : "Create new account"}
+            {t(`auth.title_${mode}`)}
           </div>
         </div>
 
         {/* Fields */}
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          <div>
-            <FLabel>Username</FLabel>
-            <div style={{ position:"relative" }}>
-              <User size={14} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:THEME.text3 }}/>
-              <FInput placeholder="Enter username" value={username}
-                style={{ paddingLeft:34 }}
-                onChange={e => { setUsername(e.target.value); setError(""); }}
-                onKeyDown={e => e.key === "Enter" && handle()}/>
+          {(mode === "login" || mode === "register") && (
+            <div>
+              <FLabel>{t("auth.username")}</FLabel>
+              <div style={{ position:"relative" }}>
+                <User size={14} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:THEME.text3 }}/>
+                <FInput placeholder={t("auth.usernamePh")} value={username}
+                  style={{ paddingLeft:34 }} autoComplete="username"
+                  onChange={e => { setUsername(e.target.value); setError(""); }}
+                  onKeyDown={onEnter}/>
+              </div>
             </div>
-          </div>
-          <div>
-            <FLabel>PIN</FLabel>
-            <div style={{ position:"relative" }}>
-              <Lock size={14} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:THEME.text3 }}/>
-              <FInput type={showPin ? "text" : "password"} placeholder="Enter PIN"
-                value={pin} style={{ paddingLeft:34, paddingRight:40, letterSpacing:"0.2em" }}
-                onChange={e => { setPin(e.target.value); setError(""); }}
-                onKeyDown={e => e.key === "Enter" && handle()}
-                autoComplete={mode==="login" ? "current-password" : "new-password"}/>
-              <button onClick={() => setShowPin(v => !v)} style={{
-                position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
-                background:"none", border:"none", cursor:"pointer", color:THEME.text3,
-                display:"flex", padding:0,
-              }}>{showPin ? <EyeOff size={14}/> : <Eye size={14}/>}</button>
+          )}
+          {(mode === "register" || mode === "forgot") && (
+            <div>
+              <FLabel>{t("auth.email")}</FLabel>
+              <FInput type="email" placeholder={t("auth.emailPh")} value={email} autoComplete="email"
+                onChange={e => { setEmail(e.target.value); setError(""); }} onKeyDown={onEnter}/>
             </div>
-          </div>
+          )}
+          {mode === "forgot" && (
+            <div style={{ fontSize:11, color:THEME.text3, lineHeight:1.5 }}>{t("auth.forgotHint")}</div>
+          )}
+          {mode === "login"    && pinField(pin, setPin, t("auth.password"), t("auth.passwordPh"))}
+          {mode === "register" && pinField(pin, setPin, t("auth.password"), t("auth.newPasswordPh"))}
+          {mode === "reset"    && pinField(pin, setPin, t("auth.newPassword"), t("auth.newPasswordPh"))}
+          {mode === "reset"    && pinField(pin2, setPin2, t("auth.repeatPassword"), t("auth.newPasswordPh"))}
+          {mode === "register" && (
+            <div>
+              <FLabel>{t("auth.invite")}</FLabel>
+              <FInput placeholder="K7M-Q2P" value={invite}
+                style={{ fontFamily:THEME.mono, letterSpacing:"0.15em", textTransform:"uppercase" }}
+                onChange={e => { setInvite(e.target.value); setError(""); }} onKeyDown={onEnter}/>
+              <div style={{ fontSize:10, color:THEME.text3, marginTop:5 }}>{t("auth.inviteHint")}</div>
+            </div>
+          )}
         </div>
+
+        {mode === "login" && (
+          <div style={{ textAlign:"right", marginTop:8 }}>
+            <button onClick={() => switchMode("forgot")} style={{ ...linkBtn, fontSize:11, fontWeight:500 }}>
+              {t("auth.forgotLink")}
+            </button>
+          </div>
+        )}
 
         {error && (
           <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:6,
             fontSize:12, color:THEME.red }}>
             <AlertCircle size={13}/> {error}
+          </div>
+        )}
+        {info && (
+          <div style={{ marginTop:12, padding:"8px 10px", borderRadius:8, fontSize:12, lineHeight:1.5,
+            background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", color:THEME.green }}>
+            {info}
           </div>
         )}
 
@@ -794,7 +878,7 @@ function LoginScreen({ onLogin, onEtfMode }) {
               )}
             </div>
             <span style={{ fontSize:11, color: disclaimerOk ? THEME.text2 : THEME.text3, lineHeight:1.5, userSelect:"none" }}>
-              For demonstration purposes only. Please do not enter personal or private data!
+              {t("auth.disclaimer")}
             </span>
           </div>
         )}
@@ -809,42 +893,42 @@ function LoginScreen({ onLogin, onEtfMode }) {
             boxShadow: canSubmit ? "0 4px 20px rgba(59,130,246,0.35)" : "none",
             transition:"opacity 0.3s ease, box-shadow 0.3s ease",
           }}>
-          {busy ? <span className="spin">⟳</span> : mode === "login" ? "Sign In" : "Create Account & Sign In"}
+          {busy ? <span className="spin">⟳</span> : t(`auth.submit_${mode}`)}
         </button>
 
         {/* ETF Explorer — no login required */}
-        <div style={{ margin:"20px 0 4px", display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ flex:1, height:1, background:THEME.border2 }}/>
-          <span style={{ fontSize:10, color:THEME.text3, whiteSpace:"nowrap",
-            textTransform:"uppercase", letterSpacing:"0.08em" }}>or</span>
-          <div style={{ flex:1, height:1, background:THEME.border2 }}/>
-        </div>
-        <button onClick={onEtfMode}
-          style={{
-            width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
-            border:`1px dashed rgba(59,130,246,0.45)`,
-            background:"rgba(59,130,246,0.07)", color:THEME.accent,
-            fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
-            transition:"all 0.15s",
-            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-          }}>
-          <span style={{ fontSize:16 }}>📊</span>
-          ETF Screener <span style={{ fontSize:10, opacity:0.7 }}>— no login</span>
-        </button>
+        {(mode === "login" || mode === "register") && (<>
+          <div style={{ margin:"20px 0 4px", display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ flex:1, height:1, background:THEME.border2 }}/>
+            <span style={{ fontSize:10, color:THEME.text3, whiteSpace:"nowrap",
+              textTransform:"uppercase", letterSpacing:"0.08em" }}>{t("auth.or")}</span>
+            <div style={{ flex:1, height:1, background:THEME.border2 }}/>
+          </div>
+          <button onClick={onEtfMode}
+            style={{
+              width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
+              border:`1px dashed rgba(59,130,246,0.45)`,
+              background:"rgba(59,130,246,0.07)", color:THEME.accent,
+              fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+              transition:"all 0.15s",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+            }}>
+            <span style={{ fontSize:16 }}>📊</span>
+            ETF Screener <span style={{ fontSize:10, opacity:0.7 }}>— {t("auth.noLogin")}</span>
+          </button>
+        </>)}
 
         <div style={{ textAlign:"center", marginTop:16, fontSize:12, color:THEME.text3 }}>
           {mode === "login" ? (
-            <>No account?{" "}
-              <button onClick={() => switchMode("register")}
-                style={{ background:"none", border:"none", color:THEME.accent, cursor:"pointer",
-                  fontSize:12, fontFamily:"inherit", fontWeight:600 }}>Create one</button>
+            <>{t("auth.noAccount")}{" "}
+              <button onClick={() => switchMode("register")} style={linkBtn}>{t("auth.createOne")}</button>
+            </>
+          ) : mode === "register" ? (
+            <>{t("auth.haveAccount")}{" "}
+              <button onClick={() => switchMode("login")} style={linkBtn}>{t("auth.signIn")}</button>
             </>
           ) : (
-            <>Already have an account?{" "}
-              <button onClick={() => switchMode("login")}
-                style={{ background:"none", border:"none", color:THEME.accent, cursor:"pointer",
-                  fontSize:12, fontFamily:"inherit", fontWeight:600 }}>Sign in</button>
-            </>
+            <button onClick={() => switchMode("login")} style={linkBtn}>{t("auth.backToLogin")}</button>
           )}
         </div>
       </div>
@@ -6301,9 +6385,133 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
         <button onClick={onSave} style={{ padding:"11px 0", borderRadius:10, border:"none",
           background:THEME.accent, color:"#fff", cursor:"pointer",
           fontSize:13, fontWeight:700 }}>{t("settings.save")}</button>
+
+        {userId && <AccountSettings/>}
       </div>
     </Modal>
   );
+}
+
+// ─── Account: profile, password, invites (inside SettingsModal, logged-in only) ──
+// Each block saves on its own button; "Save settings" above only covers data source + AI.
+const fmtDbDate = (s, lang) => s ? new Date(s.replace(" ", "T") + "Z").toLocaleDateString(lang) : "";   // SQLite UTC
+const fmtInvite = c => `${c.slice(0, 3)}-${c.slice(3)}`;
+
+function AccountSettings() {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language?.slice(0, 2);
+  const [me,      setMe]      = useState(null);
+  const [uname,   setUname]   = useState("");
+  const [email,   setEmail]   = useState("");
+  const [curPw,   setCurPw]   = useState("");   // confirms an email change
+  const [pwCur,   setPwCur]   = useState("");
+  const [pwNew,   setPwNew]   = useState("");
+  const [pwNew2,  setPwNew2]  = useState("");
+  const [invites, setInvites] = useState([]);
+  const [copied,  setCopied]  = useState(null);
+  const [msg,     setMsg]     = useState({});   // { profile | password | invites: { ok, text } }
+  const say = (k, ok, text) => setMsg(m => ({ ...m, [k]: { ok, text } }));
+
+  useEffect(() => {
+    userApi.me().then(u => { setMe(u); setUname(u.username); setEmail(u.email ?? ""); }).catch(() => {});
+    userApi.invites().then(setInvites).catch(() => {});
+  }, []);
+
+  const emailChanged = !!me && email.trim().toLowerCase() !== (me.email ?? "");
+
+  const saveProfile = async () => {
+    try {
+      const u = await userApi.updateMe({ username: uname.trim(), ...(emailChanged ? { email: email.trim(), current_password: curPw } : {}) });
+      setMe(u); setEmail(u.email ?? ""); setCurPw(""); say("profile", true, t("profile.saved"));
+    } catch(e) { say("profile", false, e.message); }
+  };
+  const changePassword = async () => {
+    if (pwNew !== pwNew2) return say("password", false, t("auth.pinMismatch"));
+    try {
+      await userApi.changePassword(pwCur, pwNew, lang);
+      setPwCur(""); setPwNew(""); setPwNew2(""); say("password", true, t("profile.pwChanged"));
+    } catch(e) { say("password", false, e.message); }
+  };
+  const createInvite = async () => {
+    try { const inv = await userApi.createInvite(); setInvites(l => [inv, ...l]); say("invites", null, ""); }
+    catch(e) { say("invites", false, e.message); }
+  };
+  const revokeInvite = async code => {
+    try { await userApi.revokeInvite(code); setInvites(l => l.filter(i => i.code !== code)); }
+    catch(e) { say("invites", false, e.message); }
+  };
+  const copyLink = async code => {
+    const link = `${location.origin}/?invite=${code}`;
+    try { await navigator.clipboard.writeText(link); setCopied(code); setTimeout(() => setCopied(null), 1500); }
+    catch { say("invites", null, link); }   // no clipboard (e.g. plain http): show the link to copy by hand
+  };
+
+  const section = { borderTop:`1px solid ${THEME.border}`, paddingTop:16, display:"flex", flexDirection:"column", gap:8 };
+  const smallBtn = { padding:"7px 14px", borderRadius:8, border:`1.5px solid ${THEME.border}`, background:"transparent",
+                     color:THEME.text2, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", alignSelf:"flex-start" };
+  const linkBtn  = { background:"none", border:"none", color:THEME.accent, cursor:"pointer", fontSize:11,
+                     fontWeight:600, fontFamily:"inherit", padding:0 };
+  const note = k => msg[k]?.text ? (
+    <div style={{ fontSize:11, wordBreak:"break-all",
+      color: msg[k].ok === true ? THEME.green : msg[k].ok === false ? THEME.red : THEME.text2 }}>
+      {msg[k].ok === true ? "✓ " : msg[k].ok === false ? "✗ " : ""}{msg[k].text}
+    </div>
+  ) : null;
+  const pw = (value, set, placeholder, autoComplete) => (
+    <FInput type="password" value={value} placeholder={placeholder} autoComplete={autoComplete}
+      onChange={e => set(e.target.value)}/>
+  );
+
+  return (<>
+    {/* Profile */}
+    <div style={section}>
+      <FLabel>{t("profile.title")}</FLabel>
+      <FInput value={uname} onChange={e => setUname(e.target.value)} placeholder={t("auth.username")} autoComplete="username"/>
+      <FInput type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t("auth.email")} autoComplete="email"/>
+      {me && !me.email && (
+        <div style={{ fontSize:11, color:THEME.yellow, lineHeight:1.4 }}>⚠ {t("profile.noEmail")}</div>
+      )}
+      {emailChanged && pw(curPw, setCurPw, t("profile.confirmWithPassword"), "current-password")}
+      <button style={smallBtn} onClick={saveProfile}>{t("profile.save")}</button>
+      {note("profile")}
+    </div>
+
+    {/* Password */}
+    <div style={section}>
+      <FLabel>{t("profile.changePassword")}</FLabel>
+      {pw(pwCur,  setPwCur,  t("profile.currentPassword"), "current-password")}
+      {pw(pwNew,  setPwNew,  t("auth.newPasswordPh"),      "new-password")}
+      {pw(pwNew2, setPwNew2, t("auth.repeatPassword"),     "new-password")}
+      <button style={{ ...smallBtn, opacity: pwCur && pwNew && pwNew2 ? 1 : 0.45 }}
+        disabled={!pwCur || !pwNew || !pwNew2} onClick={changePassword}>{t("profile.changePassword")}</button>
+      <div style={{ fontSize:10, color:THEME.text3 }}>{t("profile.pwHint")}</div>
+      {note("password")}
+    </div>
+
+    {/* Invites */}
+    <div style={section}>
+      <FLabel>{t("invites.title")}</FLabel>
+      <div style={{ fontSize:11, color:THEME.text3, lineHeight:1.5 }}>{t("invites.hint")}</div>
+      <button style={smallBtn} onClick={createInvite}>＋ {t("invites.create")}</button>
+      {note("invites")}
+      {invites.map(inv => (
+        <div key={inv.code} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 10px",
+          borderRadius:8, background:THEME.surface2, border:`1px solid ${THEME.border}`,
+          opacity: inv.status === "open" ? 1 : 0.6 }}>
+          <span style={{ fontFamily:THEME.mono, fontSize:12, letterSpacing:"0.1em", color:THEME.text1 }}>{fmtInvite(inv.code)}</span>
+          <span style={{ flex:1, fontSize:10, color:THEME.text3 }}>
+            {inv.status === "open"    && t("invites.openUntil", { date: fmtDbDate(inv.expires_at, lang) })}
+            {inv.status === "used"    && t("invites.usedBy", { name: inv.used_by ?? "?", date: fmtDbDate(inv.used_at, lang) })}
+            {inv.status === "expired" && t("invites.expired")}
+          </span>
+          {inv.status === "open" && (<>
+            <button style={linkBtn} onClick={() => copyLink(inv.code)}>{copied === inv.code ? "✓" : t("invites.copyLink")}</button>
+            <button style={{ ...linkBtn, color:THEME.red }} onClick={() => revokeInvite(inv.code)}>{t("invites.revoke")}</button>
+          </>)}
+        </div>
+      ))}
+    </div>
+  </>);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -6617,8 +6825,11 @@ function buildEtfNodes(holdings, quotes, period) {
 
 // ── Save ETF Modal — login prompt or direct save ─────────────────────────────
 function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
+  const { t } = useTranslation();
   const [mode,    setMode]    = useState(user ? "save" : "choose"); // choose|login|register|save
   const [uname,   setUname]   = useState("");
+  const [email,   setEmail]   = useState("");
+  const [invite,  setInvite]  = useState("");
   const [pin,     setPin]     = useState("");
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
@@ -6642,7 +6853,7 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
     setLoading(true); setError(null);
     try {
       const loggedIn = mode === "register"
-        ? await userApi.register(uname, pin)
+        ? await userApi.register(uname, pin, email.trim(), invite)
         : await userApi.login(uname, pin);
       // Save FIRST so modal can close cleanly, then update App auth state.
       await doSave(loggedIn);
@@ -6753,10 +6964,15 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
               {mode==="register" ? "Create a new account" : "Sign in to your account"}
             </p>
             <input value={uname} onChange={e=>setUname(e.target.value)}
-              placeholder="Username" style={inp}/>
+              placeholder={t("auth.username")} style={inp}/>
+            {mode === "register" && (
+              <input value={email} onChange={e=>setEmail(e.target.value)} type="email"
+                placeholder={t("auth.email")} style={inp}/>
+            )}
             <div style={{ position:"relative" }}>
               <input value={pin} onChange={e=>setPin(e.target.value)}
-                type={showPin?"text":"password"} placeholder="PIN (4+ digits)"
+                type={showPin?"text":"password"}
+                placeholder={mode === "register" ? t("auth.newPasswordPh") : t("auth.password")}
                 onKeyDown={e=>e.key==="Enter"&&handleAuth()}
                 style={{...inp, paddingRight:36}}/>
               <button onClick={()=>setShowPin(v=>!v)}
@@ -6766,8 +6982,13 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
                 {showPin ? <EyeOff size={13}/> : <Eye size={13}/>}
               </button>
             </div>
+            {mode === "register" && (
+              <input value={invite} onChange={e=>setInvite(e.target.value)}
+                placeholder={`${t("auth.invite")} (K7M-Q2P)`}
+                style={{ ...inp, fontFamily:THEME.mono, textTransform:"uppercase" }}/>
+            )}
             <button style={btn(true)} onClick={handleAuth}
-              disabled={!uname.trim()||!pin}>
+              disabled={!uname.trim()||!pin||(mode==="register"&&!email.trim())}>
               {mode==="register" ? "Create account & save" : "Sign in & save"}
             </button>
             <button style={{...btn(false), marginTop:6}} onClick={()=>setMode("choose")}>
