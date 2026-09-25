@@ -6236,7 +6236,7 @@ const AI_PROVIDERS = [
 
 function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiKey, onSave, avUsage,
   aiProvider, setAiProvider, aiEndpoint, setAiEndpoint, aiModel, setAiModel, aiApiKey, setAiApiKey,
-  aiProfiles, setAiProfiles, userId }) {
+  aiProfiles, setAiProfiles, userId, focus, onProfileSaved }) {
   const { t } = useTranslation();
   const used = avUsage?.today ?? 0;
   const limit = 25;
@@ -6421,7 +6421,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
           background:THEME.accent, color:"#fff", cursor:"pointer",
           fontSize:13, fontWeight:700 }}>{t("settings.save")}</button>
 
-        {userId && <AccountSettings/>}
+        {userId && <AccountSettings focus={focus} onProfileSaved={onProfileSaved}/>}
       </div>
     </Modal>
   );
@@ -6432,8 +6432,9 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
 const fmtDbDate = (s, lang) => s ? new Date(s.replace(" ", "T") + "Z").toLocaleDateString(lang) : "";   // SQLite UTC
 const fmtInvite = c => `${c.slice(0, 3)}-${c.slice(3)}`;
 
-function AccountSettings() {
+function AccountSettings({ focus, onProfileSaved }) {
   const { t, i18n } = useTranslation();
+  const profileRef = useRef(null);
   const lang = i18n.language?.slice(0, 2);
   const [me,      setMe]      = useState(null);
   const [uname,   setUname]   = useState("");
@@ -6452,12 +6453,20 @@ function AccountSettings() {
     userApi.invites().then(setInvites).catch(() => {});
   }, []);
 
+  // Opened from the email reminder: jump to the profile and put the cursor into the email field
+  useEffect(() => {
+    if (focus !== "profile" || !me) return;
+    profileRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    profileRef.current?.querySelector('input[type="email"]')?.focus();
+  }, [focus, me]);
+
   const emailChanged = !!me && email.trim().toLowerCase() !== (me.email ?? "");
 
   const saveProfile = async () => {
     try {
       const u = await userApi.updateMe({ username: uname.trim(), ...(emailChanged ? { email: email.trim(), current_password: curPw } : {}) });
       setMe(u); setEmail(u.email ?? ""); setCurPw(""); say("profile", true, t("profile.saved"));
+      onProfileSaved?.(u);
     } catch(e) { say("profile", false, authError(t, e)); }
   };
   const changePassword = async () => {
@@ -6500,7 +6509,7 @@ function AccountSettings() {
 
   return (<>
     {/* Profile */}
-    <div style={section}>
+    <div style={section} ref={profileRef}>
       <FLabel>{t("profile.title")}</FLabel>
       <FInput value={uname} onChange={e => setUname(e.target.value)} placeholder={t("auth.username")} autoComplete="username"/>
       <FInput type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t("auth.email")} autoComplete="email"/>
@@ -6548,6 +6557,27 @@ function AccountSettings() {
       ))}
     </div>
   </>);
+}
+
+// ─── Reminder after login when the account has no email yet ──────────────────
+function EmailReminderModal({ onClose, onOpenProfile }) {
+  const { t } = useTranslation();
+  return (
+    <Modal title={t("emailReminder.title")} onClose={onClose} width={420}>
+      <p style={{ fontSize:13, color:THEME.text2, lineHeight:1.6, margin:"0 0 10px" }}>{t("emailReminder.text")}</p>
+      <p style={{ fontSize:12, color:THEME.text3, lineHeight:1.6, margin:"0 0 20px" }}>{t("emailReminder.how")}</p>
+      <div style={{ display:"flex", gap:10 }}>
+        <button onClick={onOpenProfile} style={{ flex:1, padding:"11px 0", borderRadius:10, border:"none",
+          background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          {t("emailReminder.open")}
+        </button>
+        <button onClick={onClose} style={{ padding:"11px 18px", borderRadius:10, border:`1.5px solid ${THEME.border}`,
+          background:"transparent", color:THEME.text2, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+          {t("emailReminder.later")}
+        </button>
+      </div>
+    </Modal>
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -8886,6 +8916,8 @@ export default function App() {
   const [savedEtfs,       setSavedEtfs]        = useState([]);
   // portfolioDivCache → replaced by useDivCache hook below (shares globalDivCache with ETF Explorer)
   const [showSettings,setShowSettings]=useState(false);
+  const [settingsFocus, setSettingsFocus] = useState(null);   // "profile" → SettingsModal scrolls there
+  const [emailReminder, setEmailReminder] = useState(false);  // login without email → offer the profile
   const [renamePort, setRenamePort] = useState(null); // portfolio object to rename
   const [tooltip,    setTooltip]    = useState(null);
 
@@ -8957,6 +8989,7 @@ export default function App() {
 
   const handleLogin = useCallback(async (userData) => {
     setUser(userData);
+    setEmailReminder(!userData.email);   // no email = no password recovery
     etfApi.list(userData.id).then(res => setSavedEtfs(res.etfs || [])).catch(()=>{});
     const ports = userData.portfolios ?? [];
     setPortfolios(ports);
@@ -9359,7 +9392,7 @@ export default function App() {
         onChangeLanguage={changeLanguage}
       />
       {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)}
+        <SettingsModal onClose={() => { setShowSettings(false); setSettingsFocus(null); }}
           dataSource={dataSource} setDataSource={setDataSource}
           avApiKey={avApiKey} setAvApiKey={setAvApiKey}
           onSave={async () => {
@@ -9831,7 +9864,7 @@ export default function App() {
             onRename={handleRenamePortfolio}/>
         )}
         {showSettings && (
-          <SettingsModal onClose={() => setShowSettings(false)}
+          <SettingsModal onClose={() => { setShowSettings(false); setSettingsFocus(null); }}
             dataSource={dataSource} setDataSource={setDataSource}
             avApiKey={avApiKey} setAvApiKey={setAvApiKey}
             onSave={handleSaveSettings} avUsage={avUsage}
@@ -9840,7 +9873,14 @@ export default function App() {
             aiModel={aiModel}         setAiModel={setAiModel}
             aiApiKey={aiApiKey}       setAiApiKey={setAiApiKey}
             aiProfiles={aiProfiles}   setAiProfiles={setAiProfiles}
+            focus={settingsFocus}
+            onProfileSaved={u => setUser(prev => ({ ...prev, username: u.username, email: u.email }))}
             userId={user?.id}/>
+        )}
+        {emailReminder && !showSettings && (
+          <EmailReminderModal
+            onClose={() => setEmailReminder(false)}
+            onOpenProfile={() => { setEmailReminder(false); setSettingsFocus("profile"); setShowSettings(true); }}/>
         )}
       </div>
     </>

@@ -285,5 +285,12 @@
     "openUntil": "offen bis {{date}}",
     "usedBy": "benutzt von {{name}} am {{date}}",
     "expired": "abgelaufen"
+  },
+  "emailReminder": {
+    "title": "E-Mail-Adresse hinterlegen",
+    "text": "Für dein Konto ist noch keine E-Mail-Adresse hinterlegt. Ohne sie kannst du ein vergessenes Passwort nicht zurücksetzen und bekommst keine Info, wenn dein Passwort geändert wird.",
+    "how": "Im Profil trägst du sie in einer Minute ein. Zur Bestätigung brauchst du dein aktuelles Passwort.",
+    "open": "Zum Profil",
+    "later": "Später"
   }
 }

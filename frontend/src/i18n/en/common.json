@@ -285,5 +285,12 @@
     "openUntil": "open until {{date}}",
     "usedBy": "used by {{name}} on {{date}}",
     "expired": "expired"
+  },
+  "emailReminder": {
+    "title": "Add your email address",
+    "text": "Your account has no email address yet. Without one you can't reset a forgotten password and won't be notified when your password changes.",
+    "how": "You can add it in your profile in a minute. Your current password confirms the change.",
+    "open": "Open profile",
+    "later": "Later"
   }
 }
