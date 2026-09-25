@@ -695,6 +695,23 @@ function Modal({ title, onClose, children, width=460 }) {
 // ════════════════════════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ════════════════════════════════════════════════════════════════════════════
+const MIN_PASSWORD = 8;
+// Backend auth errors (fixed English strings in server.js) → translated text, as Budget-Pal does
+const AUTH_ERRORS = {
+  login:   "Invalid username or PIN",
+  invite:  "Invalid or expired invite code",
+  link:    "This link is invalid or has expired.",
+  tooMany: "Too many attempts. Try again later.",
+  uname:   "Username already taken",
+  email:   "Email address already in use",
+  emailOk: "A valid email address is required",
+  curPw:   "Current password is incorrect",
+};
+const authError = (t, e) => {
+  const key = Object.keys(AUTH_ERRORS).find(k => AUTH_ERRORS[k] === e.message);
+  return key ? t(`auth.err_${key}`) : e.message;
+};
+
 function LoginScreen({ onLogin, onEtfMode }) {
   useGlobalStyles();
   const { t, i18n } = useTranslation();
@@ -720,9 +737,14 @@ function LoginScreen({ onLogin, onEtfMode }) {
   const [busy,         setBusy]         = useState(false);
   const [error,        setError]        = useState("");
   const [info,         setInfo]         = useState("");
+  const [sent,         setSent]         = useState(false);   // forgot: link requested → hide the form
+  const [linkInvalid,  setLinkInvalid]  = useState(false);   // reset: token rejected → offer a new link
   const [disclaimerOk, setDisclaimerOk] = useState(false);
 
-  const switchMode = (m) => { setMode(m); setDisclaimerOk(false); setError(""); setInfo(""); setPin(""); setPin2(""); };
+  const switchMode = (m) => {
+    setMode(m); setDisclaimerOk(false); setError(""); setInfo(""); setPin(""); setPin2("");
+    setSent(false); setLinkInvalid(false);
+  };
   const lang = i18n.language?.slice(0, 2);
 
   const canSubmit = !busy && {
@@ -736,9 +758,11 @@ function LoginScreen({ onLogin, onEtfMode }) {
     if (!canSubmit) return;
     setBusy(true); setError(""); setInfo("");
     try {
+      if ((mode === "register" || mode === "reset") && pin.length < MIN_PASSWORD) throw new Error(t("auth.err_tooShort"));
       if (mode === "forgot") {
         await userApi.forgotPassword(email.trim(), lang);
         setInfo(t("auth.forgotSent"));          // same answer whether or not the address exists
+        setSent(true);
       } else if (mode === "reset") {
         if (pin !== pin2) throw new Error(t("auth.pinMismatch"));
         await userApi.resetPassword(start.token, pin, lang);
@@ -748,7 +772,10 @@ function LoginScreen({ onLogin, onEtfMode }) {
         if (mode === "register") await userApi.register(username.trim(), pin, email.trim(), invite);
         onLogin(await userApi.login(username.trim(), pin));
       }
-    } catch(e) { setError(e.message); }
+    } catch(e) {
+      setError(authError(t, e));
+      if (mode === "reset" && e.message === AUTH_ERRORS.link) setLinkInvalid(true);
+    }
     setBusy(false);
   };
 
@@ -798,30 +825,30 @@ function LoginScreen({ onLogin, onEtfMode }) {
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           {(mode === "login" || mode === "register") && (
             <div>
-              <FLabel>{t("auth.username")}</FLabel>
+              <FLabel>{t(mode === "login" ? "auth.usernameOrEmail" : "auth.username")}</FLabel>
               <div style={{ position:"relative" }}>
                 <User size={14} style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:THEME.text3 }}/>
-                <FInput placeholder={t("auth.usernamePh")} value={username}
+                <FInput placeholder={t(mode === "login" ? "auth.usernameOrEmailPh" : "auth.usernamePh")} value={username}
                   style={{ paddingLeft:34 }} autoComplete="username"
                   onChange={e => { setUsername(e.target.value); setError(""); }}
                   onKeyDown={onEnter}/>
               </div>
             </div>
           )}
-          {(mode === "register" || mode === "forgot") && (
+          {(mode === "register" || (mode === "forgot" && !sent)) && (
             <div>
               <FLabel>{t("auth.email")}</FLabel>
               <FInput type="email" placeholder={t("auth.emailPh")} value={email} autoComplete="email"
                 onChange={e => { setEmail(e.target.value); setError(""); }} onKeyDown={onEnter}/>
             </div>
           )}
-          {mode === "forgot" && (
+          {mode === "forgot" && !sent && (
             <div style={{ fontSize:11, color:THEME.text3, lineHeight:1.5 }}>{t("auth.forgotHint")}</div>
           )}
           {mode === "login"    && pinField(pin, setPin, t("auth.password"), t("auth.passwordPh"))}
           {mode === "register" && pinField(pin, setPin, t("auth.password"), t("auth.newPasswordPh"))}
-          {mode === "reset"    && pinField(pin, setPin, t("auth.newPassword"), t("auth.newPasswordPh"))}
-          {mode === "reset"    && pinField(pin2, setPin2, t("auth.repeatPassword"), t("auth.newPasswordPh"))}
+          {mode === "reset" && !linkInvalid && pinField(pin, setPin, t("auth.newPassword"), t("auth.newPasswordPh"))}
+          {mode === "reset" && !linkInvalid && pinField(pin2, setPin2, t("auth.repeatPassword"), t("auth.newPasswordPh"))}
           {mode === "register" && (
             <div>
               <FLabel>{t("auth.invite")}</FLabel>
@@ -883,18 +910,26 @@ function LoginScreen({ onLogin, onEtfMode }) {
           </div>
         )}
 
-        <button onClick={handle} disabled={!canSubmit}
-          style={{
-            width:"100%", marginTop:16, padding:"13px 0", borderRadius:12,
-            border:"none", background:THEME.accent, color:"#fff",
-            fontSize:13, fontWeight:700, cursor:canSubmit ? "pointer" : "not-allowed",
-            fontFamily:"inherit",
-            opacity: canSubmit ? 1 : 0.4,
-            boxShadow: canSubmit ? "0 4px 20px rgba(59,130,246,0.35)" : "none",
-            transition:"opacity 0.3s ease, box-shadow 0.3s ease",
-          }}>
-          {busy ? <span className="spin">⟳</span> : t(`auth.submit_${mode}`)}
-        </button>
+        {linkInvalid ? (
+          <button onClick={() => switchMode("forgot")}
+            style={{ width:"100%", marginTop:16, padding:"13px 0", borderRadius:12, border:"none",
+              background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+            {t("auth.requestNewLink")}
+          </button>
+        ) : !(mode === "forgot" && sent) && (
+          <button onClick={handle} disabled={!canSubmit}
+            style={{
+              width:"100%", marginTop:16, padding:"13px 0", borderRadius:12,
+              border:"none", background:THEME.accent, color:"#fff",
+              fontSize:13, fontWeight:700, cursor:canSubmit ? "pointer" : "not-allowed",
+              fontFamily:"inherit",
+              opacity: canSubmit ? 1 : 0.4,
+              boxShadow: canSubmit ? "0 4px 20px rgba(59,130,246,0.35)" : "none",
+              transition:"opacity 0.3s ease, box-shadow 0.3s ease",
+            }}>
+            {busy ? <span className="spin">⟳</span> : t(`auth.submit_${mode}`)}
+          </button>
+        )}
 
         {/* ETF Explorer — no login required */}
         {(mode === "login" || mode === "register") && (<>
@@ -6423,22 +6458,23 @@ function AccountSettings() {
     try {
       const u = await userApi.updateMe({ username: uname.trim(), ...(emailChanged ? { email: email.trim(), current_password: curPw } : {}) });
       setMe(u); setEmail(u.email ?? ""); setCurPw(""); say("profile", true, t("profile.saved"));
-    } catch(e) { say("profile", false, e.message); }
+    } catch(e) { say("profile", false, authError(t, e)); }
   };
   const changePassword = async () => {
     if (pwNew !== pwNew2) return say("password", false, t("auth.pinMismatch"));
+    if (pwNew.length < MIN_PASSWORD) return say("password", false, t("auth.err_tooShort"));
     try {
       await userApi.changePassword(pwCur, pwNew, lang);
       setPwCur(""); setPwNew(""); setPwNew2(""); say("password", true, t("profile.pwChanged"));
-    } catch(e) { say("password", false, e.message); }
+    } catch(e) { say("password", false, authError(t, e)); }
   };
   const createInvite = async () => {
     try { const inv = await userApi.createInvite(); setInvites(l => [inv, ...l]); say("invites", null, ""); }
-    catch(e) { say("invites", false, e.message); }
+    catch(e) { say("invites", false, authError(t, e)); }
   };
   const revokeInvite = async code => {
     try { await userApi.revokeInvite(code); setInvites(l => l.filter(i => i.code !== code)); }
-    catch(e) { say("invites", false, e.message); }
+    catch(e) { say("invites", false, authError(t, e)); }
   };
   const copyLink = async code => {
     const link = `${location.origin}/?invite=${code}`;

@@ -251,7 +251,19 @@
     "createOne": "Registrieren",
     "haveAccount": "Bereits ein Konto?",
     "signIn": "Anmelden",
-    "backToLogin": "Zurück zur Anmeldung"
+    "backToLogin": "Zurück zur Anmeldung",
+    "usernameOrEmail": "Benutzername oder E-Mail",
+    "usernameOrEmailPh": "Benutzername oder E-Mail eingeben",
+    "requestNewLink": "Neuen Link anfordern",
+    "err_login": "Benutzername/E-Mail oder Passwort ist falsch.",
+    "err_invite": "Der Einladungscode ist ungültig oder abgelaufen.",
+    "err_link": "Dieser Link ist ungültig oder abgelaufen.",
+    "err_tooMany": "Zu viele Versuche. Bitte in ein paar Minuten erneut.",
+    "err_uname": "Dieser Benutzername ist schon vergeben.",
+    "err_email": "Diese E-Mail-Adresse wird schon verwendet.",
+    "err_emailOk": "Bitte eine gültige E-Mail-Adresse eingeben.",
+    "err_curPw": "Das aktuelle Passwort stimmt nicht.",
+    "err_tooShort": "Das Passwort braucht mindestens 8 Zeichen."
   },
   "profile": {
     "title": "Profil",

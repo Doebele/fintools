@@ -468,7 +468,11 @@ app.post('/api/users/login', async (req, res) => {
   const { username, pin } = req.body;
   if (!username?.trim() || !pin) return err(res, 400, 'username and pin required');
 
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim());
+  // Username or email (as in Budget-Pal). An exact username match wins, so a
+  // username that looks like someone else's address can't shadow their login.
+  const id   = username.trim();
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(id)
+            ?? (id.includes('@') ? db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(normEmail(id)) : undefined);
   if (!user) return err(res, 401, 'Invalid username or PIN');
 
   const ok = await bcrypt.compare(String(pin), user.pin_hash);

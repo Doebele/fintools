@@ -251,7 +251,19 @@
     "createOne": "Create one",
     "haveAccount": "Already have an account?",
     "signIn": "Sign in",
-    "backToLogin": "Back to sign in"
+    "backToLogin": "Back to sign in",
+    "usernameOrEmail": "Username or email",
+    "usernameOrEmailPh": "Enter username or email",
+    "requestNewLink": "Request a new link",
+    "err_login": "Wrong username/email or password.",
+    "err_invite": "The invite code is invalid or has expired.",
+    "err_link": "This link is invalid or has expired.",
+    "err_tooMany": "Too many attempts. Please try again in a few minutes.",
+    "err_uname": "This username is already taken.",
+    "err_email": "This email address is already in use.",
+    "err_emailOk": "Please enter a valid email address.",
+    "err_curPw": "The current password is incorrect.",
+    "err_tooShort": "The password needs at least 8 characters."
   },
   "profile": {
     "title": "Profile",
