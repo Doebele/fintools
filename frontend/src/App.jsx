@@ -12,10 +12,11 @@ import {
   ChevronLeft, Search, TrendingUp, FileDown, Upload, FileUp,
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
   Gauge, Armchair, Info, Clock, FileText, Sun, Moon, Globe,
-  Pin, PinOff,
+  Pin, PinOff, KeyRound,
 } from "lucide-react";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { useTranslation, I18nextProvider } from "react-i18next";
 import i18n from "./i18n/index.js";
 import deFlagUrl from "round-flag-icons/flags/de.svg?url";
@@ -321,6 +322,14 @@ const userApi = {
   invites:        ()                   => apiFetch("/invites"),
   createInvite:   ()                   => apiFetch("/invites", { method:"POST" }),
   revokeInvite:   (code)               => apiFetch(`/invites/${encodeURIComponent(code)}`, { method:"DELETE" }),
+  passkeys:              ()                         => apiFetch("/passkeys"),
+  passkeyRegisterOptions:(current_password)         => apiFetch("/passkeys/register/options", { method:"POST", body: JSON.stringify({ current_password }) }),
+  passkeyRegisterVerify: (credential, device_name, lang) =>
+    apiFetch("/passkeys/register/verify", { method:"POST", body: JSON.stringify({ credential, device_name, lang }) }),
+  deletePasskey:         (id)                       => apiFetch(`/passkeys/${id}`, { method:"DELETE" }),
+  passkeyLoginOptions:   ()                         => apiFetch("/passkeys/login/options", { method:"POST" }),
+  passkeyLoginVerify:    (credential)               =>
+    apiFetch("/passkeys/login/verify", { method:"POST", body: JSON.stringify({ credential }) }).then(keepToken),
   login:    (username, pin)   => apiFetch("/users/login",       { method:"POST", body: JSON.stringify({ username, pin }) }).then(keepToken),
   // apiFetch builds its headers synchronously, so clearing the token right after the call is safe
   logout:   ()                => { const p = apiFetch("/users/logout", { method:"POST" }); _token = null; return p.catch(() => {}); },
@@ -706,7 +715,12 @@ const AUTH_ERRORS = {
   email:   "Email address already in use",
   emailOk: "A valid email address is required",
   curPw:   "Current password is incorrect",
+  pkLogin: "Passkey not accepted",
+  pkReg:   "Passkey could not be verified",
+  pkDup:   "This passkey is already registered",
 };
+// Passkeys need a secure context (https or localhost) and WebAuthn support; otherwise hide the buttons
+const passkeysSupported = () => typeof window !== "undefined" && !!window.PublicKeyCredential && window.isSecureContext;
 const authError = (t, e) => {
   const key = Object.keys(AUTH_ERRORS).find(k => AUTH_ERRORS[k] === e.message);
   return key ? t(`auth.err_${key}`) : e.message;
@@ -775,6 +789,19 @@ function LoginScreen({ onLogin, onEtfMode }) {
     } catch(e) {
       setError(authError(t, e));
       if (mode === "reset" && e.message === AUTH_ERRORS.link) setLinkInvalid(true);
+    }
+    setBusy(false);
+  };
+
+  // Passkey login: the authenticator picks the passkey, so no username is needed
+  const passkeyLogin = async () => {
+    setBusy(true); setError(""); setInfo("");
+    try {
+      const optionsJSON = await userApi.passkeyLoginOptions();
+      const credential  = await startAuthentication({ optionsJSON });
+      onLogin(await userApi.passkeyLoginVerify(credential));
+    } catch(e) {
+      if (e.name !== "NotAllowedError") setError(authError(t, e));   // NotAllowedError = cancelled by the user
     }
     setBusy(false);
   };
@@ -939,6 +966,17 @@ function LoginScreen({ onLogin, onEtfMode }) {
               textTransform:"uppercase", letterSpacing:"0.08em" }}>{t("auth.or")}</span>
             <div style={{ flex:1, height:1, background:THEME.border2 }}/>
           </div>
+          {mode === "login" && passkeysSupported() && (
+            <button onClick={passkeyLogin} disabled={busy}
+              style={{
+                width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
+                border:`1px solid ${THEME.border}`, background:THEME.surface2, color:THEME.text1,
+                fontSize:13, fontWeight:600, cursor: busy ? "wait" : "pointer", fontFamily:"inherit",
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              }}>
+              <KeyRound size={15}/> {t("auth.passkeyLogin")}
+            </button>
+          )}
           <button onClick={onEtfMode}
             style={{
               width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
@@ -6445,12 +6483,16 @@ function AccountSettings({ focus, onProfileSaved }) {
   const [pwNew2,  setPwNew2]  = useState("");
   const [invites, setInvites] = useState([]);
   const [copied,  setCopied]  = useState(null);
+  const [passkeys, setPasskeys] = useState([]);
+  const [pkName,   setPkName]   = useState("");
+  const [pkPw,     setPkPw]     = useState("");   // adding a passkey needs the current password
   const [msg,     setMsg]     = useState({});   // { profile | password | invites: { ok, text } }
   const say = (k, ok, text) => setMsg(m => ({ ...m, [k]: { ok, text } }));
 
   useEffect(() => {
     userApi.me().then(u => { setMe(u); setUname(u.username); setEmail(u.email ?? ""); }).catch(() => {});
     userApi.invites().then(setInvites).catch(() => {});
+    userApi.passkeys().then(setPasskeys).catch(() => {});
   }, []);
 
   // Opened from the email reminder: jump to the profile and put the cursor into the email field
@@ -6476,6 +6518,21 @@ function AccountSettings({ focus, onProfileSaved }) {
       await userApi.changePassword(pwCur, pwNew, lang);
       setPwCur(""); setPwNew(""); setPwNew2(""); say("password", true, t("profile.pwChanged"));
     } catch(e) { say("password", false, authError(t, e)); }
+  };
+  const addPasskey = async () => {
+    try {
+      const optionsJSON = await userApi.passkeyRegisterOptions(pkPw);
+      const credential  = await startRegistration({ optionsJSON });
+      const pk = await userApi.passkeyRegisterVerify(credential, pkName.trim(), lang);
+      setPasskeys(l => [pk, ...l]); setPkName(""); setPkPw(""); say("passkeys", true, t("passkeys.added"));
+    } catch(e) {
+      if (e.name === "NotAllowedError") return;                          // cancelled in the system dialog
+      say("passkeys", false, e.name === "InvalidStateError" ? t("auth.err_pkDup") : authError(t, e));
+    }
+  };
+  const removePasskey = async id => {
+    try { await userApi.deletePasskey(id); setPasskeys(l => l.filter(p => p.id !== id)); }
+    catch(e) { say("passkeys", false, authError(t, e)); }
   };
   const createInvite = async () => {
     try { const inv = await userApi.createInvite(); setInvites(l => [inv, ...l]); say("invites", null, ""); }
@@ -6531,6 +6588,34 @@ function AccountSettings({ focus, onProfileSaved }) {
         disabled={!pwCur || !pwNew || !pwNew2} onClick={changePassword}>{t("profile.changePassword")}</button>
       <div style={{ fontSize:10, color:THEME.text3 }}>{t("profile.pwHint")}</div>
       {note("password")}
+    </div>
+
+    {/* Passkeys */}
+    <div style={section}>
+      <FLabel>{t("passkeys.title")}</FLabel>
+      <div style={{ fontSize:11, color:THEME.text3, lineHeight:1.5 }}>{t("passkeys.hint")}</div>
+      {passkeys.map(pk => (
+        <div key={pk.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 10px",
+          borderRadius:8, background:THEME.surface2, border:`1px solid ${THEME.border}` }}>
+          <KeyRound size={14} style={{ color:THEME.accent, flexShrink:0 }}/>
+          <span style={{ fontSize:12, color:THEME.text1 }}>{pk.device_name || t("passkeys.unnamed")}</span>
+          <span style={{ flex:1, fontSize:10, color:THEME.text3 }}>
+            {t("passkeys.created", { date: fmtDbDate(pk.created_at, lang) })}
+            {pk.last_used_at && <> · {t("passkeys.lastUsed", { date: fmtDbDate(pk.last_used_at, lang) })}</>}
+          </span>
+          <button style={{ ...linkBtn, color:THEME.red }} onClick={() => removePasskey(pk.id)}>{t("passkeys.remove")}</button>
+        </div>
+      ))}
+      {passkeysSupported() ? (<>
+        <FInput value={pkName} onChange={e => setPkName(e.target.value)} maxLength={60} placeholder={t("passkeys.namePh")}/>
+        {pw(pkPw, setPkPw, t("profile.currentPassword"), "current-password")}
+        <button style={{ ...smallBtn, opacity: pkPw ? 1 : 0.45 }} disabled={!pkPw} onClick={addPasskey}>
+          ＋ {t("passkeys.add")}
+        </button>
+      </>) : (
+        <div style={{ fontSize:11, color:THEME.yellow }}>⚠ {t("passkeys.unsupported")}</div>
+      )}
+      {note("passkeys")}
     </div>
 
     {/* Invites */}

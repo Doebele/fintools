@@ -10,8 +10,9 @@
     "stats": "curl -s http://localhost:3001/api/stats  | python3 -m json.tool"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.3",
     "bcrypt": "^5.1.1",
-    "better-sqlite3": "^9.4.3",
+    "better-sqlite3": "^13.0.3",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",
@@ -28,6 +29,6 @@
     "nodemon": "^3.1.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   }
 }

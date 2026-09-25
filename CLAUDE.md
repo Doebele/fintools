@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Self-hosted portfolio tracker. Node 18 + Express + better-sqlite3 backend talking to a Vite-built React 18 SPA, both packaged as Docker containers and orchestrated via `docker-compose`. Designed to run on a Synology NAS but works anywhere Docker does.
+Self-hosted portfolio tracker. Node 22 + Express + better-sqlite3 backend talking to a Vite-built React 18 SPA, both packaged as Docker containers and orchestrated via `docker-compose`. Designed to run on a Synology NAS but works anywhere Docker does.
 
 There are **no tests, no linter, no TypeScript, no CI pipeline**. The repo is two large files (`backend/server.js` ~2,600 lines, `frontend/src/App.jsx` ~9,200 lines) plus Docker plumbing.
 
@@ -68,6 +68,7 @@ Single-file Express app organised by big ASCII-banner sections — search for `/
 3. **Middleware** — helmet, compression, cors, express-rate-limit (`RATE_LIMIT_MAX_REQUESTS`), JSON parser
 4. **USERS / PORTFOLIOS** routes — bcrypt PIN auth, soft-deletes via `deleted_at`. Login/register return a session `token` (row in `sessions`, 30-day TTL); the frontend keeps it in the module-level `_token` (not persisted — reload means re-login) and `apiFetch` sends it as `Authorization: Bearer`. `getUserId(req)` resolves that token — it is the only identity source. Guards live right below it: `requireLogin` (sets `req.uid`), `requireSelf` (`:userId`/`:id` must be the caller — 403), and `requirePortfolio` / `requireTransaction` / `requirePlan` (`:id` must belong to the caller — 404, so foreign ids aren't confirmed). **Every new user-scoped route must use one of them**; `PUT /api/transactions/:id` additionally checks the target `portfolio_id` via `ownsPortfolio()`. `Analytics.jsx` uses raw `fetch` and sends `user.token` itself.
    **Accounts:** registration is invite-only (`invites` table, 6-char codes; an empty DB lets the first account register without one — keep that bootstrap). Set passwords **only via `setPassword()`**: it re-hashes, clears an open reset link and deletes the user's other sessions (all of them after a reset). Reset tokens are stored only as SHA-256, links are built from `APP_BASE_URL` (never the Host header) with the token in the URL fragment; mail goes through `sendMail()` (nodemailer, SMTP from env; no `SMTP_HOST` = logged, not sent). Same concept as Budget-Pal's `feat/passwort-reset`. The login screen switches mode from the URL: `?invite=`, `/forgot-password`, `/reset-password#token=` and then clears it with `history.replaceState`.
+   **Passkeys** (`/api/passkeys/*`, `@simplewebauthn/server` + `/browser` v13, tables `passkeys` and `webauthn_challenges`): same flow as Budget-Pal incl. its review fixes — the challenge is read from the response's `clientDataJSON` and consumed (never "newest open challenge"), `userVerification: required`, adding a passkey needs the current password and mails a notice, a password **reset** (not a change) deletes all passkeys, login/options and verify are rate-limited, device names capped at 60. `rpID`/origins come from `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS`, never the request — a wrong value makes the browser reject every ceremony with `SecurityError` (Budget-Pal shipped with `localhost` in production). Both login paths return `loginResponse(user)`. Synced Apple/Google passkeys keep `counter` at 0, so clone detection via the counter doesn't apply to them.
 5. **TRANSACTIONS / Savings Plans** — BUY/SELL records, `price_usd` is denormalised at insert time using the FX rate of the trade date. `PUT /api/transactions/:id` accepts an optional `portfolio_id` field to move a transaction to a different portfolio atomically.
 6. **SETTINGS** — per-user JSON KV
 7. **QUOTES** — Yahoo proxy + Alpha Vantage fallback + batch endpoint + intraday endpoint
@@ -85,7 +86,7 @@ Key conventions:
 - `fetchYahoo(symbol, range, interval, events?)` is the entry point. It calls `yahooFinance.chart()` and then `ynt2RawChart()` to **convert back to Yahoo's raw `{ chart: { result: [...] } }` shape** because the rest of the server and frontend expect that shape. Don't change the shape — change `ynt2RawChart()` instead.
 - `rangeToPeriod1()` translates Yahoo's "2y"/"1mo"/"ytd"/"max" range strings into the `Date` objects v3 needs.
 - Pass `{ validateResult: false }` as the module-options arg to tolerate Yahoo schema drift.
-- yahoo-finance2 v3 logs `Requires Node >= 22.0.0, found 18.20.8` — harmless warning, library works fine on Node 18. If you bump the Dockerfile to `node:22-alpine` later, the warning goes away.
+- The backend runs on `node:22-alpine` (needed by `@simplewebauthn/server` ≥ 10 and `better-sqlite3` 13). yahoo-finance2 v3 is marked deprecated in favour of v4 (Node 22+) — a possible follow-up, v3 still works. The Dockerfile installs `python3 make g++` only for `npm install` (native modules often have no prebuilt musl/arm64 binary) and removes them in the same layer.
 
 Errors are normalised back to three user-visible messages: `"Yahoo Finance rate limit — try again in a minute"`, `"Symbol "X" not found on Yahoo Finance"`, `"Yahoo Finance request timed out"`. Anything else surfaces raw.
 
@@ -222,6 +223,7 @@ Set in `docker-compose.yml` or via a real `.env` (git-ignored, as are `env.txt`,
 | `AV_API_KEY` | (empty) | Optional Alpha Vantage key for fallback quotes |
 | `TZ` | Europe/Zurich | Backend container timezone (requires `tzdata` package, installed in `backend/Dockerfile`) |
 | `SMTP_HOST` … `SMTP_FROM`, `APP_BASE_URL` | empty / `http://localhost:3002` | Password-reset mail; values from the git-ignored `.env` (template `.env.example`) |
+| `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` | `localhost` / `http://localhost:3002` | Passkey domain binding; production `fintools.doebele12.de` / `https://fintools.doebele12.de` |
 
 Backend timezone is set via `TZ` env var, not a host `/etc/localtime` bind mount — the host path is a macOS symlink into versioned tzdata (e.g. `/var/db/timezone/tz/2025c.1.0/...`) that breaks the container after macOS tzdata updates and blocks `docker compose up` entirely.
 
@@ -235,7 +237,7 @@ Commit directly to `main` for tactical fixes; for non-trivial feature work the c
 
 So you don't go looking for them:
 
-- No tests (`*.test.js`, `*.spec.js`), no Jest/Vitest/Playwright config
+- No tests (`*.test.js`, `*.spec.js`), no Jest/Vitest/Playwright config — the one exception is `backend/scripts/passkey-ceremony-test.js`, a manual passkey check with a software authenticator (run it against a throwaway backend; usage in its header)
 - No ESLint / Prettier config
 - No TypeScript — both backend and frontend are plain JS
 - No CI/CD (no `.github/workflows/`, no fly/render/vercel config)

@@ -263,7 +263,11 @@
     "err_email": "This email address is already in use.",
     "err_emailOk": "Please enter a valid email address.",
     "err_curPw": "The current password is incorrect.",
-    "err_tooShort": "The password needs at least 8 characters."
+    "err_tooShort": "The password needs at least 8 characters.",
+    "passkeyLogin": "Sign in with passkey",
+    "err_pkLogin": "The passkey was not accepted.",
+    "err_pkReg": "The passkey could not be verified. Please try again.",
+    "err_pkDup": "This device already has a passkey for your account."
   },
   "profile": {
     "title": "Profile",
@@ -292,5 +296,17 @@
     "how": "You can add it in your profile in a minute. Your current password confirms the change.",
     "open": "Open profile",
     "later": "Later"
+  },
+  "passkeys": {
+    "title": "Passkeys",
+    "hint": "Sign in without a password using Face ID, Touch ID, Windows Hello or a security key. Adding one needs your current password. “Forgot password” removes all passkeys.",
+    "namePh": "Device name (optional), e.g. MacBook",
+    "add": "Add passkey",
+    "added": "Passkey added.",
+    "remove": "Remove",
+    "unnamed": "Passkey",
+    "created": "added {{date}}",
+    "lastUsed": "last used {{date}}",
+    "unsupported": "This browser can't use passkeys here (needs HTTPS and a current browser)."
   }
 }

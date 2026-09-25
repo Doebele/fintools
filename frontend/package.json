@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
     "d3": "^7.9.0",
     "i18next": "^26.3.0",
     "i18next-browser-languagedetector": "^8.2.1",

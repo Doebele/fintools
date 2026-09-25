@@ -263,7 +263,11 @@
     "err_email": "Diese E-Mail-Adresse wird schon verwendet.",
     "err_emailOk": "Bitte eine gültige E-Mail-Adresse eingeben.",
     "err_curPw": "Das aktuelle Passwort stimmt nicht.",
-    "err_tooShort": "Das Passwort braucht mindestens 8 Zeichen."
+    "err_tooShort": "Das Passwort braucht mindestens 8 Zeichen.",
+    "passkeyLogin": "Mit Passkey anmelden",
+    "err_pkLogin": "Der Passkey wurde nicht akzeptiert.",
+    "err_pkReg": "Der Passkey konnte nicht bestätigt werden. Bitte erneut versuchen.",
+    "err_pkDup": "Dieses Gerät hat schon einen Passkey für dein Konto."
   },
   "profile": {
     "title": "Profil",
@@ -292,5 +296,17 @@
     "how": "Im Profil trägst du sie in einer Minute ein. Zur Bestätigung brauchst du dein aktuelles Passwort.",
     "open": "Zum Profil",
     "later": "Später"
+  },
+  "passkeys": {
+    "title": "Passkeys",
+    "hint": "Anmelden ohne Passwort mit Face ID, Touch ID, Windows Hello oder einem Sicherheitsschlüssel. Zum Hinzufügen brauchst du dein aktuelles Passwort. „Passwort vergessen“ entfernt alle Passkeys.",
+    "namePh": "Gerätename (optional), z. B. MacBook",
+    "add": "Passkey hinzufügen",
+    "added": "Passkey hinzugefügt.",
+    "remove": "Entfernen",
+    "unnamed": "Passkey",
+    "created": "angelegt {{date}}",
+    "lastUsed": "zuletzt {{date}}",
+    "unsupported": "Dieser Browser unterstützt hier keine Passkeys (nötig: HTTPS und ein aktueller Browser)."
   }
 }

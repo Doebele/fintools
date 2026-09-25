@@ -22,6 +22,8 @@ const fetch       = require('node-fetch');
 const path        = require('path');
 const crypto      = require('crypto');
 const nodemailer  = require('nodemailer');
+const { generateRegistrationOptions, verifyRegistrationResponse,
+        generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
 const fs          = require('fs');
 const ExcelJS     = require('exceljs');
 const pdfParse    = require('pdf-parse');
@@ -170,6 +172,25 @@ db.exec(`
     expires_at TEXT    NOT NULL,
     used_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
     used_at    TEXT
+  );
+  -- Passkeys (WebAuthn). credential_id and public_key are base64url.
+  CREATE TABLE IF NOT EXISTS passkeys (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    credential_id TEXT    NOT NULL UNIQUE,
+    public_key    TEXT    NOT NULL,
+    counter       INTEGER NOT NULL DEFAULT 0,   -- stays 0 for synced (Apple/Google) passkeys
+    transports    TEXT,                         -- JSON array
+    device_name   TEXT,
+    created_at    TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at  TEXT
+  );
+  -- One-time challenges of running WebAuthn ceremonies (5 min)
+  CREATE TABLE IF NOT EXISTS webauthn_challenges (
+    challenge  TEXT PRIMARY KEY,               -- base64url, as it comes back in clientDataJSON
+    purpose    TEXT NOT NULL,                  -- 'register' | 'login'
+    user_id    INTEGER,                        -- NULL for login: the user is not known yet
+    expires_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS user_etfs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -386,12 +407,16 @@ const MAILS = {
       'Hallo {name}\n\nFür dein Fintools-Konto wurde ein neues Passwort angefordert. Mit diesem Link setzt du es. Er gilt 30 Minuten und nur einmal:\n\n{link}\n\nHast du das nicht angefordert, ignoriere diese Mail. Dein Passwort bleibt, wie es ist.'],
     changed: ['Fintools: Passwort geändert',
       'Hallo {name}\n\nDas Passwort deines Fintools-Kontos wurde eben geändert. Alle anderen Geräte sind abgemeldet.\n\nWarst du das nicht, setze das Passwort sofort über „Passwort vergessen?“ zurück:\n{link}'],
+    passkey: ['Fintools: neuer Passkey',
+      'Hallo {name}\n\nFür dein Fintools-Konto wurde eben ein neuer Passkey angelegt.\n\nWarst du das nicht, setze das Passwort sofort über „Passwort vergessen?“ zurück. Dabei werden auch alle Passkeys entfernt:\n{link}'],
   },
   en: {
     reset: ['Fintools: reset your password',
       'Hello {name}\n\nA new password was requested for your Fintools account. Use this link to set it. It is valid for 30 minutes and works once:\n\n{link}\n\nIf you did not request this, ignore this email. Your password stays as it is.'],
     changed: ['Fintools: password changed',
       'Hello {name}\n\nThe password of your Fintools account was just changed. All other devices have been signed out.\n\nIf this wasn\'t you, reset your password right away via “Forgot password?”:\n{link}'],
+    passkey: ['Fintools: new passkey',
+      'Hello {name}\n\nA new passkey was just added to your Fintools account.\n\nIf this wasn\'t you, reset your password right away via “Forgot password?”. That also removes all passkeys:\n{link}'],
   },
 };
 const mailText = (lang, kind, name, link) => {
@@ -478,18 +503,20 @@ app.post('/api/users/login', async (req, res) => {
   const ok = await bcrypt.compare(String(pin), user.pin_hash);
   if (!ok) return err(res, 401, 'Invalid username or PIN');
 
-  // Return user + their portfolios
+  log.info('User logged in:', user.username);
+  res.json(loginResponse(user));
+});
+
+// What a successful login returns (password or passkey): user, new session token,
+// portfolios and settings
+function loginResponse(user) {
   const portfolios = db.prepare(`
     SELECT id, name, color, created_at FROM portfolios
     WHERE user_id = ? AND deleted_at IS NULL
     ORDER BY created_at ASC
   `).all(user.id);
-
-  // Load user settings
   const settings = db.prepare('SELECT * FROM settings WHERE user_id = ?').get(user.id);
-
-  log.info('User logged in:', user.username, `(${portfolios.length} portfolios)`);
-  res.json({
+  return {
     id: user.id,
     username: user.username,
     email: user.email,
@@ -500,8 +527,8 @@ app.post('/api/users/login', async (req, res) => {
       api_keys: settings.api_keys ? JSON.parse(settings.api_keys) : {},
       display_ccy: settings.display_ccy,
     }) : '{}') : { data_source: 'yahoo', api_keys: {}, display_ccy: 'USD' },
-  });
-});
+  };
+}
 
 // POST /api/users/logout  — revoke the caller's session token
 app.post('/api/users/logout', (req, res) => {
@@ -575,6 +602,8 @@ app.post('/api/users/password/reset', resetLimiter, async (req, res) => {
   if (!user || !db.prepare('UPDATE users SET password_reset_hash=NULL WHERE id=? AND password_reset_hash=?').run(user.id, hash).changes)
     return err(res, 400, 'This link is invalid or has expired.');
   await setPassword(user.id, new_password);
+  // The reset is the account-recovery path: a passkey planted with a stolen session must not survive it
+  db.prepare('DELETE FROM passkeys WHERE user_id=?').run(user.id);
   if (user.email) sendMail(user.email, mailText(lang, 'changed', user.username, `${APP_BASE_URL}/forgot-password`));
   res.json({ ok: true });
 });
@@ -605,6 +634,130 @@ app.delete('/api/invites/:code', requireLogin, (req, res) => {
   const r = db.prepare('DELETE FROM invites WHERE code=? AND created_by=? AND used_at IS NULL')
               .run(normInvite(req.params.code), req.uid);
   if (!r.changes) return err(res, 404, 'Invite not found');
+  res.json({ ok: true });
+});
+
+// ── Passkeys (WebAuthn) ──────────────────────────────────────────────────────
+// Same flow as Budget-Pal (verified live there), including its review fixes:
+//  - a response's challenge is read from its own clientDataJSON and consumed —
+//    never "the newest open challenge", which breaks parallel logins and lets
+//    anyone spamming the open options endpoint block every passkey login
+//  - adding a passkey needs the current password and sends a notice mail, and
+//    a password reset deletes all passkeys (reset is the recovery path)
+//  - userVerification "required": a PIN-less security key alone must not log in
+// rpID/origins come from config (WEBAUTHN_*), never from the request.
+const RP_ID      = process.env.WEBAUTHN_RP_ID || 'localhost';
+const RP_ORIGINS = (process.env.WEBAUTHN_ORIGINS || 'http://localhost:3002').split(',').map(s => s.trim()).filter(Boolean);
+const b64url     = bytes => Buffer.from(bytes).toString('base64url');
+const transportsOf = row => row.transports ? JSON.parse(row.transports) : undefined;
+
+function storeChallenge(challenge, purpose, userId = null) {
+  db.prepare(`DELETE FROM webauthn_challenges WHERE expires_at < datetime('now')`).run();
+  db.prepare(`INSERT INTO webauthn_challenges (challenge, purpose, user_id, expires_at)
+              VALUES (?, ?, ?, datetime('now', '+5 minutes'))`).run(challenge, purpose, userId);
+}
+
+// The challenge this response answers, taken from its clientDataJSON and deleted
+// on the spot (one-time use). null if unknown, expired, used or for another purpose/user.
+function takeChallenge(credential, purpose, userId = null) {
+  let challenge;
+  try { challenge = JSON.parse(Buffer.from(String(credential?.response?.clientDataJSON ?? ''), 'base64url')).challenge; }
+  catch { return null; }
+  if (typeof challenge !== 'string') return null;
+  const r = db.prepare(`DELETE FROM webauthn_challenges
+                        WHERE challenge=? AND purpose=? AND user_id IS ? AND expires_at >= datetime('now')`)
+              .run(challenge, purpose, userId);
+  return r.changes ? challenge : null;
+}
+
+const passkeyRows = uid => db.prepare(`SELECT id, device_name, created_at, last_used_at FROM passkeys
+                                       WHERE user_id=? ORDER BY created_at DESC`).all(uid);
+const passkeyAddLimiter     = limit(5, 5, req => `user:${req.uid}`);   // guessing the current password
+const passkeyOptionsLimiter = limit(30, 1);
+const passkeyVerifyLimiter  = limit(30, 1);
+
+// POST /api/passkeys/register/options  — {current_password}
+app.post('/api/passkeys/register/options', requireLogin, passkeyAddLimiter, async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.uid);
+  if (!await bcrypt.compare(String(req.body?.current_password ?? ''), user.pin_hash))
+    return err(res, 400, 'Current password is incorrect');
+  const options = await generateRegistrationOptions({
+    rpName: 'Fintools', rpID: RP_ID,
+    userID: Buffer.from(String(user.id)), userName: user.email || user.username, userDisplayName: user.username,
+    attestationType: 'none',
+    // Don't register the same authenticator twice
+    excludeCredentials: db.prepare('SELECT credential_id, transports FROM passkeys WHERE user_id=?').all(req.uid)
+      .map(c => ({ id: c.credential_id, transports: transportsOf(c) })),
+    // Discoverable credential: login needs no username, the authenticator picks the passkey
+    authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+  });
+  storeChallenge(options.challenge, 'register', req.uid);
+  res.json(options);
+});
+
+// POST /api/passkeys/register/verify  — {credential, device_name, lang}
+app.post('/api/passkeys/register/verify', requireLogin, async (req, res) => {
+  const { credential, device_name, lang } = req.body ?? {};
+  const challenge = takeChallenge(credential, 'register', req.uid);
+  if (!challenge) return err(res, 400, 'Passkey could not be verified');
+  let cred;
+  try {
+    const v = await verifyRegistrationResponse({ response: credential, expectedChallenge: challenge,
+      expectedOrigin: RP_ORIGINS, expectedRPID: RP_ID, requireUserVerification: true });
+    if (!v.verified) throw new Error('not verified');
+    cred = v.registrationInfo.credential;
+  } catch(e) {
+    log.warn('Passkey registration rejected:', e.message);
+    return err(res, 400, 'Passkey could not be verified');
+  }
+  try {
+    db.prepare(`INSERT INTO passkeys (user_id, credential_id, public_key, counter, transports, device_name)
+                VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(req.uid, cred.id, b64url(cred.publicKey), cred.counter,
+           cred.transports ? JSON.stringify(cred.transports) : null,
+           String(device_name ?? '').trim().slice(0, 60) || null);
+  } catch { return err(res, 409, 'This passkey is already registered'); }
+  const user = db.prepare('SELECT username, email FROM users WHERE id=?').get(req.uid);
+  if (user.email) sendMail(user.email, mailText(lang, 'passkey', user.username, `${APP_BASE_URL}/forgot-password`));
+  res.status(201).json(passkeyRows(req.uid)[0]);
+});
+
+// POST /api/passkeys/login/options  — open; no user yet, the authenticator chooses
+app.post('/api/passkeys/login/options', passkeyOptionsLimiter, async (req, res) => {
+  const options = await generateAuthenticationOptions({ rpID: RP_ID, userVerification: 'required' });
+  storeChallenge(options.challenge, 'login');
+  res.json(options);
+});
+
+// POST /api/passkeys/login/verify  — {credential} → same answer as /api/users/login
+app.post('/api/passkeys/login/verify', passkeyVerifyLimiter, async (req, res) => {
+  const { credential } = req.body ?? {};
+  const challenge = takeChallenge(credential, 'login');
+  if (!challenge) return err(res, 400, 'Passkey could not be verified');
+  const pk = db.prepare('SELECT * FROM passkeys WHERE credential_id=?').get(String(credential?.id ?? ''));
+  if (!pk) return err(res, 401, 'Passkey not accepted');
+  let v;
+  try {
+    v = await verifyAuthenticationResponse({ response: credential, expectedChallenge: challenge,
+      expectedOrigin: RP_ORIGINS, expectedRPID: RP_ID, requireUserVerification: true,
+      credential: { id: pk.credential_id, publicKey: Buffer.from(pk.public_key, 'base64url'),
+                    counter: pk.counter, transports: transportsOf(pk) } });
+    if (!v.verified) throw new Error('not verified');
+  } catch(e) {
+    log.warn('Passkey login rejected:', e.message);
+    return err(res, 401, 'Passkey not accepted');
+  }
+  db.prepare('UPDATE passkeys SET counter=?, last_used_at=CURRENT_TIMESTAMP WHERE id=?').run(v.authenticationInfo.newCounter, pk.id);
+  const user = db.prepare('SELECT * FROM users WHERE id=?').get(pk.user_id);
+  log.info('User logged in (passkey):', user.username);
+  res.json(loginResponse(user));
+});
+
+app.get('/api/passkeys', requireLogin, (req, res) => res.json(passkeyRows(req.uid)));
+
+app.delete('/api/passkeys/:id', requireLogin, (req, res) => {
+  const r = db.prepare('DELETE FROM passkeys WHERE id=? AND user_id=?').run(req.params.id, req.uid);
+  if (!r.changes) return err(res, 404, 'Passkey not found');
   res.json({ ok: true });
 });
 

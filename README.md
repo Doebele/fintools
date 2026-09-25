@@ -93,6 +93,7 @@ Configure a local or cloud AI model for PDF parsing in the Settings dialog:
 - **Invite-only** — new accounts need a one-time invite code (6 characters, e.g. `K7M-Q2P`, valid 7 days). Every logged-in user creates codes under Settings → *Invitations* and can copy an invite link (`/?invite=CODE`) or revoke unused codes. The very first account on an empty database needs no code.
 - **Profile** — Settings → *Profile*: change username and email. Changing the email requires the current password (it decides where reset links go).
 - **Passwords** — at least 8 characters for new or changed passwords (existing short PINs keep working). *Change password* signs out every other device and sends a notice mail.
+- **Passkeys** — sign in without a password via Face ID, Touch ID, Windows Hello or a security key ("Sign in with passkey" on the login screen). Add them under Settings → *Passkeys*; adding one needs the current password and sends a notice mail. User verification is required, and a password reset removes all passkeys (reset is the recovery path). Needs HTTPS (or localhost) and `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` matching the public URL.
 - **Forgot password** — the login screen sends a reset link to the account's email: valid 30 minutes, works once, only its SHA-256 is stored, the token travels in the URL fragment. The answer never reveals whether an address exists. After a reset every session ends.
 - Mail goes out via SMTP (e.g. a Strato mailbox, see [Configuration](#configuration)); without `SMTP_HOST` nothing is sent. The concept matches Budget-Pal's password reset.
 
@@ -143,6 +144,7 @@ All options are environment variables (set in `docker-compose.yml`):
 | `SMTP_HOST` / `SMTP_PORT` | _(empty)_ / 465 | Mailbox for password-reset mails (Strato: `smtp.strato.de`, 465 = SSL, else STARTTLS). Empty = no mail |
 | `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | _(empty)_ | Mailbox login and sender address |
 | `APP_BASE_URL` | `http://localhost:3002` | Base for links in mails — set to the public URL in production; never taken from the request |
+| `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` | `localhost` / `http://localhost:3002` | Passkey domain binding: bare host and full origin(s) the app is served from |
 
 Secrets such as `SMTP_PASSWORD` go into a git-ignored `.env` next to `docker-compose.yml` (template: `.env.example`), never into the compose file.
 
@@ -202,6 +204,9 @@ docker restart portfolio-backend-v3
 | POST | `/api/users/password/forgot` | `{email}` — always 202, mails a reset link if the account exists |
 | POST | `/api/users/password/reset` | `{token, new_password}` — link works once, every session ends |
 | GET / POST / DELETE | `/api/invites[/:code]` | Own invite codes: list, create (max. 10 open), revoke unused |
+| POST | `/api/passkeys/register/options` · `/verify` | Add a passkey (`current_password` required) |
+| POST | `/api/passkeys/login/options` · `/verify` | Passkey login (open, rate-limited) → same answer as `/api/users/login` |
+| GET / DELETE | `/api/passkeys[/:id]` | List / remove own passkeys |
 
 All user-scoped endpoints (portfolios, transactions, plans, rebalancing targets, settings, tools, saved ETFs, CSV import/export) require `Authorization: Bearer <token>` from login and only touch the caller's own data; tokens are valid for 30 days.
 
@@ -284,7 +289,7 @@ browser  ──►  :3002  nginx (React SPA)
 
 | Layer | Technology |
 |---|---|
-| Runtime | Node.js 18 |
+| Runtime | Node.js 22 |
 | API | Express 4 |
 | Database | SQLite via better-sqlite3 |
 | Quotes | yahoo-finance2 v3 |

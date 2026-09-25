@@ -30,6 +30,10 @@ services:
       SMTP_FROM:     "${SMTP_FROM:-}"
       # Base for links in mails — fixed, never taken from the request's Host header
       APP_BASE_URL:  "${APP_BASE_URL:-http://localhost:3002}"
+      # Passkeys are bound to the domain: rpID = bare host, origins = full URLs the app
+      # is served from. Fixed per deployment, never taken from the request.
+      WEBAUTHN_RP_ID:   "${WEBAUTHN_RP_ID:-localhost}"
+      WEBAUTHN_ORIGINS: "${WEBAUTHN_ORIGINS:-http://localhost:3002}"
     networks:
       - portfolio-network-v3
     healthcheck:

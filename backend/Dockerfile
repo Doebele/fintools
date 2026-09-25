@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:22-alpine
 
 # tzdata so the TZ env var (set in docker-compose.yml) actually takes effect
 RUN apk add --no-cache tzdata
@@ -8,9 +8,13 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
-# Install deps first (layer cache)
+# Install deps first (layer cache). Native modules (better-sqlite3, bcrypt) may
+# have no prebuilt binary for this Node/musl/arch combo, so the compilers are
+# installed for this step only and removed again in the same layer.
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && npm install --omit=dev && npm cache clean --force \
+ && apk del .build-deps
 
 # Copy source
 COPY server.js .
