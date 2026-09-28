@@ -754,6 +754,11 @@ function LoginScreen({ onLogin, onEtfMode }) {
   const [sent,         setSent]         = useState(false);   // forgot: link requested → hide the form
   const [linkInvalid,  setLinkInvalid]  = useState(false);   // reset: token rejected → offer a new link
   const [disclaimerOk, setDisclaimerOk] = useState(false);
+  // Registration is invite-only: offer it only to invite links, or on an empty DB (first account)
+  const [canRegister,  setCanRegister]  = useState(!!start.invite);
+  useEffect(() => {
+    if (!start.invite) fetch("/api/health").then(r => r.json()).then(h => h.users === 0 && setCanRegister(true)).catch(() => {});
+  }, []);
 
   const switchMode = (m) => {
     setMode(m); setDisclaimerOk(false); setError(""); setInfo(""); setPin(""); setPin2("");
@@ -992,7 +997,7 @@ function LoginScreen({ onLogin, onEtfMode }) {
         </>)}
 
         <div style={{ textAlign:"center", marginTop:16, fontSize:12, color:THEME.text3 }}>
-          {mode === "login" ? (
+          {mode === "login" ? (canRegister &&
             <>{t("auth.noAccount")}{" "}
               <button onClick={() => switchMode("register")} style={linkBtn}>{t("auth.createOne")}</button>
             </>
