@@ -51,7 +51,8 @@ const sameLayout = (a, b) => JSON.stringify(cleanLayout(a).sort((p,q)=>p.i.local
                           === JSON.stringify(cleanLayout(b).sort((p,q)=>p.i.localeCompare(q.i)));
 
 // ── Saved views: server for logged-in users, localStorage otherwise ─────────
-// Shape { views: { name: layout }, active: "preset:x" | name, current: layout }
+// Shape { views: { name: layout }, presets: { presetKey: layout }, active: "preset:x" | name, current: layout }
+// `presets` holds the user's edits of the built-in presets; deleting an entry restores the default.
 function useDetailViews(user) {
   const [state, setState] = useState(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
@@ -364,7 +365,9 @@ export default function InstrumentDetail({
   const [vs, setVs] = useDetailViews(user);
   const views  = vs.views ?? {};
   const active = vs.active ?? DEFAULT_KEY;
-  const viewLayout = key => key?.startsWith("preset:") ? PRESETS[key.slice(7)] : views[key];
+  const presetEdits = vs.presets ?? {};
+  const viewLayout = key => key?.startsWith("preset:")
+    ? (presetEdits[key.slice(7)] ?? PRESETS[key.slice(7)]) : views[key];
   const layout = cleanLayout(vs.current ?? viewLayout(active) ?? PRESETS.snapshot);
   const modified = !sameLayout(layout, viewLayout(active) ?? []);
   const setLayout = l => setVs(s => ({ ...s, current: cleanLayout(l) }));
@@ -374,6 +377,14 @@ export default function InstrumentDetail({
     if (!name) return;
     setVs(s => ({ ...s, views:{ ...(s.views ?? {}), [name]: layout }, active:name, current:layout }));
   };
+  // Save the current arrangement into the active view — presets included (as an edit)
+  const saveActive = () => setVs(s => active.startsWith("preset:")
+    ? { ...s, presets:{ ...(s.presets ?? {}), [active.slice(7)]: layout } }
+    : { ...s, views:{ ...(s.views ?? {}), [active]: layout } });
+  const resetPreset = k => setVs(s => {
+    const p = { ...(s.presets ?? {}) }; delete p[k];
+    return { ...s, presets:p, ...(s.active === `preset:${k}` ? { current: cleanLayout(PRESETS[k]) } : {}) };
+  });
   const deleteView = name => setVs(s => {
     const v = { ...(s.views ?? {}) }; delete v[name];
     return { ...s, views:v, ...(s.active === name ? { active:DEFAULT_KEY } : {}) };
@@ -692,8 +703,17 @@ export default function InstrumentDetail({
             <div className="overlay-card" style={{ position:"absolute", top:"calc(100% + 4px)", left:0, width:260, zIndex:50, padding:"6px 0" }}>
               <div className="label" style={{ padding:"6px 12px 4px" }}>{t("detail.presets")}</div>
               {Object.keys(PRESETS).map(k => (
-                <button key={k} className="menu-row" onClick={() => { selectView(`preset:${k}`); setMenu(null); }}
-                  style={{ fontWeight: active === `preset:${k}` ? 600 : 400 }}>{t(`detail.preset_${k}`)}</button>
+                <div key={k} style={{ display:"flex", alignItems:"center" }}>
+                  <button className="menu-row" onClick={() => { selectView(`preset:${k}`); setMenu(null); }}
+                    style={{ flex:1, fontWeight: active === `preset:${k}` ? 600 : 400 }}>
+                    {t(`detail.preset_${k}`)}
+                    {presetEdits[k] && <span style={{ fontSize:10, fontWeight:400, color:T.text3 }}>{t("detail.edited")}</span>}
+                  </button>
+                  {presetEdits[k] && (
+                    <button className="menu-row" title={t("detail.resetPreset")} onClick={() => resetPreset(k)}
+                      style={{ width:"auto", padding:"6px 10px" }}><RefreshCw size={12}/></button>
+                  )}
+                </div>
               ))}
               {Object.keys(views).length > 0 && <div className="label" style={{ padding:"10px 12px 4px" }}>{t("detail.ownViews")}</div>}
               {Object.keys(views).map(n => renaming === n ? (
@@ -721,9 +741,14 @@ export default function InstrumentDetail({
           )}
         </div>
         {modified && (
-          <button className="btn" onClick={() => selectView(active)} title={t("detail.resetTitle")} style={{ padding:"5px 8px" }}>
-            <RefreshCw size={12}/>
-          </button>
+          <div className="btn-row">
+            <button className="btn primary" onClick={saveActive} title={t("detail.saveActiveTitle", { name:viewLabel(active) })}>
+              {t("detail.save")}
+            </button>
+            <button className="btn" onClick={() => selectView(active)} title={t("detail.resetTitle")} style={{ padding:"5px 8px" }}>
+              <RefreshCw size={12}/>
+            </button>
+          </div>
         )}
         <div style={{ position:"relative" }} onClick={e => e.stopPropagation()}>
           <button className="btn" onClick={() => setMenu(m => m === "panels" ? null : "panels")} disabled={!hidden.length}>

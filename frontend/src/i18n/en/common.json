@@ -338,7 +338,7 @@
     "save": "Save",
     "rename": "Rename",
     "delete": "Delete",
-    "resetTitle": "Restore the saved layout of this view",
+    "resetTitle": "Discard changes",
     "addPanel": "Panel",
     "reload": "Reload data",
     "viewsHint": "Views apply to every instrument",
@@ -435,6 +435,9 @@
     "country": "Country",
     "employees": "Employees",
     "noNews": "No recent news.",
-    "inEtf": "in"
+    "inEtf": "in",
+    "edited": "edited",
+    "resetPreset": "Reset to default",
+    "saveActiveTitle": "Save changes to “{{name}}” — applies to every instrument"
   }
 }

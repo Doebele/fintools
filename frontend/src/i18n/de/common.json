@@ -338,7 +338,7 @@
     "save": "Speichern",
     "rename": "Umbenennen",
     "delete": "Löschen",
-    "resetTitle": "Gespeicherte Anordnung dieser Ansicht wiederherstellen",
+    "resetTitle": "Änderungen verwerfen",
     "addPanel": "Panel",
     "reload": "Daten neu laden",
     "viewsHint": "Ansichten gelten für alle Instrumente",
@@ -435,6 +435,9 @@
     "country": "Land",
     "employees": "Mitarbeitende",
     "noNews": "Keine aktuellen News.",
-    "inEtf": "im"
+    "inEtf": "im",
+    "edited": "geändert",
+    "resetPreset": "Auf Standard zurücksetzen",
+    "saveActiveTitle": "Änderungen in „{{name}}“ speichern – gilt für alle Instrumente"
   }
 }
