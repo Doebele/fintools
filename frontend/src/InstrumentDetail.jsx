@@ -20,8 +20,8 @@ const LS_KEY = "pp-detail-views";
 const COLS = 12, ROW_H = 36;
 
 // ── Panels ───────────────────────────────────────────────────────────────────
-const PANEL_IDS = ["chart","position","perf","treemap","tx","history","divs","short","stats","analysts","profile","news"];
-const MIN = { chart:[4,5], treemap:[4,5], news:[3,5], profile:[3,4] };   // [minW, minH], default [3,3]
+const PANEL_IDS = ["chart","position","perf","treemap","bars","tx","history","divs","short","stats","analysts","profile","news"];
+const MIN = { chart:[4,5], treemap:[4,5], bars:[4,5], news:[3,5], profile:[3,4] };   // [minW, minH], default [3,3]
 
 // ── Presets: fixed views, the same for every instrument ─────────────────────
 const PRESETS = {
@@ -320,6 +320,25 @@ function HistoryTable({ symbol, ccy, loc }) {
   );
 }
 
+// ── Panel: the portfolio/ETF bar chart, with its Performance / weight switch ──
+function BarsPanel({ symbol, render }) {
+  const { t } = useTranslation();
+  const [sub, setSub] = useState("perf");
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100%" }}>
+      <div style={{ padding:"8px 12px", flexShrink:0 }}>
+        <div className="rail-density-row" style={{ display:"inline-flex" }}>
+          {[["perf", t("nav.performance")], ["size", t("chart.byWeight")]].map(([k, label]) => (
+            <button key={k} className={"rail-density-btn" + (sub === k ? " active" : "")}
+              onClick={() => setSub(k)} style={{ padding:"3px 10px" }}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex:1, minHeight:0 }}>{render(symbol, sub)}</div>
+    </div>
+  );
+}
+
 // ── Grid panel chrome ────────────────────────────────────────────────────────
 const Panel = ({ title, sub, onRemove, children, scroll=true }) => (
   <div style={{ height:"100%", display:"flex", flexDirection:"column", background:T.surface, overflow:"hidden" }}>
@@ -339,7 +358,7 @@ const Panel = ({ title, sub, onRemove, children, scroll=true }) => (
 // ════════════════════════════════════════════════════════════════════════════
 export default function InstrumentDetail({
   symbol, user, quote, positions = [], transactions = [], portfolios = [],
-  currency = "USD", rates = {}, perfColor, renderTreemap, treemapTitle, extraKpis, onClose,
+  currency = "USD", rates = {}, perfColor, renderTreemap, renderBars, contextTitle, extraKpis, onClose,
 }) {
   const { t, i18n } = useTranslation();
   const loc = i18n.language?.startsWith("de") ? "de-DE" : "en-US";
@@ -480,6 +499,8 @@ export default function InstrumentDetail({
       } },
     treemap: { sub:t("detail.sub_treemap"), scroll:false,
       body: () => renderTreemap ? renderTreemap(symbol) : <Empty>{t("detail.notHeld")}</Empty> },
+    bars: { sub:t("detail.sub_treemap"), scroll:false,
+      body: () => renderBars ? <BarsPanel symbol={symbol} render={renderBars}/> : <Empty>{t("detail.notHeld")}</Empty> },
     tx: { sub: transactions.length ? t("detail.sub_tx", { n:transactions.length }) : null,
       body: () => txSorted.length ? (
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -783,7 +804,9 @@ export default function InstrumentDetail({
             className="detail-grid">
             {layout.map(it => (
               <div key={it.i}>
-                <Panel title={it.i === "treemap" && treemapTitle ? treemapTitle : t(`detail.p_${it.i}`)} sub={panels[it.i].sub} scroll={panels[it.i].scroll !== false}
+                <Panel title={it.i === "treemap" ? (contextTitle ?? t("detail.p_treemap"))
+                  : it.i === "bars" ? `${contextTitle ?? t("detail.p_treemap")} · ${t("detail.barsSuffix")}`
+                  : t(`detail.p_${it.i}`)} sub={panels[it.i].sub} scroll={panels[it.i].scroll !== false}
                   onRemove={() => removePanel(it.i)}>
                   {panels[it.i].body()}
                 </Panel>

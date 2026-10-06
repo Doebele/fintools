@@ -438,6 +438,8 @@
     "inEtf": "in",
     "edited": "edited",
     "resetPreset": "Reset to default",
-    "saveActiveTitle": "Save changes to “{{name}}” — applies to every instrument"
+    "saveActiveTitle": "Save changes to “{{name}}” — applies to every instrument",
+    "barsSuffix": "bar chart",
+    "p_bars": "In the portfolio · bar chart"
   }
 }

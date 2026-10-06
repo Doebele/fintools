@@ -438,6 +438,8 @@
     "inEtf": "im",
     "edited": "geändert",
     "resetPreset": "Auf Standard zurücksetzen",
-    "saveActiveTitle": "Änderungen in „{{name}}“ speichern – gilt für alle Instrumente"
+    "saveActiveTitle": "Änderungen in „{{name}}“ speichern – gilt für alle Instrumente",
+    "barsSuffix": "Balken",
+    "p_bars": "Im Portfolio · Balken"
   }
 }

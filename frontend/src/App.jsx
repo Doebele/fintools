@@ -2490,7 +2490,7 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
 // ════════════════════════════════════════════════════════════════════════════
 // BAR CHART VIEW  (ported from v2, now multi-portfolio aware)
 // ════════════════════════════════════════════════════════════════════════════
-function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, onCellLeave, onCellClick, subView="perf" }) {
+function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, onCellLeave, onCellClick, highlight, subView="perf" }) {
   const { t } = useTranslation();
   const ref   = useRef(null);
   const { w, h } = useSize(ref);
@@ -2629,7 +2629,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
             const GAP=2,rx=0;
             const showPerf=barH>18&&bw>24, showSym=bw>26, showVal=bw>60;
             return (
-              <g key={key} onMouseEnter={e=>onCellHover(e,node)} onMouseLeave={onCellLeave} onClick={onCellClick && (()=>onCellClick(node))} style={{cursor:"pointer"}}>
+              <g key={key} onMouseEnter={e=>onCellHover(e,node)} onMouseLeave={onCellLeave} onClick={onCellClick && (()=>onCellClick(node))} style={{cursor:"pointer", opacity: highlight && node.symbol!==highlight ? 0.25 : 1}}>
                 <rect x={x+GAP/2} y={barY} width={Math.max(0,bw-GAP)} height={Math.max(0,barH)} fill={bg} rx={rx}/>
                 {showPerf&&perf!=null&&(
                   <text x={x+bw/2} y={isPos?barY+13:barY+barH-5} textAnchor="middle"
@@ -8331,7 +8331,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
               <InstrumentDetail
                 symbol={detailSymbol} user={user} quote={quotes[detailSymbol]}
                 currency={currency} rates={rates} perfColor={getPerfColor}
-                treemapTitle={`${t("detail.inEtf")} ${selectedTicker}`}
+                contextTitle={`${t("detail.inEtf")} ${selectedTicker}`}
                 extraKpis={node ? [
                   { label:`${t("detail.weightIn")} ${selectedTicker}`, value:`${(node.weight ?? 0).toFixed(2)} %` },
                 ] : null}
@@ -8340,6 +8340,12 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                     onCellHover={handleCellHover} onCellLeave={handleCellLeave}
                     onCellClick={c => openDetail(c.symbol)}
                     currency={currency} rates={rates} colorMode="market"/>
+                )}
+                renderBars={(sym, sub) => (
+                  <BarChartView nodes={nodes} highlight={sym} subView={sub}
+                    currency={currency} rates={rates} colorMode="market" period={period}
+                    onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                    onCellClick={c => openDetail(c.symbol)}/>
                 )}
                 onClose={() => setDetailSymbol(null)}/>
             );
@@ -9546,6 +9552,12 @@ export default function App() {
                     onCellHover={handleCellHover} onCellLeave={handleCellLeave}
                     onCellClick={c => openDetail(c.symbol)}
                     currency={currency} rates={rates} colorMode={colorMode}/>
+                )}
+                renderBars={(sym, sub) => (
+                  <BarChartView nodes={aggregatedNodes} highlight={sym} subView={sub}
+                    currency={currency} rates={rates} colorMode={colorMode} period={period}
+                    onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                    onCellClick={c => openDetail(c.symbol)}/>
                 )}
                 onClose={() => setDetailSymbol(null)}/>
             )}
