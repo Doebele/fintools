@@ -160,4 +160,5 @@ Legende: **übernehmen** = Pal-Komponente existiert und passt direkt ·
 - [x] Schritt 4: Dialog — `Modal` als Pal-Dialog (Kopf, Inhalt, Fuß), alle Dialoge inkl. Löschbestätigungen und Import/Export; Felder (`FLabel`/`FInput`/`FSelect`) und Buttons in den Dialogen
 - [x] Icons: Iconoir statt Lucide (`src/icons.jsx`, Strich 1,5), `lucide-react` entfernt; in Figma als Komponenten „Icon/…“ (Abschnitt „Icons · Iconoir“), Rail-Button, Icon-Button und Tab mit Austausch-Property „Icon“
 - [x] Fix: Dockerfile kopiert `public/` (selbst gehostete Schriften wurden vorher nicht ausgeliefert)
-- [ ] Schritt 5: Ansichten (inkl. Login-Bildschirm, Treemap-Zellen, Summary-Leiste, Tabellen, Diagramme)
+- [x] Schritt 5: Ansichten — Login-Karte (Wortmarke, `.btn`), Treemap mit 1px-Haarlinien, Summary-Leisten über `KpiTile`/`PerfLegend`, Hover-Tooltip als `overlay-card`, Tabellenköpfe im Micro-Label-Stil, alle Flächenradien auf 0/2, Chart-Overlays und Vergleich-Picker mit Radius 12, `rgba(255,255,255,…)` auf Theme-Variablen, aktive Schalter in Tinte
+- [ ] Offen: Sichtprüfung der eingeloggten Portfolio-Ansichten (Performance, Transaktionen, Analytics), Datenfarben der Charts (Serienpaletten bleiben bewusst bunt), englische Leerzustände ohne `t()`
