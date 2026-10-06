@@ -2,7 +2,7 @@
  * Portfolio Analytics — Correlation · Monte Carlo · Rebalancing · Dividend Calendar
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { PieChart, ArrowLeftRight, Info } from "lucide-react";
+import { PieChart, ArrowLeftRight, Info } from "./icons.jsx";
 import * as d3 from "d3";
 
 // Persistent UI settings store (survives ETF switches within session)

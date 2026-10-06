@@ -157,5 +157,7 @@ Legende: **übernehmen** = Pal-Komponente existiert und passt direkt ·
   Wert-Zelle, Leerzustand, Ladeanzeige; dazu Nutzer-Popup und Instrument-Popover)
 - [x] Schritt 2: globale Klassen (`label`, `num`, `btn`, `btn-row`, `overlay-card`, `menu-row`, `rail-hint`), Rail-/Segment-/Tab-/Avatar-Klassen auf Pal-Regeln, Variablen `--hover`, `--brand`, `--overlay`
 - [x] Schritt 3: Rail und ETF-Rail, Nutzer-Popup (mit „Einstellungen“), Tooltip-Blase, Rail-Hinweise
-- [ ] Schritt 4: Dialog
+- [x] Schritt 4: Dialog — `Modal` als Pal-Dialog (Kopf, Inhalt, Fuß), alle Dialoge inkl. Löschbestätigungen und Import/Export; Felder (`FLabel`/`FInput`/`FSelect`) und Buttons in den Dialogen
+- [x] Icons: Iconoir statt Lucide (`src/icons.jsx`, Strich 1,5), `lucide-react` entfernt
+- [x] Fix: Dockerfile kopiert `public/` (selbst gehostete Schriften wurden vorher nicht ausgeliefert)
 - [ ] Schritt 5: Ansichten

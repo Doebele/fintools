@@ -152,6 +152,12 @@ Classes defined in `useGlobalStyles()` must be used consistently across the enti
 - **`overlay-card`** — Surface for every overlay (tooltip bubble, user popup); **`menu-row[.danger]`** — rows inside it.
 - **`rail-hint`** — One-line inverted hint next to the collapsed rail (`SidebarTip`, `RailBtn`).
 - **`label`** (9px caps micro label), **`num`** (mono, tabular figures), **`avatar`**.
+- **`Modal`** (`title`, `onClose`, `width`, `footer`, `zIndex`) is the only dialog shell: `dialog-backdrop` (`--overlay`, no blur) + `overlay-card dialog` with `dialog-head` (lowercase thin title, close icon), `dialog-body`, optional `dialog-foot`. Confirmations (`DeleteConfirmOverlay`, `DeleteEtfModal`) use it too; don't build new backdrops.
+- **`FLabel` / `FInput` / `FSelect`** render `field-label` / `field` (radius 2, focus border `--fg-1`).
+
+#### Icons
+
+All icons come from **Iconoir** (`iconoir-react`) through `frontend/src/icons.jsx`, which re-exports them under the names the code already uses and accepts `size` / `color` / `strokeWidth` (default 1.5). Import icons only from `./icons.jsx`; to add one, add a line there. Do not reintroduce `lucide-react` or mix icon sets.
 
 Key CSS custom properties for table row backgrounds (always opaque — required so sticky/pinned cells don't bleed through during horizontal scroll):
 

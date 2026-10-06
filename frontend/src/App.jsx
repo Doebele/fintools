@@ -13,7 +13,7 @@ import {
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
   Gauge, Armchair, Info, Clock, FileText, Sun, Moon, Globe,
   Pin, PinOff, KeyRound,
-} from "lucide-react";
+} from "./icons.jsx";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
@@ -287,6 +287,39 @@ function useGlobalStyles() {
         font-family: var(--font-mono); font-weight: 500; font-size: 11px; color: var(--surface);
         background: var(--fg-1); flex-shrink: 0;
       }
+      /* ── Dialog (Modal und alle Bestätigungen) ── */
+      .dialog-backdrop {
+        position: fixed; inset: 0; z-index: 1000; background: var(--overlay);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .dialog { display: flex; flex-direction: column; max-width: 95vw; max-height: 90vh; }
+      .dialog-head {
+        display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+        padding: 11px 10px 11px 16px; border-bottom: 1px solid var(--border-2);
+      }
+      .dialog-title { flex: 1; font-size: 16px; font-weight: 200; text-transform: lowercase; color: var(--fg-1); }
+      .dialog-close {
+        display: flex; padding: 5px; border: none; border-radius: 0; background: transparent;
+        color: var(--fg-3); cursor: pointer;
+      }
+      .dialog-close:hover { background: var(--hover); color: var(--fg-1); }
+      .dialog-body { padding: 16px; overflow: auto; }
+      .dialog-foot {
+        display: flex; justify-content: flex-end; flex-shrink: 0;
+        padding: 12px 16px; border-top: 1px solid var(--border-2);
+      }
+      /* ── Formularfelder (FLabel / FInput / FSelect) ── */
+      .field-label {
+        font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+        color: var(--fg-2); margin-bottom: 6px;
+      }
+      .field {
+        width: 100%; padding: 7px 10px; border-radius: var(--radius-2);
+        border: 1px solid var(--border); background: var(--surface);
+        color: var(--fg-1); font-size: 13px; font-family: var(--font-sans); outline: none;
+      }
+      .field:focus { border-color: var(--fg-1); }
+      .field::placeholder { color: var(--fg-3); }
       /* ── Popup-Zeilen (Nutzer-Popup) ── */
       .menu-row {
         display: flex; align-items: center; gap: 10px; width: 100%;
@@ -692,58 +725,31 @@ function RefreshIconButton({ onClick, loading }) {
   );
 }
 
-const FLabel = ({ children }) => (
-  <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em", marginBottom:5 }}>{children}</div>
+const FLabel = ({ children }) => <div className="field-label">{children}</div>;
+const FInput = ({ style, className = "", ...props }) => (
+  <input {...props} className={"field " + className} style={style}/>
 );
-const FInput = ({ style, ...props }) => (
-  <input {...props} style={{
-    width:"100%", padding:"10px 12px", borderRadius:10,
-    border:`1px solid ${THEME.border}`, background:THEME.surface2,
-    color:THEME.text1, fontSize:13, outline:"none", fontFamily:THEME.font,
-    transition:"border-color 0.15s",
-    ...style,
-  }}
-  onFocus={e => e.target.style.borderColor = THEME.accent}
-  onBlur={e  => e.target.style.borderColor = THEME.border}
-  />
-);
-const FSelect = ({ children, style, ...props }) => (
-  <select {...props} style={{
-    width:"100%", padding:"10px 12px", borderRadius:10,
-    border:`1px solid ${THEME.border}`, background:THEME.surface2,
-    color:THEME.text1, fontSize:13, outline:"none", fontFamily:THEME.font,
-    ...style,
-  }}>{children}</select>
+const FSelect = ({ children, style, className = "", ...props }) => (
+  <select {...props} className={"field " + className} style={style}>{children}</select>
 );
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
-function Modal({ title, onClose, children, width=460 }) {
+function Modal({ title, onClose, children, width=460, footer, zIndex }) {
   useEffect(() => {
     const handler = e => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", backdropFilter:"blur(4px)",
-      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000,
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        width, maxWidth:"95vw", maxHeight:"90vh", overflow:"auto",
-        background:THEME.surface, borderRadius:18,
-        border:`1px solid ${THEME.border}`,
-        boxShadow:"0 32px 80px rgba(0,0,0,0.60)",
-        padding:28,
-      }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
-          <div style={{ fontSize:16, fontWeight:700, color:THEME.text1 }}>{title}</div>
-          <button onClick={onClose} style={{
-            background:"transparent", border:"none", color:THEME.text3,
-            cursor:"pointer", padding:4, borderRadius:6, display:"flex",
-          }}><X size={18}/></button>
+    <div className="dialog-backdrop" style={zIndex ? { zIndex } : undefined}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="overlay-card dialog" style={{ width }}>
+        <div className="dialog-head">
+          <div className="dialog-title">{title}</div>
+          <button className="dialog-close" onClick={onClose}><X size={16}/></button>
         </div>
-        {children}
+        <div className="dialog-body">{children}</div>
+        {footer && <div className="dialog-foot">{footer}</div>}
       </div>
     </div>
   );
@@ -1336,28 +1342,20 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
   );
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.72)",
-      backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
-      justifyContent:"center", zIndex:2000 }}
+    <div className="dialog-backdrop" style={{ zIndex:2000 }}
       onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
 
-      {/* Modal — wider when showing preview */}
-      <div style={{
+      {/* Dialog — breiter mit Vorschau */}
+      <div className="overlay-card dialog" style={{
         width: previewData ? Math.min(900, window.innerWidth-40) : 440,
-        maxHeight: "90vh", background:THEME.surface, borderRadius:18,
-        border:`1px solid ${THEME.border}`, boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-        display:"flex", flexDirection:"column", overflow:"hidden",
         transition:"width 0.3s ease",
       }}>
-        {/* Header */}
-        <div style={{ padding:"20px 24px 0", flexShrink:0 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-            <div style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>Import / Export</div>
-            <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer",
-              color:THEME.text3, display:"flex", padding:4, borderRadius:7 }}>
-              <X size={16}/>
-            </button>
-          </div>
+        <div className="dialog-head">
+          <div className="dialog-title">Import / Export</div>
+          <button className="dialog-close" onClick={onClose}><X size={16}/></button>
+        </div>
+        {/* Kopf: Umschalter */}
+        <div style={{ padding:"16px 16px 0", flexShrink:0 }}>
           <div className="rail-density-row" style={{ marginBottom:16 }}>
             <button className={"rail-density-btn" + (tab==="export" ? " active" : "")}
               onClick={()=>{ setTab("export"); setPreviewData(null); setResult(null); }}>
@@ -2939,81 +2937,30 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
 function DeleteConfirmOverlay({ tx, portfolio, onConfirm, onCancel }) {
   const isBuy = tx.type === "BUY";
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", backdropFilter:"blur(6px)",
-      display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000,
-    }} onClick={onCancel}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width:380, background:THEME.surface, borderRadius:18,
-        border:`1px solid rgba(248,113,113,0.35)`,
-        boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-        padding:"28px 28px 24px",
-      }}>
-        {/* Icon */}
-        <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-          <div style={{ width:52, height:52, borderRadius:"50%",
-            background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)",
-            display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <Trash2 size={22} color={THEME.red}/>
-          </div>
-        </div>
-        <div style={{ textAlign:"center", marginBottom:20 }}>
-          <div style={{ fontSize:16, fontWeight:700, color:THEME.text1, marginBottom:8 }}>
-            Delete Transaction
-          </div>
-          <div style={{ fontSize:12, color:THEME.text2, lineHeight:1.6 }}>
-            Are you sure you want to delete this transaction?
-            <br/>This action cannot be undone.
-          </div>
-        </div>
-        {/* Transaction summary */}
-        <div style={{
-          padding:"10px 14px", borderRadius:10, marginBottom:20,
-          background:"rgba(255,255,255,0.04)", border:`1px solid ${THEME.border}`,
-          display:"flex", alignItems:"center", gap:10,
-        }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <div style={{ width:8, height:8, borderRadius:"50%", background:portfolio.color }}/>
-            <span style={{ fontSize:11, color:THEME.text3 }}>{portfolio.name}</span>
-          </div>
-          <div style={{ width:1, height:12, background:THEME.border }}/>
-          <span style={{
-            padding:"2px 7px", borderRadius:5, fontSize:9, fontWeight:700,
-            background:isBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
-            color:isBuy?THEME.green:THEME.red,
-            border:`1px solid ${isBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
-          }}>{tx.type}</span>
-          <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
-          <span style={{ fontSize:11, color:THEME.text2, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tx.name || ""}</span>
-          <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3, flexShrink:0 }}>
-            {tx.quantity} × ${parseFloat(tx.price).toFixed(2)}
-          </span>
-        </div>
-        {/* Buttons */}
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onCancel} style={{
-            flex:1, padding:"11px 0", borderRadius:10,
-            border:`1px solid ${THEME.border}`, background:"transparent",
-            color:THEME.text2, fontSize:12, fontWeight:600, cursor:"pointer",
-            fontFamily:THEME.font, transition:"background 0.12s",
-          }}
-          onMouseEnter={e=>e.target.style.background="rgba(255,255,255,0.05)"}
-          onMouseLeave={e=>e.target.style.background="transparent"}>
-            Cancel
-          </button>
-          <button onClick={onConfirm} style={{
-            flex:1, padding:"11px 0", borderRadius:10,
-            border:"none", background:"rgba(248,113,113,0.18)",
-            color:THEME.red, fontSize:12, fontWeight:700, cursor:"pointer",
-            fontFamily:THEME.font, transition:"background 0.12s",
-          }}
-          onMouseEnter={e=>e.target.style.background="rgba(248,113,113,0.28)"}
-          onMouseLeave={e=>e.target.style.background="rgba(248,113,113,0.18)"}>
-            Delete
-          </button>
-        </div>
+    <Modal title="Delete Transaction" onClose={onCancel} width={380} zIndex={2000}
+      footer={<div className="btn-row">
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn danger" onClick={onConfirm}><Trash2 size={14}/> Delete</button>
+      </div>}>
+      <div style={{ fontSize:13, color:THEME.text2, lineHeight:1.55, marginBottom:14 }}>
+        Are you sure you want to delete this transaction? This action cannot be undone.
       </div>
-    </div>
+      {/* Transaktion */}
+      <div style={{ padding:"10px 12px", border:`1px solid ${THEME.border}`, background:THEME.surface2,
+        display:"flex", alignItems:"center", gap:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <div style={{ width:8, height:8, borderRadius:"50%", background:portfolio.color }}/>
+          <span style={{ fontSize:11, color:THEME.text3 }}>{portfolio.name}</span>
+        </div>
+        <span className="num" style={{ padding:"0 6px", borderRadius:2, fontSize:10, letterSpacing:"0.08em",
+          border:`1px solid ${isBuy ? THEME.green : THEME.red}`, color:isBuy ? THEME.green : THEME.red }}>{tx.type}</span>
+        <span className="num" style={{ fontWeight:500, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
+        <span style={{ fontSize:11, color:THEME.text2, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tx.name || ""}</span>
+        <span className="num" style={{ fontSize:11, color:THEME.text3, flexShrink:0 }}>
+          {tx.quantity} × ${parseFloat(tx.price).toFixed(2)}
+        </span>
+      </div>
+    </Modal>
   );
 }
 
@@ -4555,17 +4502,13 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
 
       {error && <div style={{ color:THEME.red, fontSize:11, marginBottom:10 }}>{error}</div>}
       <div style={{ display:"flex", gap:8 }}>
-        <button onClick={onClose}
-          style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
-            background:"transparent", color:THEME.text2, cursor:"pointer", fontSize:12 }}>
+        <button onClick={onClose} className="btn" style={{ flex:1 }}>
           {t("common.cancel")}
         </button>
         <button onClick={handleSave}
           disabled={busy || !endDate || !budget}
-          style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
-            background: newPastDates.length > 0 ? THEME.accent : "rgba(59,130,246,0.4)",
-            color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700,
-            opacity: (busy || !endDate || !budget) ? 0.5 : 1 }}>
+          className="btn primary"
+          style={{ flex:2, opacity: (busy || !endDate || !budget || newPastDates.length === 0) ? 0.5 : 1 }}>
           {busy ? t("savingsPlan.saving")
             : newPastDates.length > 0
               ? `✓ ${newPastDates.length} Kauf${newPastDates.length!==1?"käufe":""} + Plan speichern`
@@ -5792,8 +5735,8 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {portfolios.map(p => (
               <button key={p.id} onClick={() => setPortfolioId(p.id)} style={{
-                padding:"5px 12px", borderRadius:8, fontSize:11, fontWeight:600,
-                border:`1.5px solid ${portfolioId===p.id ? p.color : THEME.border}`,
+                padding:"5px 12px", borderRadius:0, fontSize:12, fontWeight:500,
+                border:`1px solid ${portfolioId===p.id ? p.color : THEME.border}`,
                 background: portfolioId===p.id ? p.color+"22" : "transparent",
                 color: portfolioId===p.id ? p.color : THEME.text3,
                 cursor:"pointer", display:"flex", alignItems:"center", gap:6,
@@ -5809,13 +5752,9 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
       {/* Buy/Sell toggle */}
       <div style={{ display:"flex", gap:8, marginBottom:12 }}>
         {["buy","sell"].map(t => (
-          <button key={t} onClick={() => setType(t)} style={{
-            flex:1, padding:"9px 0", borderRadius:10, fontSize:12, fontWeight:700,
-            border:`1.5px solid ${type===t?THEME.accent:THEME.border}`,
-            background:type===t?"rgba(59,130,246,0.15)":"transparent",
-            color:type===t?THEME.accent:THEME.text3, cursor:"pointer",
-            textTransform:"uppercase", letterSpacing:"0.06em",
-          }}>{t==="buy"?"▲ Buy":"▼ Sell"}</button>
+          <button key={t} onClick={() => setType(t)}
+            className={"rail-density-btn" + (type===t ? " active" : "")}
+            style={{ padding:"7px 0", fontSize:12, textTransform:"uppercase", letterSpacing:"0.06em" }}>{t==="buy"?"▲ Buy":"▼ Sell"}</button>
         ))}
       </div>
 
@@ -5824,13 +5763,9 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         <div style={{ display:"flex", marginBottom:16, borderRadius:9, overflow:"hidden",
           border:`1px solid ${THEME.border}`, background:THEME.surface }}>
           {[["single","☐ Einmaliger Kauf"],["recurring","↻ Wiederkehrend"]].map(([m, label]) => (
-            <button key={m} onClick={() => setPurchaseMode(m)} style={{
-              flex:1, padding:"7px 0", fontSize:11, fontWeight:700, border:"none",
-              cursor:"pointer", transition:"all 0.15s", fontFamily:THEME.font,
-              background: purchaseMode===m ? "rgba(59,130,246,0.18)" : "transparent",
-              color:       purchaseMode===m ? THEME.accent : THEME.text3,
-              letterSpacing:"0.03em",
-            }}>{label}</button>
+            <button key={m} onClick={() => setPurchaseMode(m)}
+              className={"rail-density-btn" + (purchaseMode===m ? " active" : "")}
+              style={{ padding:"7px 0" }}>{label}</button>
           ))}
         </div>
       )}
@@ -5844,10 +5779,9 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         <InfoTip i18nKey="tips.pdfImport" side="bottom" width={240}/>
         <button onClick={() => pdfInputRef.current?.click()}
           disabled={pdfLoading}
-          style={{ padding:"6px 13px", borderRadius:8, border:"none",
-            background:THEME.accent, color:"#fff", fontSize:11, fontWeight:700,
-            cursor: pdfLoading ? "wait" : "pointer", opacity: pdfLoading ? 0.7 : 1,
-            display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", flexShrink:0 }}>
+          className="btn primary"
+          style={{ cursor: pdfLoading ? "wait" : "pointer", opacity: pdfLoading ? 0.7 : 1,
+            whiteSpace:"nowrap", flexShrink:0 }}>
           {pdfLoading
             ? <><span style={{ fontSize:13 }}>⏳</span> {t("pdf.loading")}</>
             : <><FileText size={12}/> {t("pdf.btn")}</>}
@@ -5936,14 +5870,11 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             <button onClick={handleIsinLookup}
               disabled={isin.length < 12 || isinBusy}
               title={t("tips.isinSearch")}
+              className="btn"
               style={{
-                padding:"0 13px", borderRadius:10, flexShrink:0,
-                border:`1.5px solid ${isin.length>=12 ? THEME.accent : THEME.border}`,
-                background: isin.length>=12 ? "rgba(59,130,246,0.12)" : "transparent",
-                color: isin.length>=12 ? THEME.accent : THEME.text3,
+                padding:"0 13px", flexShrink:0,
+                opacity: isin.length>=12 ? 1 : 0.45,
                 cursor: isin.length>=12 && !isinBusy ? "pointer" : "default",
-                display:"flex", alignItems:"center", gap:5,
-                fontSize:11, fontWeight:700, transition:"all 0.15s",
               }}>
               {isinBusy
                 ? <span style={{ fontSize:13, display:"inline-block",
@@ -5965,7 +5896,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                     borderBottom: idx < isinCandidates.length-1 ? `1px solid ${THEME.border}` : "none",
                     cursor:"pointer", textAlign:"left", gap:10,
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background="rgba(59,130,246,0.08)"}
+                  onMouseEnter={e => e.currentTarget.style.background="var(--surface-2)"}
                   onMouseLeave={e => e.currentTarget.style.background="transparent"}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, overflow:"hidden" }}>
                     <span style={{ fontFamily:THEME.mono, fontSize:13, fontWeight:700,
@@ -6010,11 +5941,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
               disabled={!symbol||!date||lookupBusy}
               title={t("tips.getPrice")}
+              className="btn"
               style={{
-                height:42, padding:"0 16px", borderRadius:10, cursor:"pointer",
-                border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
-                color:lookupBusy?THEME.text3:THEME.accent, fontSize:11, fontWeight:700,
-                fontFamily:"inherit", whiteSpace:"nowrap",
+                alignSelf:"stretch", padding:"0 16px", whiteSpace:"nowrap",
+                color: lookupBusy ? THEME.text3 : undefined,
                 opacity:(!symbol||!date)?0.45:1,
               }}>
               {lookupBusy ? <span className="spin">⟳</span> : "⬇ Get Price"}
@@ -6031,11 +5961,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
                 disabled={!symbol||!date||lookupBusy}
                 title={t("tips.getPrice")}
+                className="btn"
                 style={{
-                  height:42, padding:"0 14px", borderRadius:10, cursor:"pointer",
-                  border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
-                  color:lookupBusy?THEME.text3:THEME.accent, fontSize:11, fontWeight:700,
-                  fontFamily:"inherit", whiteSpace:"nowrap",
+                  alignSelf:"stretch", padding:"0 14px", whiteSpace:"nowrap",
+                  color: lookupBusy ? THEME.text3 : undefined,
                   opacity:(!symbol||!date)?0.45:1,
                 }}>
                 {lookupBusy ? <span className="spin">⟳</span> : "⬇ Get Price"}
@@ -6155,16 +6084,13 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
       {error && <div style={{ fontSize:12, color:THEME.red, marginTop:10 }}>{error}</div>}
       <div style={{ display:"flex", gap:10, marginTop:20 }}>
-        <button onClick={onClose} style={{ flex:1, padding:"11px 0", borderRadius:10,
-          border:`1px solid ${THEME.border}`, background:"transparent",
-          color:THEME.text3, cursor:"pointer", fontSize:13, fontWeight:600 }}>Cancel</button>
+        <button onClick={onClose} className="btn" style={{ flex:1 }}>Cancel</button>
         <button onClick={handleAdd}
           disabled={purchaseMode==="single"
             ? (!symbol||!qty||!price||busy)
             : (!symbol||!budget||!price||pastRecurDates.length===0||busy)}
-          style={{ flex:2, padding:"11px 0", borderRadius:10, border:"none",
-            background:type==="buy"?THEME.accent:THEME.red, color:"#fff",
-            cursor:"pointer", fontSize:13, fontWeight:700,
+          className="btn primary"
+          style={{ flex:2,
             opacity:(purchaseMode==="single"
               ? (!symbol||!qty||!price||busy)
               : (!symbol||!budget||!price||pastRecurDates.length===0||busy)
@@ -6219,13 +6145,9 @@ function AddPortfolioModal({ onClose, onAdd }) {
         </div>
       </div>
       <div style={{ display:"flex", gap:10, marginTop:20 }}>
-        <button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:10,
-          border:`1px solid ${THEME.border}`, background:"transparent",
-          color:THEME.text3, cursor:"pointer", fontSize:13, fontWeight:600 }}>Cancel</button>
+        <button onClick={onClose} className="btn" style={{ flex:1 }}>Cancel</button>
         <button onClick={handle} disabled={!name.trim()||busy}
-          style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
-            background:color, color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700,
-            opacity:!name.trim()?0.5:1 }}>
+          className="btn primary" style={{ flex:2, opacity:!name.trim()?0.5:1 }}>
           {busy?"Creating…":"Create Portfolio"}
         </button>
       </div>
@@ -6328,13 +6250,9 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
           <FLabel>{t("settings.quoteSource")}</FLabel>
           <div style={{ display:"flex", gap:8, marginTop:6 }}>
             {[["yahoo","Yahoo Finance"],["alphavantage","Alpha Vantage"]].map(([val,label]) => (
-              <button key={val} onClick={() => setDataSource(val)} style={{
-                flex:1, padding:"10px 0", borderRadius:10, fontSize:12, fontWeight:700,
-                border:`1.5px solid ${dataSource===val?THEME.accent:THEME.border}`,
-                background:dataSource===val?"rgba(59,130,246,0.15)":"transparent",
-                color:dataSource===val?THEME.accent:THEME.text3,
-                cursor:"pointer", letterSpacing:"0.04em",
-              }}>{label}</button>
+              <button key={val} onClick={() => setDataSource(val)}
+                className={"rail-density-btn" + (dataSource===val ? " active" : "")}
+                style={{ padding:"7px 0", fontSize:12 }}>{label}</button>
             ))}
           </div>
         </div>
@@ -6356,8 +6274,8 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
                 <span>Today's usage</span>
                 <span className="mono" style={{ color:barColor }}>{used} / {limit}</span>
               </div>
-              <div style={{ height:5, borderRadius:3, background:"rgba(255,255,255,0.08)" }}>
-                <div style={{ height:"100%", borderRadius:3, background:barColor,
+              <div style={{ height:4, borderRadius:0, background:"var(--border-2)" }}>
+                <div style={{ height:"100%", borderRadius:0, background:barColor,
                   width:`${pct}%`, transition:"width 0.3s" }}/>
               </div>
             </div>
@@ -6415,12 +6333,10 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
               <button
                 onClick={handleTestAi}
                 disabled={aiTestState === "testing" || !aiEndpoint}
+                className="btn"
                 style={{
-                  padding:"7px 16px", borderRadius:8, border:`1.5px solid ${THEME.border}`,
-                  background:"transparent", color:THEME.text2, fontSize:11, fontWeight:700,
                   cursor: aiTestState==="testing" ? "wait" : "pointer",
                   opacity: !aiEndpoint ? 0.45 : 1,
-                  display:"flex", alignItems:"center", gap:6,
                 }}>
                 {aiTestState === "testing"
                   ? <><span className="spin" style={{ display:"inline-block" }}>⟳</span> {t("settings.testing")}</>
@@ -6443,9 +6359,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
           </>)}
         </div>
 
-        <button onClick={onSave} style={{ padding:"11px 0", borderRadius:10, border:"none",
-          background:THEME.accent, color:"#fff", cursor:"pointer",
-          fontSize:13, fontWeight:700 }}>{t("settings.save")}</button>
+        <button onClick={onSave} className="btn primary" style={{ width:"100%", padding:"8px 0" }}>{t("settings.save")}</button>
 
         {userId && <AccountSettings focus={focus} onProfileSaved={onProfileSaved}/>}
       </div>
@@ -6640,12 +6554,10 @@ function EmailReminderModal({ onClose, onOpenProfile }) {
       <p style={{ fontSize:13, color:THEME.text2, lineHeight:1.6, margin:"0 0 10px" }}>{t("emailReminder.text")}</p>
       <p style={{ fontSize:12, color:THEME.text3, lineHeight:1.6, margin:"0 0 20px" }}>{t("emailReminder.how")}</p>
       <div style={{ display:"flex", gap:10 }}>
-        <button onClick={onOpenProfile} style={{ flex:1, padding:"11px 0", borderRadius:10, border:"none",
-          background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={onOpenProfile} className="btn primary" style={{ flex:1 }}>
           {t("emailReminder.open")}
         </button>
-        <button onClick={onClose} style={{ padding:"11px 18px", borderRadius:10, border:`1.5px solid ${THEME.border}`,
-          background:"transparent", color:THEME.text2, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={onClose} className="btn">
           {t("emailReminder.later")}
         </button>
       </div>
@@ -7004,40 +6916,39 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
     }
   };
 
+  // Pal-Dialog: Hülle wie Modal (overlay-card), Felder wie FInput, Buttons ohne Radius
   const overlay = {
-    position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
-    backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
-    justifyContent:"center", zIndex:3000,
+    position:"fixed", inset:0, background:"var(--overlay)",
+    display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000,
   };
   const card = {
-    width:340, background:THEME.surface, borderRadius:16,
-    border:`1px solid ${THEME.border}`,
-    boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-    padding:"22px 22px 18px", position:"relative",
+    width:340, background:THEME.surface, borderRadius:12,
+    border:`1px solid ${THEME.border}`, boxShadow:"var(--shadow-modal)",
+    padding:16, position:"relative",
   };
   const inp = {
-    width:"100%", padding:"9px 12px", borderRadius:9,
-    border:`1px solid ${THEME.border}`, background:"rgba(255,255,255,0.05)",
-    color:THEME.text1, fontSize:12, fontFamily:"inherit",
+    width:"100%", padding:"7px 10px", borderRadius:2,
+    border:`1px solid ${THEME.border}`, background:THEME.surface,
+    color:THEME.text1, fontSize:13, fontFamily:"inherit",
     outline:"none", boxSizing:"border-box", marginBottom:10,
   };
   const btn = (primary) => ({
-    width:"100%", padding:"10px 0", borderRadius:9, border:"none",
-    background: primary ? THEME.accent : "rgba(255,255,255,0.06)",
-    color: primary ? "#fff" : THEME.text3,
-    fontSize:12, fontWeight:700, cursor:"pointer",
+    width:"100%", padding:"7px 0", borderRadius:0,
+    border:`1px solid ${primary ? THEME.text1 : THEME.border}`,
+    background: primary ? THEME.text1 : "transparent",
+    color: primary ? THEME.surface : THEME.text1,
+    fontSize:12, fontWeight:500, cursor:"pointer",
     fontFamily:"inherit", marginTop:4, transition:"all 0.12s",
   });
 
   // ETF pill header
   const EtfPill = () => (
     <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16,
-      padding:"8px 12px", borderRadius:10,
-      background:"rgba(59,130,246,0.08)", border:`1px solid rgba(59,130,246,0.2)` }}>
-      <div style={{ width:32, height:32, borderRadius:7, background:"rgba(59,130,246,0.15)",
+      padding:"8px 10px", border:`1px solid ${THEME.border}`, background:THEME.surface2 }}>
+      <div style={{ width:32, height:32, borderRadius:2, background:THEME.text1,
         display:"flex", alignItems:"center", justifyContent:"center",
-        fontFamily:"var(--font-mono)", fontSize:8, fontWeight:800,
-        color:THEME.accent, flexShrink:0 }}>
+        fontFamily:"var(--font-mono)", fontSize:8, fontWeight:500,
+        color:THEME.surface, flexShrink:0 }}>
         {etf.ticker.slice(0,5).replace(/\.(DE|SW|L|PA)$/,'')}
       </div>
       <div>
@@ -7143,68 +7054,28 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
 // ── Delete Confirm Modal ─────────────────────────────────────────────────────
 function DeleteEtfModal({ etf, onConfirm, onCancel }) {
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
-      backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
-      justifyContent:"center", zIndex:4000,
-    }} onClick={e => { if(e.target===e.currentTarget) onCancel(); }}>
-      <div style={{
-        width:320, background:"#1a1d23", borderRadius:16,
-        border:"1px solid rgba(239,68,68,0.3)",
-        boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-        padding:"22px 22px 18px",
-      }}>
-        {/* Icon */}
-        <div style={{ width:40, height:40, borderRadius:10, marginBottom:14,
-          background:"rgba(239,68,68,0.12)", display:"flex",
-          alignItems:"center", justifyContent:"center" }}>
-          <Trash2 size={18} style={{ color:"#ef4444" }}/>
+    <Modal title="Remove ETF?" onClose={onCancel} width={340} zIndex={4000}
+      footer={<div className="btn-row">
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn danger" onClick={onConfirm}><Trash2 size={14}/> Remove</button>
+      </div>}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12,
+        padding:"8px 10px", border:`1px solid ${THEME.border}`, background:THEME.surface2 }}>
+        <div style={{ width:36, height:36, borderRadius:2, flexShrink:0, background:THEME.text1,
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <span className="num" style={{ fontSize:7, color:THEME.surface, textAlign:"center", lineHeight:1.1 }}>
+            {etf.ticker.replace(/\.(DE|SW|L|PA)$/,"").slice(0,5)}
+          </span>
         </div>
-        <div style={{ fontSize:15, fontWeight:700, color:"#f1f5f9", marginBottom:6 }}>
-          Remove ETF?
-        </div>
-        {/* ETF pill */}
-        <div style={{ display:"flex", alignItems:"center", gap:10, margin:"12px 0 16px",
-          padding:"8px 12px", borderRadius:10,
-          background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ width:36, height:36, borderRadius:8, flexShrink:0,
-            background:"rgba(59,130,246,0.12)", display:"flex",
-            alignItems:"center", justifyContent:"center" }}>
-            <span style={{ fontFamily:"var(--font-mono)", fontSize:7,
-              fontWeight:800, color:"#60a5fa", textAlign:"center", lineHeight:1.1 }}>
-              {etf.ticker.replace(/\.(DE|SW|L|PA)$/,"").slice(0,5)}
-            </span>
-          </div>
-          <div>
-            <div style={{ fontFamily:"var(--font-mono)", fontSize:11,
-              fontWeight:700, color:"#60a5fa", letterSpacing:"0.05em" }}>{etf.ticker}</div>
-            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
-              {etf.name || etf.ticker}
-            </div>
-          </div>
-        </div>
-        <p style={{ fontSize:11, color:"#64748b", margin:"0 0 18px", lineHeight:1.5 }}>
-          This will remove the ETF from your custom list. This action cannot be undone.
-        </p>
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onCancel} style={{
-            flex:1, padding:"9px 0", borderRadius:9, border:"1px solid rgba(255,255,255,0.1)",
-            background:"rgba(255,255,255,0.05)", color:"#94a3b8",
-            fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
-          }}>Cancel</button>
-          <button onClick={onConfirm} style={{
-            flex:1, padding:"9px 0", borderRadius:9, border:"none",
-            background:"rgba(239,68,68,0.15)", color:"#ef4444",
-            fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-            transition:"background 0.12s",
-          }}
-          onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.25)"}
-          onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}>
-            Remove
-          </button>
+        <div>
+          <div className="num" style={{ fontSize:12, fontWeight:500, color:THEME.text1 }}>{etf.ticker}</div>
+          <div style={{ fontSize:11, color:THEME.text3, marginTop:2 }}>{etf.name || etf.ticker}</div>
         </div>
       </div>
-    </div>
+      <p style={{ fontSize:12, color:THEME.text2, margin:0, lineHeight:1.55 }}>
+        This will remove the ETF from your custom list. This action cannot be undone.
+      </p>
+    </Modal>
   );
 }
 
