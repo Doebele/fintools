@@ -158,6 +158,6 @@ Legende: **übernehmen** = Pal-Komponente existiert und passt direkt ·
 - [x] Schritt 2: globale Klassen (`label`, `num`, `btn`, `btn-row`, `overlay-card`, `menu-row`, `rail-hint`), Rail-/Segment-/Tab-/Avatar-Klassen auf Pal-Regeln, Variablen `--hover`, `--brand`, `--overlay`
 - [x] Schritt 3: Rail und ETF-Rail, Nutzer-Popup (mit „Einstellungen“), Tooltip-Blase, Rail-Hinweise
 - [x] Schritt 4: Dialog — `Modal` als Pal-Dialog (Kopf, Inhalt, Fuß), alle Dialoge inkl. Löschbestätigungen und Import/Export; Felder (`FLabel`/`FInput`/`FSelect`) und Buttons in den Dialogen
-- [x] Icons: Iconoir statt Lucide (`src/icons.jsx`, Strich 1,5), `lucide-react` entfernt
+- [x] Icons: Iconoir statt Lucide (`src/icons.jsx`, Strich 1,5), `lucide-react` entfernt; in Figma als Komponenten „Icon/…“ (Abschnitt „Icons · Iconoir“), Rail-Button, Icon-Button und Tab mit Austausch-Property „Icon“
 - [x] Fix: Dockerfile kopiert `public/` (selbst gehostete Schriften wurden vorher nicht ausgeliefert)
-- [ ] Schritt 5: Ansichten
+- [ ] Schritt 5: Ansichten (inkl. Login-Bildschirm, Treemap-Zellen, Summary-Leiste, Tabellen, Diagramme)
