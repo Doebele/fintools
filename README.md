@@ -8,6 +8,20 @@ Live quotes via Yahoo Finance (no API key needed). FX rates via Frankfurter API.
 
 ## Screenshots
 
+### Instrument detail page
+Click any instrument in the treemap, bar chart or holdings list to open its detail page: serif title and live price on top, then panels you can drag, resize, remove and add back. Layouts are saved as views that apply to every instrument — four presets (Snapshot, Long term, Market, News) plus your own.
+
+![Instrument detail — Snapshot view](docs/screenshots/07_detail_snapshot.png)
+
+The *Market* preset adds analyst consensus and the portfolio (or ETF) treemap with the instrument highlighted. Short interest is flagged when it gets high.
+
+![Instrument detail — Market view](docs/screenshots/08_detail_market.png)
+
+### ETF Screener
+Top holdings of any ETF as treemap, bar chart, holdings table and dividend calendar — no login required. Holdings open the same detail page.
+
+![ETF Screener](docs/screenshots/06_etf_screener.png)
+
 ### Portfolio Overview — TreeMap
 Positions sized by market value, coloured by today's gain/loss or absolute market move. Switch between Consolidated (all portfolios merged) and Aggregated (side-by-side) view.
 
@@ -33,6 +47,8 @@ Correlation heatmap, Monte Carlo simulation and portfolio rebalancing assistant 
 
 ![Analytics](docs/screenshots/05_analytics.png)
 
+> Screenshots 01–05 show the previous design; 06–08 the current one (Pal design system, October 2026). The new ones are taken in the ETF Screener so they contain public market data only.
+>
 > **Adding your own screenshots:** navigate to each view in the browser, press `Cmd/Ctrl+Shift+4` to capture, and save the file into `docs/screenshots/` with the matching filename.
 
 ---
@@ -63,6 +79,18 @@ Correlation heatmap, Monte Carlo simulation and portfolio rebalancing assistant 
 - **Monte Carlo simulation** — forward projection with configurable parameters
 - **Rebalancing assistant** — target allocation vs. current weight with buy/sell suggestions
 - **Dividend calendar** — upcoming and historical dividend events
+
+### Instrument detail page
+- **One page per instrument** — opened from the treemap, bar chart or holdings list, in the portfolio views and the ETF Screener; *Back*, Esc or a tab switch closes it
+- **13 panels on a grid** (`react-grid-layout`) — drag by the dotted header, resize from the corner, remove with ×, add back via *+ Panel*:
+  price chart (1M–Max, buy/sell markers, average-cost line) · position · performance per period · treemap and bar chart with the instrument highlighted (bar chart with Performance / by weight switch) · transactions · monthly closes (5 years) · dividends (next ex-date and payment, yield, your annual dividend, 5 years of payments with the amount you received on each ex-date) · short interest (% of float, days to cover, change vs. prior month) · key figures (market cap, P/E, P/B, beta, margin, growth, next earnings, 52-week range) · analysts (consensus, price target vs. price, buy/hold/sell split) · profile · news
+- **Views for all instruments** — presets *Snapshot*, *Long term*, *Market* and *News* can be changed directly and reset to default; own views can be saved, renamed and deleted. Stored per account (and in the browser when logged out)
+- **Data** — Yahoo Finance via `GET /api/instrument/:symbol`, cached 6 h (news 30 min). Short-interest data is usually only available for US-listed stocks
+
+### Design
+- **Pal design system** (shared with Trade-Pal): Fira Sans, Fira Code and Instrument Serif (self-hosted, no Google Fonts request), flat surfaces with 1px hairlines, active states in ink, green/red only for gain and loss
+- **Dark (default) and light theme**, secondary text at WCAG AA contrast; two densities (compact / relaxed); German and English
+- **Iconoir** icons throughout
 
 ### Transactions — PDF import
 Upload a broker settlement PDF directly in the Add Transaction dialog. The backend extracts text with `pdf-parse` and either:
@@ -207,6 +235,7 @@ docker restart portfolio-backend-v3
 | POST | `/api/passkeys/register/options` · `/verify` | Add a passkey (`current_password` required) |
 | POST | `/api/passkeys/login/options` · `/verify` | Passkey login (open, rate-limited) → same answer as `/api/users/login` |
 | GET / DELETE | `/api/passkeys[/:id]` | List / remove own passkeys |
+| GET / PUT | `/api/users/:id/detail-views` | Saved layouts of the instrument detail page (own user only) |
 
 All user-scoped endpoints (portfolios, transactions, plans, rebalancing targets, settings, tools, saved ETFs, CSV import/export) require `Authorization: Bearer <token>` from login and only touch the caller's own data; tokens are valid for 30 days.
 
@@ -231,6 +260,7 @@ All user-scoped endpoints (portfolios, transactions, plans, rebalancing targets,
 | GET | `/api/quotes/yahoo/:symbol` | Raw chart JSON (cached) |
 | POST | `/api/quotes/batch` | Batch quotes `{symbols:[]}` |
 | GET | `/api/quotes/symbols-for-isin/:isin` | Ticker candidates for ISIN |
+| GET | `/api/instrument/:symbol` | Detail page data: profile, key figures, short interest, analysts, dividend calendar + 5y history, news (cached) |
 
 ### FX
 | Method | Endpoint | Description |
@@ -265,8 +295,8 @@ browser  ──►  :3002  nginx (React SPA)
                                          └── Alpha Vantage      ──► (optional fallback)
 ```
 
-- **Backend** — single-file `backend/server.js` (~2,400 lines), organised in clearly labelled sections
-- **Frontend** — single-file `frontend/src/App.jsx` (~8,200 lines), React 18 with no router, no global state library
+- **Backend** — single-file `backend/server.js` (~3,600 lines), organised in clearly labelled sections
+- **Frontend** — `frontend/src/App.jsx` (~9,800 lines) plus `Analytics.jsx` and `InstrumentDetail.jsx`; React 18 with no router, no global state library
 - **Database** — SQLite via `better-sqlite3`; schema applied at boot, migrations via conditional `ALTER TABLE`
 - **Caching** — in-database quote cache + in-flight request coalescing (`dedupFetch`)
 
@@ -295,9 +325,10 @@ browser  ──►  :3002  nginx (React SPA)
 | Quotes | yahoo-finance2 v3 |
 | FX | Frankfurter API |
 | PDF parsing | pdf-parse |
-| Frontend | React 18, Vite 5, Recharts, D3, lucide-react |
-| Containers | Docker Compose, nginx:alpine + node:18-alpine |
+| Frontend | React 18, Vite 5, D3, react-grid-layout, Iconoir |
+| Fonts | Fira Sans, Fira Code, Instrument Serif (self-hosted) |
+| Containers | Docker Compose, nginx:alpine (built with node:18-alpine) + node:22-alpine |
 
 ---
 
-**Version:** 3.x · **Updated:** June 2026 · **Built with:** Claude + Claus
+**Version:** 3.x · **Updated:** October 2026 · **Built with:** Claude + Claus
