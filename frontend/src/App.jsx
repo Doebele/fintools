@@ -1976,7 +1976,7 @@ function Rail({
     }}>
       {/* Top: brand + ETF toggle + collapse */}
       <div style={{
-        height:60, display:"flex", alignItems:"center",
+        height:52, display:"flex", alignItems:"center",   // = top nav bar height, so the hairlines line up
         borderBottom:`1px solid ${THEME.border}`,
         padding: open ? "0 10px 0 14px" : "0",
         justifyContent: open ? "flex-start" : "center",
