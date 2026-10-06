@@ -2089,9 +2089,9 @@ function Rail({
           {/* Currency */}
           {open && <div className="label" style={{ padding:"8px 14px 4px" }}>Currency</div>}
           <div style={{
-            padding: open ? "2px 4px" : "2px 0",
+            padding:"2px 6px",   // same inset as the portfolio list, so the active bar lines up
             display:"flex", flexDirection:"column",
-            gap:2, alignItems: open ? "stretch" : "center",
+            gap:2, alignItems:"stretch",
           }}>
             {Object.keys(CCY_SYM).map(c => {
               const isActive = currency === c;
@@ -7474,9 +7474,9 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       {/* Currency — same sizing/spacing as Portfolio Rail */}
       {open && <div className="label" style={{ padding:"8px 14px 4px", flexShrink:0 }}>{t("etf.currency")}</div>}
       <div style={{
-        padding: open ? "2px 4px" : "2px 0",
+        padding:"2px 6px",   // same inset as the ticker list, so the active bar lines up
         display:"flex", flexDirection:"column",
-        gap:2, alignItems: open ? "stretch" : "center", flexShrink:0,
+        gap:2, alignItems:"stretch", flexShrink:0,
       }}>
         {Object.keys(CCY_SYM).map(c => {
           const isActive = currency === c;
