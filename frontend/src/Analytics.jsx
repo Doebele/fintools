@@ -2,7 +2,7 @@
  * Portfolio Analytics — Correlation · Monte Carlo · Rebalancing · Dividend Calendar
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { PieChart, ArrowLeftRight, Info } from "./icons.jsx";
+import { PieChart, ArrowLeftRight, Info, CalendarDays, BarChart2 } from "./icons.jsx";
 import * as d3 from "d3";
 import { useTranslation } from "react-i18next";
 
@@ -2580,16 +2580,13 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
         action={
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {/* View toggle */}
-            <div style={{ display:"flex", gap:2, padding:"2px", borderRadius:2,
-              background:"var(--surface-2)", border:`1px solid var(--border)` }}>
-              {[["calendar","📅 Calendar"],["barchart","📊 Bar Chart"]].map(([v,label]) => (
-                <button key={v} onClick={()=>setChartView(v)} style={{
-                  padding:"4px 10px", borderRadius:2, border:"none",
-                  background:chartView===v?"rgba(59,130,246,0.25)":"transparent",
-                  color:chartView===v?C.accent:C.text3,
-                  fontSize:10, fontWeight:chartView===v?700:400,
-                  cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s",
-                }}>{label}</button>
+            <div className="rail-density-row">
+              {[["calendar",<CalendarDays size={12}/>,"Calendar"],["barchart",<BarChart2 size={12}/>,"Bar Chart"]].map(([v,icon,label]) => (
+                <button key={v} onClick={()=>setChartView(v)}
+                  className={"rail-density-btn" + (chartView===v ? " active" : "")}
+                  style={{ padding:"4px 10px", gap:5 }}>
+                  {icon}{label}
+                </button>
               ))}
             </div>
             {/* Year nav */}
@@ -2610,16 +2607,15 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
         <div style={{ padding:"0 22px 10px", display:"flex", alignItems:"center",
           gap:12, flexShrink:0, flexWrap:"wrap" }}>
           <span style={{ fontSize:11, color:C.text3 }}>Simulated portfolio:</span>
-          {[10000,20000,50000,100000].map(v => (
-            <button key={v} onClick={()=>setFictValue(v)} style={{
-              padding:"4px 10px", borderRadius:2,
-              border:`1px solid ${fictValue===v?C.accent:C.border}`,
-              background:fictValue===v?"rgba(59,130,246,0.15)":"transparent",
-              color:fictValue===v?C.accent:C.text3,
-              fontSize:10, fontWeight:fictValue===v?700:400,
-              cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s",
-            }}>{v>=1000?`${v/1000}K`:v} {currency}</button>
-          ))}
+          <div className="rail-density-row">
+            {[10000,20000,50000,100000].map(v => (
+              <button key={v} onClick={()=>setFictValue(v)}
+                className={"rail-density-btn" + (fictValue===v ? " active" : "")}
+                style={{ padding:"4px 10px", fontFamily:C.mono }}>
+                {v>=1000?`${v/1000}K`:v} {currency}
+              </button>
+            ))}
+          </div>
           {annualTotal > 0 && (
             <div style={{ marginLeft:"auto", display:"flex", alignItems:"baseline", gap:6 }}>
               <span style={{ fontSize:10, color:C.text3 }}>Est. annual</span>
@@ -2636,7 +2632,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
       {pendingSymbols > 0 && (
         <div style={{ padding:"4px 22px", fontSize:10, color:C.text3, display:"flex",
           alignItems:"center", gap:6, flexShrink:0 }}>
-          <span style={{ width:6, height:6, borderRadius:"50%", background:C.accent,
+          <span style={{ width:6, height:6, borderRadius:"50%", background:C.text3,
             display:"inline-block", animation:"pulse 1.2s infinite" }}/>
           Loading dividend data… ({loadedSymbols}/{loadedSymbols+pendingSymbols} positions)
         </div>
@@ -2712,17 +2708,17 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                       padding:"10px 12px", cursor:"pointer",
                       borderBottom:`1px solid ${C.border2}`,
                       borderRight:`1px solid ${C.border2}`,
-                      background: isSel ? "rgba(59,130,246,0.08)"
-                        : isNow  ? "rgba(59,130,246,0.04)" : "transparent",
+                      background: isSel ? "var(--surface-2)" : "transparent",
+                      boxShadow: isSel ? "inset 2px 0 0 var(--fg-1)" : "none",
                       transition:"background 0.15s",
                     }}>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                       marginBottom:6 }}>
                       <span style={{ fontSize:12, fontWeight:700,
-                        color:isSel?C.accent:isNow?C.accent:C.text2 }}>
+                        color:isSel||isNow?C.text1:C.text2 }}>
                         {MONTH_NAMES[i]}
                         {isNow && <span style={{ marginLeft:4, width:5, height:5,
-                          borderRadius:"50%", background:C.accent,
+                          borderRadius:"50%", background:C.text1,
                           display:"inline-block", verticalAlign:"middle" }}/>}
                       </span>
                       {hasEvt && (
@@ -2757,7 +2753,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                         background:"var(--surface-2)", overflow:"hidden" }}>
                         <div style={{ height:"100%", borderRadius:1,
                           width:`${Math.min(100,(m.totalUSD/Math.max(...monthly.map(x=>x.totalUSD),0.01))*100)}%`,
-                          background:C.accent, opacity:0.6 }}/>
+                          background:C.text2, opacity:0.6 }}/>
                       </div>
                     )}
                   </div>
