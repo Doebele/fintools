@@ -137,14 +137,27 @@ Usage: `const { t } = useTranslation(); t("section.key")`. All user-visible stri
 
 CSS custom properties on `:root` / `[data-theme="dark"]` / `[data-theme="light"]`, injected by `useGlobalStyles()`. Theme toggled by setting `document.body.setAttribute("data-theme", ...)` and stored in `localStorage` key `pp-theme`. The `THEME` object holds only `var(--*)` references — changing the `data-theme` attribute is the only required action to switch themes.
 
-Light theme uses Application-Pal surface colours; chart/semantic colours (green/red/yellow/accent) are identical in both themes.
+Both themes use the Pal palette (dark stays the default); green/red/yellow keep their own light/dark values. Fonts (Fira Sans, Fira Code, Instrument Serif) are self-hosted from `frontend/public/fonts` — no Google Fonts request.
 
 #### CSS design system — official UI patterns
 
-Two classes defined in `useGlobalStyles()` must be used consistently across the entire app:
+The UI follows the **Pal design system** (source: Trade-Pal; Figma file "Fintools", page "Design System", variables carry these CSS names as code syntax). Migration plan and status: `docs/design-migration-inventur.md`. Rules: no radius on surfaces (max 2px), radius 12 + `--shadow-modal` only for overlays (popover, user popup, dialog, tooltip); tiles meet edge to edge with 1px hairlines instead of card shadows; **active state = `--fg-1`** (fill or line), blue `--accent` only for selection, links and focus; green/red only for gain/loss; numbers in `--font-mono`.
 
-- **`rail-density-row` + `rail-density-btn[.active]`** — Segmented control for 2–4 equal-width toggle options (e.g. Export/Import, Portfolio/ETF switcher, Compact/Relaxed, DE/EN, Light/Dark). Do **not** use custom inline styles for new toggles.
-- **`app-nav-tab[.active]`** — Navigation tab for horizontal tab bars (top nav bar, ETF inner nav). Transparent background, accent colour on active.
+Classes defined in `useGlobalStyles()` must be used consistently across the entire app:
+
+- **`rail-density-row` + `rail-density-btn[.active]`** — Segmented control for 2–4 equal-width toggle options (e.g. Export/Import, Portfolio/ETF switcher, Compact/Relaxed, DE/EN, Light/Dark). Segments overlap by -1px; active = filled `--fg-1`. Do **not** use custom inline styles for new toggles.
+- **`app-nav-tab[.active]`** — Navigation tab for horizontal tab bars (top nav bar, ETF inner nav). Transparent background; active = `--fg-1` text plus 2px underline.
+- **`rail-btn[.active]`** — Rail entry; active = `--surface-2` plus a 2px `--fg-1` bar on the left (`inset` box-shadow).
+- **`btn[.primary|.danger]`** inside **`btn-row`** — Buttons without radius; primary = filled `--fg-1`.
+- **`overlay-card`** — Surface for every overlay (tooltip bubble, user popup); **`menu-row[.danger]`** — rows inside it.
+- **`rail-hint`** — One-line inverted hint next to the collapsed rail (`SidebarTip`, `RailBtn`).
+- **`label`** (9px caps micro label), **`num`** (mono, tabular figures), **`avatar`**.
+- **`Modal`** (`title`, `onClose`, `width`, `footer`, `zIndex`) is the only dialog shell: `dialog-backdrop` (`--overlay`, no blur) + `overlay-card dialog` with `dialog-head` (lowercase thin title, close icon), `dialog-body`, optional `dialog-foot`. Confirmations (`DeleteConfirmOverlay`, `DeleteEtfModal`) use it too; don't build new backdrops.
+- **`FLabel` / `FInput` / `FSelect`** render `field-label` / `field` (radius 2, focus border `--fg-1`).
+
+#### Icons
+
+All icons come from **Iconoir** (`iconoir-react`) through `frontend/src/icons.jsx`, which re-exports them under the names the code already uses and accepts `size` / `color` / `strokeWidth` (default 1.5). Import icons only from `./icons.jsx`; to add one, add a line there. Do not reintroduce `lucide-react` or mix icon sets.
 
 Key CSS custom properties for table row backgrounds (always opaque — required so sticky/pinned cells don't bleed through during horizontal scroll):
 

@@ -13,7 +13,7 @@ import {
   GitFork, Sigma, CalendarDays, Target, PieChart, ArrowLeftRight,
   Gauge, Armchair, Info, Clock, FileText, Sun, Moon, Globe,
   Pin, PinOff, KeyRound,
-} from "lucide-react";
+} from "./icons.jsx";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
@@ -60,41 +60,57 @@ const CCY_NAME  = { USD:"US Dollar", EUR:"Euro", CHF:"Swiss Franc", GBP:"Pound S
 function useGlobalStyles() {
   useEffect(() => {
     if (document.getElementById("ptv3-global")) return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=DM+Serif+Display:ital@0;1&family=Fira+Sans:wght@400;500;600;700&display=swap";
-    document.head.appendChild(link);
     const s = document.createElement("style");
     s.id = "ptv3-global";
     s.textContent = `
+      /* ── Schriften (Pal-Designsystem, selbst ausgeliefert, keine externen Anfragen) ── */
+      @font-face { font-family: "Fira Sans"; font-weight: 100; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-100.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 200 300; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-300.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-400.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-500.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 600; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-600.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 700 800; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-700.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 300; font-style: normal; font-display: swap; src: url(/fonts/fira-code-300.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/fira-code-400.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 500 600; font-style: normal; font-display: swap; src: url(/fonts/fira-code-500.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 700; font-style: normal; font-display: swap; src: url(/fonts/fira-code-700.woff2) format("woff2"); }
+      @font-face { font-family: "Instrument Serif"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/instrument-serif-400.woff2) format("woff2"); }
+      @font-face { font-family: "Instrument Serif"; font-weight: 400; font-style: italic; font-display: swap; src: url(/fonts/instrument-serif-400-italic.woff2) format("woff2"); }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html { height: 100%; }
       body { height: 100%; overflow: hidden; }
 
       /* ── CSS Custom Properties — Dark theme (default) ── */
       :root, [data-theme="dark"] {
-        --bg:        #0d0e12;
-        --surface:   #13141a;
-        --surface-2: #1a1b23;
-        --border:    rgba(255,255,255,0.10);
-        --border-2:  rgba(255,255,255,0.06);
-        --fg-1:      #f0f1f5;
-        --fg-2:      #b4bfcc;
-        --fg-3:      #8896a8;
-        --accent:    #3b82f6;
-        --accent-08: rgba(59,130,246,0.08);
-        --accent-15: rgba(59,130,246,0.15);
-        --accent-35: rgba(59,130,246,0.35);
+        /* Pal-Designsystem (Trade-Pal), Modus Dunkel */
+        --bg:        #141312;
+        --surface:   #1c1b18;
+        --surface-2: #211f1b;
+        --border:    #32302a;
+        --border-2:  #28261f;
+        --fg-1:      #ece9e2;
+        --fg-2:      #a8a59c;
+        --fg-3:      #6f6d66;
+        --accent:    #2563eb;
+        --accent-08: rgba(37,99,235,0.08);
+        --accent-15: rgba(37,99,235,0.15);
+        --accent-35: rgba(37,99,235,0.35);
         --green:     #4ade80;
         --red:       #f87171;
         --yellow:    #fbbf24;
-        --font-sans:  'Syne', sans-serif;
-        --font-mono:  'JetBrains Mono', monospace;
-        --font-serif: 'DM Serif Display', Georgia, serif;
-        --row-accent-bg: #131928;  /* opaque equiv of rgba(59,130,246,0.08) over --surface */
-        --scrollbar-thumb: rgba(255,255,255,0.12);
-        --shadow-modal: 0 32px 80px rgba(0,0,0,0.60);
-        --shadow-card:  0 4px 24px rgba(0,0,0,0.35);
+        --green-tint: rgba(74,222,128,0.16);
+        --red-tint:   rgba(248,113,113,0.16);
+        --dot:       #262420;
+        --hover:     #2a2823;
+        --brand:     #ff5b2e;
+        --overlay:   rgba(0,0,0,0.65);
+        --font-sans:  'Fira Sans', sans-serif;
+        --font-mono:  'Fira Code', monospace;
+        --font-serif: 'Instrument Serif', Georgia, serif;
+        --row-accent-bg: #1d2129;  /* opaque equiv of rgba(37,99,235,0.08) over --surface */
+        --scrollbar-thumb: rgba(236,233,226,0.14);
+        --shadow-modal: 0 12px 32px rgba(0,0,0,0.60);
+        --shadow-card:  none;      /* Pal: Haarlinien statt Kartenschatten */
         /* Toggle colours */
         --toggle-pill-bg:     rgba(0,0,0,0.25);
         --toggle-neutral-bg:  rgba(255,255,255,0.12);
@@ -106,28 +122,35 @@ function useGlobalStyles() {
 
       /* ── CSS Custom Properties — Light theme ── */
       [data-theme="light"] {
-        --bg:        #f7f7f5;
+        /* Pal-Designsystem (Trade-Pal), Modus Hell */
+        --bg:        #f5f3ee;
         --surface:   #ffffff;
-        --surface-2: #f0f0ed;
-        --border:    rgba(15,17,22,0.10);
-        --border-2:  rgba(15,17,22,0.06);
-        --fg-1:      #15171c;
-        --fg-2:      #45505d;
-        --fg-3:      #7a8493;
-        --accent:    #3b82f6;
-        --accent-08: rgba(59,130,246,0.08);
-        --accent-15: rgba(59,130,246,0.15);
-        --accent-35: rgba(59,130,246,0.35);
+        --surface-2: #faf9f6;
+        --border:    #e5e2d9;
+        --border-2:  #efede6;
+        --fg-1:      #0b0b0c;
+        --fg-2:      #6f6d66;
+        --fg-3:      #a8a59c;
+        --accent:    #2563eb;
+        --accent-08: rgba(37,99,235,0.08);
+        --accent-15: rgba(37,99,235,0.15);
+        --accent-35: rgba(37,99,235,0.35);
         --green:     #16a34a;
         --red:       #dc2626;
         --yellow:    #d97706;
+        --green-tint: rgba(22,163,74,0.10);
+        --red-tint:   rgba(220,38,38,0.09);
+        --dot:       #e8e5db;
+        --hover:     #efede6;
+        --brand:     #ff5b2e;
+        --overlay:   rgba(11,11,12,0.35);
         --font-sans:  'Fira Sans', sans-serif;
-        --font-mono:  'JetBrains Mono', monospace;
-        --font-serif: 'DM Serif Display', Georgia, serif;
-        --row-accent-bg: #edf2fe;  /* opaque equiv of rgba(59,130,246,0.08) over --surface */
-        --scrollbar-thumb: rgba(15,17,22,0.15);
-        --shadow-modal: 0 24px 64px rgba(15,17,22,0.16);
-        --shadow-card:  0 1px 2px rgba(15,17,22,0.04), 0 4px 12px rgba(15,17,22,0.06);
+        --font-mono:  'Fira Code', monospace;
+        --font-serif: 'Instrument Serif', Georgia, serif;
+        --row-accent-bg: #eef3fd;  /* opaque equiv of rgba(37,99,235,0.08) over --surface */
+        --scrollbar-thumb: rgba(11,11,12,0.15);
+        --shadow-modal: 0 12px 32px rgba(0,0,0,0.18);
+        --shadow-card:  none;      /* Pal: Haarlinien statt Kartenschatten */
         /* Toggle colours — A11Y AA-compliant on light surfaces */
         --toggle-pill-bg:     rgba(15,17,22,0.07);
         --toggle-neutral-bg:  rgba(15,17,22,0.10);
@@ -141,7 +164,7 @@ function useGlobalStyles() {
       body { transition: background-color 0.2s ease, color 0.2s ease; }
 
       /* ── Pro mode (default): compact information density ── */
-      :root { --fs-base: 13px; --fs-scale: 1; }
+      :root { --fs-base: 13px; --fs-scale: 1; --radius-0: 0; --radius-2: 2px; --radius-12: 12px; }
       body {
         background: var(--bg); color: var(--fg-1); font-family: var(--font-sans);
         font-size: var(--fs-base); -webkit-font-smoothing: antialiased;
@@ -167,67 +190,94 @@ function useGlobalStyles() {
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
       input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
+      /* ══ Pal-Designsystem: Bausteine (Figma „Fintools“ › Design System) ══
+         Regeln: kein Radius auf Flächen, Radius 12 + Schatten nur für Overlays,
+         aktiv = --fg-1 (Fläche oder Linie), Blau nur für Auswahl/Links/Fokus. */
+      .label { font-size: 9px; font-weight: 600; letter-spacing: .14em;
+        text-transform: uppercase; color: var(--fg-3); }
+      .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+      .overlay-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-12); box-shadow: var(--shadow-modal); overflow: hidden;
+      }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        padding: 6px 12px; border: 1px solid var(--border); border-radius: 0;
+        background: transparent; color: var(--fg-1); cursor: pointer;
+        font-family: var(--font-sans); font-size: 12px; font-weight: 500;
+      }
+      .btn:hover { background: var(--hover); }
+      .btn.primary { background: var(--fg-1); border-color: var(--fg-1); color: var(--surface); }
+      .btn.primary:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+      .btn.danger { color: var(--red); }
+      .btn:disabled { opacity: .4; cursor: not-allowed; }
+      .btn:disabled:hover { background: transparent; }
+      .btn.primary:disabled:hover { background: var(--fg-1); border-color: var(--fg-1); color: var(--surface); }
+      .btn-row { display: flex; }
+      .btn-row > .btn + .btn { margin-left: -1px; }
+      /* Hinweis neben der eingeklappten Rail (SidebarTip, RailBtn) */
+      .rail-hint {
+        position: fixed; transform: translateY(-50%); z-index: 9999; pointer-events: none;
+        background: var(--fg-1); color: var(--surface); border-radius: var(--radius-2);
+        padding: 5px 10px; font-size: 12px; font-weight: 500; white-space: nowrap;
+      }
       /* ── Rail nav button ── */
       .rail-btn {
         display: flex; align-items: center; gap: 9px;
-        width: 100%; padding: 5px 10px; border-radius: 6px;
+        width: 100%; padding: 6px 10px; border-radius: 0;
         border: none; background: transparent; color: var(--fg-2);
         font-size: 12.5px; font-weight: 500; cursor: pointer;
         transition: background 0.12s ease, color 0.12s ease;
         text-align: left; font-family: var(--font-sans);
         white-space: nowrap; min-width: 0;
       }
-      .rail-btn:hover { background: var(--accent-08) !important; color: var(--accent) !important; }
-      .rail-btn:hover .rail-icon { color: var(--accent) !important; }
-      .rail-btn.active { background: var(--accent-15) !important; color: var(--accent) !important; font-weight: 600 !important; }
-      .rail-btn.active .rail-icon { color: var(--accent) !important; }
+      .rail-btn:hover { background: var(--surface-2) !important; color: var(--fg-1) !important; }
+      .rail-btn:hover .rail-icon { color: var(--fg-1) !important; }
+      .rail-btn.active { background: var(--surface-2) !important; color: var(--fg-1) !important;
+        box-shadow: inset 2px 0 0 var(--fg-1); }
+      .rail-btn.active .rail-icon { color: var(--fg-1) !important; }
       /* ── Currency button hover ── */
-      .ccy-btn:hover { background: var(--accent-08) !important; }
+      .ccy-btn:hover { background: var(--surface-2) !important; }
       .ccy-btn:hover .ccy-flag { opacity: 1 !important; }
-      .ccy-btn:hover .ccy-label { color: var(--accent) !important; }
-      .ccy-btn:hover .ccy-name  { color: var(--accent) !important; }
+      .ccy-btn:hover .ccy-label { color: var(--fg-1) !important; }
+      .ccy-btn:hover .ccy-name  { color: var(--fg-2) !important; }
       /* Global smooth transitions */
       button { transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease; }
       .tab-pill { transition: background 0.3s ease, color 0.3s ease, font-weight 0.15s; }
       /* ── Rail footer section ── */
       .rail-footer-section {
         flex-shrink: 0; border-top: 1px solid var(--border);
-        padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 3px;
+        padding: 8px 8px 8px; display: flex; flex-direction: column; gap: 6px;
       }
-      /* ── Density / theme / language segmented rows (App-Pal design system) ── */
-      .rail-density-row, .rail-theme-row {
-        display: flex; gap: 3px; padding: 2px;
-        background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border);
-      }
+      /* ── Segment-Schalter (Dichte, Sprache, Theme, App-Wechsel) ── */
+      .rail-density-row, .rail-theme-row { display: flex; gap: 0; padding: 0; background: transparent; }
       .rail-density-btn {
         flex: 1; display: flex; align-items: center; justify-content: center;
-        gap: 5px; padding: 5px 8px; border-radius: 6px; border: none;
-        background: transparent; color: var(--fg-3); font-size: 11px; font-weight: 600;
-        cursor: pointer; transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+        gap: 5px; padding: 5px 8px; border-radius: 0; border: 1px solid var(--border);
+        background: transparent; color: var(--fg-2); font-size: 11px; font-weight: 500;
+        cursor: pointer; transition: background 0.12s ease, color 0.12s ease;
         font-family: inherit; white-space: nowrap;
       }
-      .rail-density-btn:hover { color: var(--fg-1); }
-      .rail-density-btn.active {
-        background: var(--surface); color: var(--fg-1);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+      .rail-density-btn + .rail-density-btn { margin-left: -1px; }
+      .rail-density-btn:hover { color: var(--fg-1); background: var(--surface-2); }
+      .rail-density-btn.active, .rail-density-btn.active:hover {
+        background: var(--fg-1); border-color: var(--fg-1); color: var(--surface);
       }
       /* ── Navigation tabs (top nav bar + ETF inner nav) ── */
       .app-nav-tab {
         display: flex; align-items: center; gap: 7px;
-        padding: 7px 14px; border: none; cursor: pointer;
-        background: transparent; color: var(--fg-3);
-        border-radius: 9px; font-size: 12px; font-weight: 500;
+        padding: 9px 14px; border: none; cursor: pointer;
+        background: transparent; color: var(--fg-2);
+        border-radius: 0; font-size: 12px; font-weight: 500;
         font-family: inherit;
-        transition: background 0.2s ease, color 0.2s ease, font-weight 0.12s;
+        transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
       }
       .app-nav-tab:hover { background: var(--surface-2); color: var(--fg-1); }
-      .app-nav-tab.active {
-        background: rgba(59,130,246,0.15); color: var(--accent); font-weight: 700;
-      }
+      .app-nav-tab.active { background: transparent; color: var(--fg-1); box-shadow: inset 0 -2px 0 var(--fg-1); }
       /* ── User account row ── */
       .rail-user {
         display: flex; align-items: center; gap: 9px;
-        padding: 6px 8px; border-radius: 8px; cursor: pointer;
+        padding: 6px 8px; border-radius: 0; cursor: pointer;
         border: 1px solid transparent;
         transition: background 0.12s ease, border-color 0.12s ease;
       }
@@ -235,20 +285,54 @@ function useGlobalStyles() {
       .rail-user-collapsed { justify-content: center; padding: 6px 4px; }
       /* ── Avatar ── */
       .avatar {
-        width: 28px; height: 28px; border-radius: 8px;
+        width: 28px; height: 28px; border-radius: var(--radius-2);
         display: flex; align-items: center; justify-content: center;
-        font-weight: 700; font-size: 11px; color: #fff;
-        background: var(--accent); flex-shrink: 0;
+        font-family: var(--font-mono); font-weight: 500; font-size: 11px; color: var(--surface);
+        background: var(--fg-1); flex-shrink: 0;
       }
-      /* ── Rail collapsed tooltip ── */
-      .rail-tip {
-        position: fixed; background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600;
-        color: var(--fg-1); white-space: nowrap; pointer-events: none; z-index: 9999;
-        box-shadow: var(--shadow-card);
-        opacity: 0; transition: opacity 0.12s ease;
+      /* ── Dialog (Modal und alle Bestätigungen) ── */
+      .dialog-backdrop {
+        position: fixed; inset: 0; z-index: 1000; background: var(--overlay);
+        display: flex; align-items: center; justify-content: center;
       }
-      .rail-tip.visible { opacity: 1; }
+      .dialog { display: flex; flex-direction: column; max-width: 95vw; max-height: 90vh; }
+      .dialog-head {
+        display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+        padding: 11px 10px 11px 16px; border-bottom: 1px solid var(--border-2);
+      }
+      .dialog-title { flex: 1; font-size: 16px; font-weight: 200; text-transform: lowercase; color: var(--fg-1); }
+      .dialog-close {
+        display: flex; padding: 5px; border: none; border-radius: 0; background: transparent;
+        color: var(--fg-3); cursor: pointer;
+      }
+      .dialog-close:hover { background: var(--hover); color: var(--fg-1); }
+      .dialog-body { padding: 16px; overflow: auto; }
+      .dialog-foot {
+        display: flex; justify-content: flex-end; flex-shrink: 0;
+        padding: 12px 16px; border-top: 1px solid var(--border-2);
+      }
+      /* ── Formularfelder (FLabel / FInput / FSelect) ── */
+      .field-label {
+        font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+        color: var(--fg-2); margin-bottom: 6px;
+      }
+      .field {
+        width: 100%; padding: 7px 10px; border-radius: var(--radius-2);
+        border: 1px solid var(--border); background: var(--surface);
+        color: var(--fg-1); font-size: 13px; font-family: var(--font-sans); outline: none;
+      }
+      .field:focus { border-color: var(--fg-1); }
+      .field::placeholder { color: var(--fg-3); }
+      /* ── Popup-Zeilen (Nutzer-Popup) ── */
+      .menu-row {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        padding: 8px 10px; border: none; border-radius: 0; background: transparent;
+        color: var(--fg-1); cursor: pointer; text-align: left;
+        font-family: var(--font-sans); font-size: 12px; font-weight: 500;
+      }
+      .menu-row:hover { background: var(--surface-2); }
+      .menu-row .menu-icon { color: var(--fg-2); display: flex; flex-shrink: 0; }
+      .menu-row.danger, .menu-row.danger .menu-icon { color: var(--red); }
     `;
     document.head.appendChild(s);
   }, []);
@@ -560,7 +644,7 @@ const PERF_COLORS = [
   { t: -5.0, c: [140,   8,   8] },
 ];
 function getPerfColor(perf) {
-  if (perf == null) return "rgba(40,42,54,0.95)";
+  if (perf == null) return "#3a3833";
   const sorted = [...PERF_COLORS].sort((a,b) => b.t - a.t);
   for (let i = 0; i < sorted.length - 1; i++) {
     const hi = sorted[i], lo = sorted[i+1];
@@ -625,9 +709,9 @@ function RefreshIconButton({ onClick, loading }) {
       style={{
         display:"flex", alignItems:"center", gap:5,
         padding: hov ? "4px 10px" : "4px 7px",
-        borderRadius:8, border:`1px solid ${hov ? THEME.accent+"66" : THEME.border}`,
-        background: hov ? "rgba(59,130,246,0.12)" : "transparent",
-        color: loading ? THEME.text3 : hov ? THEME.accent : THEME.text3,
+        borderRadius:0, border:`1px solid ${hov ? THEME.text1 : THEME.border}`,
+        background: hov ? "var(--hover)" : "transparent",
+        color: loading ? THEME.text3 : hov ? THEME.text1 : THEME.text3,
         cursor: loading ? "not-allowed" : "pointer",
         fontSize:11, fontFamily:"inherit", fontWeight:600,
         transition:"all 0.15s", whiteSpace:"nowrap", overflow:"hidden",
@@ -644,58 +728,31 @@ function RefreshIconButton({ onClick, loading }) {
   );
 }
 
-const FLabel = ({ children }) => (
-  <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em", marginBottom:5 }}>{children}</div>
+const FLabel = ({ children }) => <div className="field-label">{children}</div>;
+const FInput = ({ style, className = "", ...props }) => (
+  <input {...props} className={"field " + className} style={style}/>
 );
-const FInput = ({ style, ...props }) => (
-  <input {...props} style={{
-    width:"100%", padding:"10px 12px", borderRadius:10,
-    border:`1px solid ${THEME.border}`, background:THEME.surface2,
-    color:THEME.text1, fontSize:13, outline:"none", fontFamily:THEME.font,
-    transition:"border-color 0.15s",
-    ...style,
-  }}
-  onFocus={e => e.target.style.borderColor = THEME.accent}
-  onBlur={e  => e.target.style.borderColor = THEME.border}
-  />
-);
-const FSelect = ({ children, style, ...props }) => (
-  <select {...props} style={{
-    width:"100%", padding:"10px 12px", borderRadius:10,
-    border:`1px solid ${THEME.border}`, background:THEME.surface2,
-    color:THEME.text1, fontSize:13, outline:"none", fontFamily:THEME.font,
-    ...style,
-  }}>{children}</select>
+const FSelect = ({ children, style, className = "", ...props }) => (
+  <select {...props} className={"field " + className} style={style}>{children}</select>
 );
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
-function Modal({ title, onClose, children, width=460 }) {
+function Modal({ title, onClose, children, width=460, footer, zIndex }) {
   useEffect(() => {
     const handler = e => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", backdropFilter:"blur(4px)",
-      display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000,
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        width, maxWidth:"95vw", maxHeight:"90vh", overflow:"auto",
-        background:THEME.surface, borderRadius:18,
-        border:`1px solid ${THEME.border}`,
-        boxShadow:"0 32px 80px rgba(0,0,0,0.60)",
-        padding:28,
-      }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
-          <div style={{ fontSize:16, fontWeight:700, color:THEME.text1 }}>{title}</div>
-          <button onClick={onClose} style={{
-            background:"transparent", border:"none", color:THEME.text3,
-            cursor:"pointer", padding:4, borderRadius:6, display:"flex",
-          }}><X size={18}/></button>
+    <div className="dialog-backdrop" style={zIndex ? { zIndex } : undefined}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="overlay-card dialog" style={{ width }}>
+        <div className="dialog-head">
+          <div className="dialog-title">{title}</div>
+          <button className="dialog-close" onClick={onClose}><X size={16}/></button>
         </div>
-        {children}
+        <div className="dialog-body">{children}</div>
+        {footer && <div className="dialog-foot">{footer}</div>}
       </div>
     </div>
   );
@@ -813,7 +870,8 @@ function LoginScreen({ onLogin, onEtfMode }) {
 
   const onEnter = e => e.key === "Enter" && handle();
   const linkBtn = { background:"none", border:"none", color:THEME.accent, cursor:"pointer",
-                    fontSize:12, fontFamily:"inherit", fontWeight:600, padding:0 };
+                    fontSize:12, fontFamily:"inherit", fontWeight:500, padding:0 };
+  const blockBtn = { width:"100%", marginTop:8, padding:"10px 0", fontSize:13 };
   const pinField = (value, setValue, label, placeholder) => (
     <div>
       <FLabel>{label}</FLabel>
@@ -839,16 +897,15 @@ function LoginScreen({ onLogin, onEtfMode }) {
       background:THEME.bg, fontFamily:THEME.font,
     }}>
       <div style={{
-        width:380, padding:40, borderRadius:20,
+        width:380, padding:40,
         background:THEME.surface, border:`1px solid ${THEME.border}`,
-        boxShadow:"0 32px 80px rgba(0,0,0,0.6)",
       }}>
-        {/* Brand */}
-        <div style={{ textAlign:"center", marginBottom:32 }}>
-          <div style={{ fontFamily:THEME.serif, fontSize:28, fontWeight:400, letterSpacing:"-0.02em" }}>
-            Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+        {/* Brand: same wordmark as the rail, mode title thin and lowercase */}
+        <div style={{ marginBottom:32 }}>
+          <div style={{ fontSize:14, letterSpacing:"0.16em", lineHeight:1.2, color:THEME.text1 }}>
+            <span style={{ fontWeight:700 }}>PORTFOLIO</span><span style={{ fontWeight:100 }}>-PAL</span>
           </div>
-          <div style={{ fontSize:11, color:THEME.text3, marginTop:4, letterSpacing:"0.06em", textTransform:"uppercase" }}>
+          <div style={{ fontSize:22, fontWeight:200, textTransform:"lowercase", color:THEME.text1, marginTop:20 }}>
             {t(`auth.title_${mode}`)}
           </div>
         </div>
@@ -907,8 +964,8 @@ function LoginScreen({ onLogin, onEtfMode }) {
           </div>
         )}
         {info && (
-          <div style={{ marginTop:12, padding:"8px 10px", borderRadius:8, fontSize:12, lineHeight:1.5,
-            background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", color:THEME.green }}>
+          <div style={{ marginTop:12, padding:"8px 10px", fontSize:12, lineHeight:1.5,
+            borderLeft:`2px solid ${THEME.green}`, background:"var(--green-tint)", color:THEME.text1 }}>
             {info}
           </div>
         )}
@@ -918,21 +975,20 @@ function LoginScreen({ onLogin, onEtfMode }) {
           <div onClick={() => setDisclaimerOk(v => !v)}
             style={{
               marginTop:16, display:"flex", alignItems:"flex-start", gap:10,
-              padding:"10px 12px", borderRadius:10, cursor:"pointer",
-              background: disclaimerOk ? "rgba(74,222,128,0.07)" : "rgba(255,255,255,0.03)",
-              border:`1px solid ${disclaimerOk ? "rgba(74,222,128,0.3)" : THEME.border}`,
-              transition:"background 0.3s ease, border-color 0.3s ease",
+              padding:"10px 12px", cursor:"pointer",
+              border:`1px solid ${disclaimerOk ? THEME.text1 : THEME.border}`,
+              transition:"border-color 0.2s ease",
             }}>
             <div style={{
-              flexShrink:0, width:16, height:16, borderRadius:4, marginTop:1,
-              border:`2px solid ${disclaimerOk ? THEME.green : "rgba(255,255,255,0.25)"}`,
-              background: disclaimerOk ? THEME.green : "transparent",
+              flexShrink:0, width:14, height:14, borderRadius:2, marginTop:1,
+              border:`1px solid ${disclaimerOk ? THEME.text1 : THEME.text3}`,
+              background: disclaimerOk ? THEME.text1 : "transparent",
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"all 0.2s ease",
             }}>
               {disclaimerOk && (
                 <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                  <path d="M1 3.5L3.5 6L8 1" stroke="#0d0e12" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M1 3.5L3.5 6L8 1" stroke="var(--surface)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
             </div>
@@ -943,22 +999,11 @@ function LoginScreen({ onLogin, onEtfMode }) {
         )}
 
         {linkInvalid ? (
-          <button onClick={() => switchMode("forgot")}
-            style={{ width:"100%", marginTop:16, padding:"13px 0", borderRadius:12, border:"none",
-              background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          <button className="btn primary" onClick={() => switchMode("forgot")} style={{ ...blockBtn, marginTop:16 }}>
             {t("auth.requestNewLink")}
           </button>
         ) : !(mode === "forgot" && sent) && (
-          <button onClick={handle} disabled={!canSubmit}
-            style={{
-              width:"100%", marginTop:16, padding:"13px 0", borderRadius:12,
-              border:"none", background:THEME.accent, color:"#fff",
-              fontSize:13, fontWeight:700, cursor:canSubmit ? "pointer" : "not-allowed",
-              fontFamily:"inherit",
-              opacity: canSubmit ? 1 : 0.4,
-              boxShadow: canSubmit ? "0 4px 20px rgba(59,130,246,0.35)" : "none",
-              transition:"opacity 0.3s ease, box-shadow 0.3s ease",
-            }}>
+          <button className="btn primary" onClick={handle} disabled={!canSubmit} style={{ ...blockBtn, marginTop:16 }}>
             {busy ? <span className="spin">⟳</span> : t(`auth.submit_${mode}`)}
           </button>
         )}
@@ -967,32 +1012,17 @@ function LoginScreen({ onLogin, onEtfMode }) {
         {(mode === "login" || mode === "register") && (<>
           <div style={{ margin:"20px 0 4px", display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ flex:1, height:1, background:THEME.border2 }}/>
-            <span style={{ fontSize:10, color:THEME.text3, whiteSpace:"nowrap",
-              textTransform:"uppercase", letterSpacing:"0.08em" }}>{t("auth.or")}</span>
+            <span className="label" style={{ whiteSpace:"nowrap" }}>{t("auth.or")}</span>
             <div style={{ flex:1, height:1, background:THEME.border2 }}/>
           </div>
           {mode === "login" && passkeysSupported() && (
-            <button onClick={passkeyLogin} disabled={busy}
-              style={{
-                width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
-                border:`1px solid ${THEME.border}`, background:THEME.surface2, color:THEME.text1,
-                fontSize:13, fontWeight:600, cursor: busy ? "wait" : "pointer", fontFamily:"inherit",
-                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-              }}>
+            <button className="btn" onClick={passkeyLogin} disabled={busy} style={blockBtn}>
               <KeyRound size={15}/> {t("auth.passkeyLogin")}
             </button>
           )}
-          <button onClick={onEtfMode}
-            style={{
-              width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
-              border:`1px dashed rgba(59,130,246,0.45)`,
-              background:"rgba(59,130,246,0.07)", color:THEME.accent,
-              fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
-              transition:"all 0.15s",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-            }}>
-            <span style={{ fontSize:16 }}>📊</span>
-            ETF Screener <span style={{ fontSize:10, opacity:0.7 }}>— {t("auth.noLogin")}</span>
+          <button className="btn" onClick={onEtfMode} style={blockBtn}>
+            <Layers size={15}/>
+            ETF Screener <span style={{ fontSize:11, color:THEME.text3 }}>— {t("auth.noLogin")}</span>
           </button>
         </>)}
 
@@ -1034,42 +1064,17 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000,
-      display:"flex", alignItems:"center", justifyContent:"center" }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`,
-        borderRadius:16, padding:24, width:340, fontFamily:THEME.font }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-          <span style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>{t("portfolio.rename")}</span>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:THEME.text3, cursor:"pointer" }}>
-            <X size={18}/>
-          </button>
-        </div>
-        <input
-          value={name} onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && handleSave()}
-          autoFocus
-          style={{ width:"100%", padding:"9px 12px", borderRadius:9,
-            border:`1px solid ${THEME.accent}66`, background:THEME.bg,
-            color:THEME.text1, fontSize:13, fontFamily:THEME.font, outline:"none",
-            boxSizing:"border-box" }}/>
-        {err && <div style={{ color:THEME.red, fontSize:12, marginTop:8 }}>{err}</div>}
-        <div style={{ display:"flex", gap:8, marginTop:16 }}>
-          <button onClick={onClose}
-            style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1px solid ${THEME.border}`,
-              background:"transparent", color:THEME.text2, fontSize:13, fontFamily:THEME.font, cursor:"pointer" }}>
-            {t("common.cancel")}
-          </button>
-          <button onClick={handleSave} disabled={!name.trim() || busy}
-            style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
-              background:THEME.accent, color:"#fff", fontSize:13, fontWeight:600,
-              fontFamily:THEME.font, cursor: name.trim() ? "pointer" : "not-allowed",
-              opacity: name.trim() ? 1 : 0.5 }}>
-            {busy ? "…" : t("portfolio.renameBtn")}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modal title={t("portfolio.rename")} onClose={onClose} width={340}
+      footer={<div className="btn-row">
+        <button className="btn" onClick={onClose} style={{ flex:1 }}>{t("common.cancel")}</button>
+        <button className="btn primary" onClick={handleSave} disabled={!name.trim() || busy} style={{ flex:1 }}>
+          {busy ? "…" : t("portfolio.renameBtn")}
+        </button>
+      </div>}>
+      <FInput value={name} onChange={e => setName(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && handleSave()} autoFocus/>
+      {err && <div style={{ color:THEME.red, fontSize:12, marginTop:8 }}>{err}</div>}
+    </Modal>
   );
 }
 
@@ -1227,7 +1232,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     <div style={{ marginBottom:16 }}>
       <label style={{ fontSize:11, color:THEME.text3, display:"block", marginBottom:5 }}>Portfolio</label>
       <select value={selPort} onChange={e => { setSelPort(e.target.value); setPreviewData(null); setResult(null); setNewPortName(""); }}
-        style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+        style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
           background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
         {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         <option value="new">{t("portfolio.createNew")}</option>
@@ -1239,10 +1244,10 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
             value={newPortName} onChange={e => setNewPortName(e.target.value)}
             placeholder={t("portfolio.namePlaceholder")}
             onKeyDown={e => e.key === "Enter" && handleCreatePort()}
-            style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1px solid ${THEME.accent}66`,
+            style={{ flex:1, padding:"7px 10px", borderRadius:2, border:`1px solid ${THEME.accent}66`,
               background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}/>
           <button onClick={handleCreatePort} disabled={!newPortName.trim() || creatingPort}
-            style={{ padding:"7px 14px", borderRadius:8, border:"none",
+            style={{ padding:"7px 14px", borderRadius:2, border:"none",
               background:THEME.accent, color:"#fff", fontSize:12, fontWeight:600,
               cursor: newPortName.trim() ? "pointer" : "not-allowed", fontFamily:"inherit",
               opacity: newPortName.trim() ? 1 : 0.5 }}>
@@ -1276,7 +1281,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     <div style={{ display:"flex", gap:3 }}>
       {Object.entries(RESOLUTION_LABELS).map(([key, { label, color }]) => (
         <button key={key} onClick={() => onChange(key)} style={{
-          padding:"2px 7px", borderRadius:5, border:`1px solid ${value===key?color:THEME.border}`,
+          padding:"2px 7px", borderRadius:2, border:`1px solid ${value===key?color:THEME.border}`,
           background:value===key?`${color}22`:"transparent",
           color:value===key?color:THEME.text3,
           fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
@@ -1288,28 +1293,20 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
   );
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.72)",
-      backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
-      justifyContent:"center", zIndex:2000 }}
+    <div className="dialog-backdrop" style={{ zIndex:2000 }}
       onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
 
-      {/* Modal — wider when showing preview */}
-      <div style={{
+      {/* Dialog — breiter mit Vorschau */}
+      <div className="overlay-card dialog" style={{
         width: previewData ? Math.min(900, window.innerWidth-40) : 440,
-        maxHeight: "90vh", background:THEME.surface, borderRadius:18,
-        border:`1px solid ${THEME.border}`, boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-        display:"flex", flexDirection:"column", overflow:"hidden",
         transition:"width 0.3s ease",
       }}>
-        {/* Header */}
-        <div style={{ padding:"20px 24px 0", flexShrink:0 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-            <div style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>Import / Export</div>
-            <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer",
-              color:THEME.text3, display:"flex", padding:4, borderRadius:7 }}>
-              <X size={16}/>
-            </button>
-          </div>
+        <div className="dialog-head">
+          <div className="dialog-title">Import / Export</div>
+          <button className="dialog-close" onClick={onClose}><X size={16}/></button>
+        </div>
+        {/* Kopf: Umschalter */}
+        <div style={{ padding:"16px 16px 0", flexShrink:0 }}>
           <div className="rail-density-row" style={{ marginBottom:16 }}>
             <button className={"rail-density-btn" + (tab==="export" ? " active" : "")}
               onClick={()=>{ setTab("export"); setPreviewData(null); setResult(null); }}>
@@ -1337,12 +1334,12 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                 Downloads alle Transaktionen des gewählten Portfolios als Excel-Datei. Kann in ein anderes Portfolio re-importiert werden.
               </p>
               {exportErr && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:10,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:10,
                   background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
                   fontSize:11, color:THEME.red }}><AlertCircle size={12}/> {exportErr}</div>
               )}
               <button onClick={handleExport} disabled={!selPort||exporting}
-                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
+                style={{ width:"100%", padding:"11px 0", borderRadius:2, border:"none",
                   background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700,
                   cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center",
                   justifyContent:"center", gap:8, opacity:(!selPort||exporting)?0.4:1 }}>
@@ -1359,12 +1356,12 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 10px", lineHeight:1.5 }}>
                 {t("backup.hint")}
               </p>
-              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:14, fontSize:11, lineHeight:1.5,
+              <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:14, fontSize:11, lineHeight:1.5,
                 background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.3)", color:THEME.yellow }}>
                 ⚠ {t("backup.warn")}
               </div>
               <button onClick={handleSettingsExport}
-                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none", marginBottom:10,
+                style={{ width:"100%", padding:"11px 0", borderRadius:2, border:"none", marginBottom:10,
                   background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
                   fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                 <FileDown size={15}/> {t("backup.exportBtn")}
@@ -1372,14 +1369,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <input ref={settingsFileRef} type="file" accept=".json,application/json" style={{ display:"none" }}
                 onChange={e => { handleSettingsImport(e.target.files?.[0]); e.target.value = ""; }}/>
               <button onClick={() => settingsFileRef.current?.click()}
-                style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1.5px solid ${THEME.border}`,
+                style={{ width:"100%", padding:"10px 0", borderRadius:2, border:`1.5px solid ${THEME.border}`,
                   background:"transparent", color:THEME.text2, fontSize:12, fontWeight:700, cursor:"pointer",
                   fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                 <Upload size={14}/> {t("backup.importBtn")}
               </button>
               <p style={{ fontSize:10, color:THEME.text3, margin:"8px 0 0", lineHeight:1.5 }}>{t("backup.importHint")}</p>
               {settingsMsg && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginTop:10, fontSize:11,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginTop:10, fontSize:11,
                   background: settingsMsg.ok ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
                   border: `1px solid ${settingsMsg.ok ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
                   color: settingsMsg.ok ? THEME.green : THEME.red }}>
@@ -1395,15 +1392,15 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               {portSelectJsx}
               {/* Template */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
-                border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
+                padding:"8px 12px", background:"var(--surface-2)",
+                border:`1px solid ${THEME.border}`, marginBottom:14 }}>
                 <div>
-                  <div style={{ fontSize:11, fontWeight:600, color:THEME.accent }}>Import-Vorlage</div>
+                  <div style={{ fontSize:11, fontWeight:600, color:THEME.text1 }}>Import-Vorlage</div>
                   <div style={{ fontSize:10, color:THEME.text3, marginTop:1 }}>Excel mit Anleitung und Dropdown-Validierung</div>
                 </div>
                 <a href={txApi.importTemplate()} download
                   style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px",
-                    borderRadius:8, border:`1px solid ${THEME.accent}`,
+                    borderRadius:2, border:`1px solid ${THEME.accent}`,
                     color:THEME.accent, fontSize:11, fontWeight:600,
                     textDecoration:"none", background:"transparent", whiteSpace:"nowrap" }}>
                   <FileDown size={12}/> Vorlage
@@ -1413,7 +1410,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <div onDragOver={e=>e.preventDefault()} onDrop={handleDrop}
                 onClick={()=>fileRef.current?.click()}
                 style={{ border:`2px dashed ${file ? THEME.accent : THEME.border}`,
-                  borderRadius:10, padding:"20px 16px", textAlign:"center",
+                  borderRadius:2, padding:"20px 16px", textAlign:"center",
                   cursor:"pointer", background: file?"rgba(59,130,246,0.06)":"transparent",
                   transition:"all 0.15s", marginBottom:14 }}>
                 <input ref={fileRef} type="file" accept=".xlsx,.csv" style={{ display:"none" }}
@@ -1433,15 +1430,15 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                 )}
               </div>
               {importErr && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:12,
                   background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
                   fontSize:11, color:THEME.red, display:"flex", gap:7 }}>
                   <AlertCircle size={13} style={{flexShrink:0,marginTop:1}}/> {importErr}
                 </div>
               )}
               <button onClick={handlePreview} disabled={!file || !selPort || previewing}
-                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
-                  background: file&&selPort ? THEME.accent : "rgba(255,255,255,0.05)",
+                style={{ width:"100%", padding:"11px 0", borderRadius:2, border:"none",
+                  background: file&&selPort ? THEME.accent : "var(--surface-2)",
                   color: file&&selPort ? "#fff" : THEME.text3, fontSize:13, fontWeight:700,
                   cursor: file&&selPort ? "pointer" : "default", fontFamily:"inherit",
                   display:"flex", alignItems:"center", justifyContent:"center", gap:8,
@@ -1458,37 +1455,37 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
             <div>
               {/* Summary bar */}
               <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-                <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.1)",
-                  border:"1px solid rgba(59,130,246,0.2)", flex:"1 1 0", minWidth:100 }}>
+                <div style={{ padding:"8px 12px", background:"var(--surface-2)",
+                  border:`1px solid ${THEME.border}`, flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                    letterSpacing:"0.07em" }}>Gesamt</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                    letterSpacing:"0.14em" }}>Gesamt</div>
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:THEME.text1 }}>{previewData.preview.length}</div>
                 </div>
-                <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(74,222,128,0.08)",
+                <div style={{ padding:"8px 12px", borderRadius:2, background:"rgba(74,222,128,0.08)",
                   border:"1px solid rgba(74,222,128,0.2)", flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                    letterSpacing:"0.07em" }}>Neu</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                    letterSpacing:"0.14em" }}>Neu</div>
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:THEME.green }}>{previewData.newCount}</div>
                 </div>
-                <div style={{ padding:"8px 12px", borderRadius:8,
-                  background:previewData.conflictCount>0?"rgba(248,113,113,0.08)":"rgba(255,255,255,0.03)",
-                  border:previewData.conflictCount>0?"1px solid rgba(248,113,113,0.25)":"1px solid rgba(255,255,255,0.06)",
+                <div style={{ padding:"8px 12px", borderRadius:2,
+                  background:previewData.conflictCount>0?"rgba(248,113,113,0.08)":"var(--surface-2)",
+                  border:previewData.conflictCount>0?"1px solid rgba(248,113,113,0.25)":"1px solid var(--border)",
                   flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                    letterSpacing:"0.07em" }}>Konflikte</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                    letterSpacing:"0.14em" }}>Konflikte</div>
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:previewData.conflictCount>0?THEME.red:THEME.text3 }}>
                     {previewData.conflictCount}
                   </div>
                 </div>
                 {previewData.skipped.length > 0 && (
-                  <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(251,191,36,0.08)",
+                  <div style={{ padding:"8px 12px", borderRadius:2, background:"rgba(251,191,36,0.08)",
                     border:"1px solid rgba(251,191,36,0.2)", flex:"1 1 0", minWidth:100 }}>
                     <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                      letterSpacing:"0.07em" }}>Übersprungen</div>
-                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                      letterSpacing:"0.14em" }}>Übersprungen</div>
+                    <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                       fontWeight:700, color:THEME.yellow }}>{previewData.skipped.length}</div>
                   </div>
                 )}
@@ -1496,7 +1493,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 
               {/* Conflict bulk actions */}
               {previewData.conflictCount > 0 && (
-                <div style={{ padding:"10px 12px", borderRadius:9, background:"rgba(248,113,113,0.06)",
+                <div style={{ padding:"10px 12px", borderRadius:2, background:"rgba(248,113,113,0.06)",
                   border:"1px solid rgba(248,113,113,0.2)", marginBottom:12 }}>
                   <div style={{ fontSize:11, color:THEME.text2, marginBottom:8 }}>
                     ⚠ <strong>{previewData.conflictCount} Zeilen</strong> haben dieselbe Symbol+Datum+Typ Kombination wie bestehende Transaktionen.
@@ -1507,7 +1504,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     {Object.entries(RESOLUTION_LABELS).map(([key, { label, color, desc }]) => (
                       <button key={key} onClick={() => setAllConflicts(key)} style={{
-                        padding:"5px 12px", borderRadius:7, border:`1px solid ${color}40`,
+                        padding:"5px 12px", borderRadius:2, border:`1px solid ${color}40`,
                         background:`${color}12`, color, fontSize:10, fontWeight:700,
                         cursor:"pointer", fontFamily:"inherit", display:"flex",
                         flexDirection:"column", alignItems:"flex-start", gap:1,
@@ -1528,17 +1525,17 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   { key:"new",       label:`Neu (${previewData.newCount})` },
                 ].map(f => (
                   <button key={f.key} onClick={()=>setFilterMode(f.key)} style={{
-                    padding:"4px 10px", borderRadius:6,
-                    border:`1px solid ${filterMode===f.key?THEME.accent:THEME.border}`,
-                    background:filterMode===f.key?"rgba(59,130,246,0.15)":"transparent",
-                    color:filterMode===f.key?THEME.accent:THEME.text3,
+                    padding:"4px 10px", borderRadius:2,
+                    border:`1px solid ${filterMode===f.key?THEME.text1:THEME.border}`,
+                    background:filterMode===f.key?THEME.text1:"transparent",
+                    color:filterMode===f.key?THEME.surface:THEME.text3,
                     fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
                   }}>{f.label}</button>
                 ))}
               </div>
 
               {/* Row table */}
-              <div style={{ border:`1px solid ${THEME.border}`, borderRadius:10, overflow:"hidden", marginBottom:14 }}>
+              <div style={{ border:`1px solid ${THEME.border}`, borderRadius:2, overflow:"hidden", marginBottom:14 }}>
                 <div style={{ maxHeight:360, overflowY:"auto" }}>
                   {/* Header */}
                   <div style={{ display:"grid", gridTemplateColumns:"80px 80px 60px 70px 70px 1fr",
@@ -1546,7 +1543,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                     position:"sticky", top:0, zIndex:1 }}>
                     {["Symbol","Datum","Typ","Menge","Preis","Aktion"].map(h => (
                       <div key={h} style={{ fontSize:9, color:THEME.text3, fontWeight:700,
-                        textTransform:"uppercase", letterSpacing:"0.07em" }}>{h}</div>
+                        textTransform:"uppercase", letterSpacing:"0.14em" }}>{h}</div>
                     ))}
                   </div>
                   {filteredRows.length === 0 && (
@@ -1566,12 +1563,12 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                         {/* Import row */}
                         <div style={{ display:"grid", gridTemplateColumns:"80px 80px 60px 70px 70px 1fr",
                           padding:"7px 10px", alignItems:"start" }}>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:11,
                             fontWeight:700, color:THEME.accent }}>{row.symbol}</div>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text2 }}>{row.date}</div>
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:10, color:THEME.text2 }}>{row.date}</div>
                           <div style={{ fontSize:10, color:row.type==="BUY"?THEME.green:THEME.red, fontWeight:700 }}>{row.type}</div>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text1 }}>{row.quantity}</div>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text2 }}>
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:10, color:THEME.text1 }}>{row.quantity}</div>
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:10, color:THEME.text2 }}>
                             {row.price ? row.price.toFixed(2) : "—"} {row.currency||""}
                           </div>
                           <div>
@@ -1591,9 +1588,9 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                               ↳ Bestehend (ID {ex.id})
                             </div>
                             <div/>
-                            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9,
+                            <div style={{ fontFamily:"var(--font-mono)", fontSize:9,
                               color:THEME.text3 }}>{ex.quantity}</div>
-                            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:THEME.text3 }}>
+                            <div style={{ fontFamily:"var(--font-mono)", fontSize:9, color:THEME.text3 }}>
                               {ex.price?.toFixed(2)} {ex.currency||""}
                             </div>
                             <div style={{ fontSize:9, color:THEME.text3 }}>
@@ -1610,7 +1607,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               </div>
 
               {/* Action summary + buttons */}
-              <div style={{ padding:"10px 12px", borderRadius:9, background:THEME.surface2,
+              <div style={{ padding:"10px 12px", borderRadius:2, background:THEME.surface2,
                 border:`1px solid ${THEME.border}`, marginBottom:12,
                 display:"flex", gap:16, alignItems:"center" }}>
                 <span style={{ fontSize:11, color:THEME.green }}>✓ {willImport} importieren</span>
@@ -1619,21 +1616,21 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               </div>
 
               {importErr && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:12,
                   background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
                   fontSize:11, color:THEME.red }}><AlertCircle size={13}/> {importErr}</div>
               )}
 
               <div style={{ display:"flex", gap:8 }}>
                 <button onClick={() => { setPreviewData(null); setImportErr(null); }}
-                  style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
+                  style={{ flex:1, padding:"10px 0", borderRadius:2, border:`1px solid ${THEME.border}`,
                     background:"transparent", color:THEME.text2, fontSize:12, fontWeight:600,
                     cursor:"pointer", fontFamily:"inherit" }}>
                   ← Zurück
                 </button>
                 <button onClick={handleConfirmImport} disabled={importing || willImport === 0}
-                  style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
-                    background: willImport > 0 ? THEME.accent : "rgba(255,255,255,0.05)",
+                  style={{ flex:2, padding:"10px 0", borderRadius:2, border:"none",
+                    background: willImport > 0 ? THEME.accent : "var(--surface-2)",
                     color: willImport > 0 ? "#fff" : THEME.text3, fontSize:13, fontWeight:700,
                     cursor: willImport > 0 ? "pointer" : "default", fontFamily:"inherit",
                     display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
@@ -1648,7 +1645,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
           {/* ── RESULT ─────────────────────────────────────────────────────── */}
           {tab === "import" && result && (
             <div>
-              <div style={{ padding:"16px", borderRadius:12, marginBottom:16,
+              <div style={{ padding:"16px", borderRadius:0, marginBottom:16,
                 background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)",
                 textAlign:"center" }}>
                 <div style={{ fontSize:32, marginBottom:8 }}>✓</div>
@@ -1665,7 +1662,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                 </div>
               </div>
               <button onClick={() => { setResult(null); setFile(null); setPreviewData(null); }}
-                style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
+                style={{ width:"100%", padding:"10px 0", borderRadius:2, border:`1px solid ${THEME.border}`,
                   background:"transparent", color:THEME.text2, fontSize:12, fontWeight:600,
                   cursor:"pointer", fontFamily:"inherit" }}>
                 Weiteren Import
@@ -1719,12 +1716,10 @@ function _tipBubble(pos, width, title, body, side) {
     <div style={{
       position:"fixed", left:clampedX, ...style,
       transform:"translateX(-50%)", width, zIndex:9999,
-      background:"var(--surface-2)", border:`1px solid var(--border)`,
-      borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-      boxShadow:"var(--shadow-modal)",
-    }}>
-      {title && <div style={{ fontSize:10, color:"var(--fg-1)", fontWeight:700, marginBottom:4 }}>{title}</div>}
-      <div style={{ fontSize:10, color:"var(--fg-2)", lineHeight:1.55 }}>{body}</div>
+      padding:"12px 14px", pointerEvents:"none",
+    }} className="overlay-card">
+      {title && <div style={{ fontSize:12, color:"var(--fg-1)", fontWeight:600, marginBottom:6 }}>{title}</div>}
+      <div style={{ fontSize:12, color:"var(--fg-2)", lineHeight:1.55 }}>{body}</div>
     </div>,
     document.body
   );
@@ -1803,14 +1798,7 @@ const SidebarTip = ({ children, label, open }) => {
       onMouseLeave={() => { clearTimeout(timerRef.current); setTip(false); }}>
       {children}
       {tip && createPortal(
-        <div style={{
-          position:"fixed", left:pos.x, top:pos.y,
-          transform:"translateY(-50%)",
-          background:"var(--surface-2)", border:"1px solid var(--border)",
-          borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
-          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"var(--shadow-card)", pointerEvents:"none",
-        }}>{label}</div>,
+        <div className="rail-hint" style={{ left:pos.x, top:pos.y }}>{label}</div>,
         document.body
       )}
     </div>
@@ -1843,7 +1831,7 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
         style={{
           justifyContent: open ? "flex-start" : "center",
           padding: open ? "5px 10px" : "7px 0",
-          color: active ? "var(--accent)" : (color || "var(--fg-2)"),
+          color: active ? "var(--fg-1)" : (color || "var(--fg-2)"),
         }}>
         <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
         {open && <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>}
@@ -1851,19 +1839,12 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
           <span style={{
             marginLeft:"auto", flexShrink:0,
             fontFamily:"var(--font-mono)",
-            color:"var(--fg-3)", fontSize:10, fontWeight:600,
+            color:"var(--fg-3)", fontSize:10, fontWeight:500,
           }}>{badge}</span>
         )}
       </button>
       {tip && !open && createPortal(
-        <div style={{
-          position:"fixed", left:tipPos.x, top:tipPos.y,
-          transform:"translateY(-50%)",
-          background:"var(--surface-2)", border:"1px solid var(--border)",
-          borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:600,
-          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"var(--shadow-card)", pointerEvents:"none",
-        }}>{label}</div>,
+        <div className="rail-hint" style={{ left:tipPos.x, top:tipPos.y }}>{label}</div>,
         document.body
       )}
     </>
@@ -1871,8 +1852,7 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
 };
 
 const RailSection = ({ label, open=true }) => open && (
-  <div style={{ fontSize:9, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-    letterSpacing:"0.10em", padding:"12px 12px 4px", opacity:0.7 }}>{label}</div>
+  <div className="label" style={{ padding:"12px 10px 4px" }}>{label}</div>
 );
 
 const Divider = () => (
@@ -1880,7 +1860,7 @@ const Divider = () => (
 );
 
 // ── User account popover (portal — anchored above the rail-user row) ──────────
-function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch, subtitle, switchLabel, switchIcon }) {
+function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch, onSettings, subtitle, switchLabel, switchIcon }) {
   const { t } = useTranslation();
   const ref = useRef(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -1908,81 +1888,48 @@ function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onS
   const initials = (username || "U").slice(0, 2).toUpperCase();
 
   return createPortal(
-    <div ref={ref} style={{
+    <div ref={ref} className="overlay-card" style={{
       position:"fixed", left, bottom, top:"auto",
-      width:240, background:"var(--surface)", border:"1px solid var(--border)",
-      borderRadius:12, boxShadow:"var(--shadow-modal)", zIndex:9999, overflow:"hidden",
-      maxHeight:"calc(100vh - 24px)",
+      width:240, zIndex:9999, maxHeight:"calc(100vh - 24px)",
     }} onClick={e => e.stopPropagation()}>
-      {/* Header */}
-      <div style={{ padding:"14px 16px 12px", borderBottom:"1px solid var(--border)",
+      {/* Kopf */}
+      <div style={{ padding:12, background:"var(--surface-2)", borderBottom:"1px solid var(--border-2)",
         display:"flex", alignItems:"center", gap:10 }}>
-        <div className="avatar" style={{ width:34, height:34, borderRadius:9, fontSize:13, fontWeight:700 }}>
-          {initials}
-        </div>
+        <div className="avatar" style={{ width:34, height:34, fontSize:12 }}>{initials}</div>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+          <div className="num" style={{ fontSize:12, fontWeight:500, color:"var(--fg-1)",
             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
             {username}
           </div>
-          <div style={{ fontSize:10, color:"var(--fg-3)", marginTop:1 }}>
+          <div style={{ fontSize:11, color:"var(--fg-3)", marginTop:1 }}>
             {subtitle ?? `${portfolioCount} ${t("user.portfolios", { count: portfolioCount })}`}
           </div>
         </div>
       </div>
 
-      {/* Actions */}
-      <div style={{ padding:"6px 6px" }}>
-        {/* Switch user */}
-        <button onClick={onSwitch} style={{
-          display:"flex", alignItems:"center", gap:10, width:"100%",
-          padding:"8px 10px", borderRadius:7, border:"none",
-          background:"transparent", cursor:"pointer",
-          fontFamily:"var(--font-sans)", textAlign:"left",
-          color:"var(--fg-2)", transition:"background 0.1s",
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
-        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-          {switchIcon ?? <ArrowLeftRight size={14} style={{ flexShrink:0 }}/>}
-          <span style={{ fontSize:12, fontWeight:500 }}>{switchLabel ?? t("user.switchUser")}</span>
+      {/* Aktionen */}
+      <div style={{ padding:6 }}>
+        {onSettings && (
+          <button className="menu-row" onClick={onSettings}>
+            <span className="menu-icon"><Settings size={14}/></span>{t("rail.settings")}
+          </button>
+        )}
+        <button className="menu-row" onClick={onSwitch}>
+          <span className="menu-icon">{switchIcon ?? <ArrowLeftRight size={14}/>}</span>
+          {switchLabel ?? t("user.switchUser")}
         </button>
 
-        {/* Logout — two-step */}
+        {/* Abmelden — zweistufig */}
         {!confirmLogout ? (
-          <button onClick={() => setConfirmLogout(true)} style={{
-            display:"flex", alignItems:"center", gap:10, width:"100%",
-            padding:"8px 10px", borderRadius:7, border:"none",
-            background:"transparent", cursor:"pointer",
-            fontFamily:"var(--font-sans)", textAlign:"left",
-            color:"var(--fg-2)", transition:"background 0.1s",
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
-          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            <LogOut size={14} style={{ flexShrink:0 }}/>
-            <span style={{ fontSize:12, fontWeight:500 }}>{t("user.logout")}</span>
+          <button className="menu-row danger" onClick={() => setConfirmLogout(true)}>
+            <span className="menu-icon"><LogOut size={14}/></span>{t("user.logout")}
           </button>
         ) : (
-          <div style={{ padding:"10px 10px 8px", borderRadius:8,
-            background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)",
-            margin:"2px 0" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-              <AlertTriangle size={13} style={{ color:"#f87171", flexShrink:0 }}/>
-              <span style={{ fontSize:11, color:"var(--fg-2)", lineHeight:1.4 }}>
-                {t("user.confirmLogout")}
-              </span>
-            </div>
-            <div style={{ display:"flex", gap:6 }}>
-              <button onClick={onLogout} style={{
-                flex:1, padding:"5px 0", borderRadius:6, border:"none",
-                background:"#ef4444", color:"#fff", cursor:"pointer",
-                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:600,
-              }}>{t("user.logout")}</button>
-              <button onClick={() => setConfirmLogout(false)} style={{
-                flex:1, padding:"5px 0", borderRadius:6,
-                border:"1px solid var(--border)", background:"transparent",
-                color:"var(--fg-2)", cursor:"pointer",
-                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:500,
-              }}>{t("common.cancel")}</button>
+          <div style={{ padding:"10px 10px 4px", borderTop:"1px solid var(--border-2)", marginTop:4 }}>
+            <div style={{ fontSize:12, color:"var(--fg-1)", marginBottom:8 }}>{t("user.confirmLogout")}</div>
+            <div className="btn-row">
+              <button className="btn danger" style={{ flex:1 }} onClick={onLogout}>{t("user.logout")}</button>
+              <button className="btn" style={{ flex:1 }} onClick={() => setConfirmLogout(false)}>{t("common.cancel")}</button>
             </div>
           </div>
         )}
@@ -2036,17 +1983,16 @@ function Rail({
         gap:6, flexShrink:0,
       }}>
         {open && (
-          <div style={{ flex:1, fontFamily:THEME.serif, userSelect:"none" }}>
-            <div style={{ fontSize:18, fontWeight:400, letterSpacing:"-0.01em", lineHeight:1.1 }}>
-              Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+          <div style={{ flex:1, userSelect:"none" }}>
+            <div style={{ fontSize:14, letterSpacing:"0.16em", lineHeight:1.2, color:THEME.text1 }}>
+              <span style={{ fontWeight:700 }}>PORTFOLIO</span><span style={{ fontWeight:100 }}>-PAL</span>
             </div>
-            <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.10em", marginTop:1 }}>Explorer</div>
+            <div className="label" style={{ marginTop:3 }}>Explorer</div>
           </div>
         )}
         <button onClick={onToggle}
           style={{ background:"transparent", border:"none", cursor:"pointer",
-            color:THEME.text3, display:"flex", padding:6, borderRadius:7,
+            color:THEME.text3, display:"flex", padding:6, borderRadius:0,
             transition:"color 0.15s", flexShrink:0,
             marginLeft: open ? 0 : "auto", marginRight: open ? 0 : "auto" }}
           title={open ? "Collapse sidebar" : "Expand sidebar"}>
@@ -2066,38 +2012,39 @@ function Rail({
             <button onClick={() => onTogglePortfolio(p.id)}
               style={{
                 display:"flex", alignItems:"center", gap:8,
-                width:"100%", padding: open ? "7px 12px" : "7px 0",
+                width:"100%", padding: open ? "7px 10px" : "7px 0",
                 justifyContent: open ? "flex-start" : "center",
-                borderRadius:9, border:"none", cursor:"pointer",
-                background: isActive ? "rgba(255,255,255,0.05)" : "transparent",
-                color: isActive ? THEME.text1 : THEME.text3,
-                fontSize:12, fontFamily:THEME.font,
+                borderRadius:0, border:"none", cursor:"pointer",
+                background: isActive ? "var(--surface-2)" : "transparent",
+                boxShadow: isActive ? "inset 2px 0 0 var(--fg-1)" : "none",
+                color: isActive ? THEME.text1 : THEME.text2,
+                fontSize:12.5, fontWeight:500, fontFamily:THEME.font,
                 transition:"background 0.12s",
               }}>
               {/* Color dot */}
               <span style={{
                 width:10, height:10, borderRadius:"50%", flexShrink:0,
-                background: isActive ? p.color : "rgba(255,255,255,0.2)",
-                border: isActive ? "none" : "1.5px solid rgba(255,255,255,0.2)",
+                background: isActive ? p.color : "transparent",
+                border: isActive ? "none" : "1.5px solid var(--border)",
                 transition:"background 0.15s",
               }}/>
               {open && (
                 <>
                   <span style={{ flex:1, textAlign:"left", whiteSpace:"nowrap",
-                    overflow:"hidden", textOverflow:"ellipsis", fontWeight: isActive?600:400 }}>
+                    overflow:"hidden", textOverflow:"ellipsis" }}>
                     {p.name}
                   </span>
                   <span
                     title="Umbenennen"
                     onClick={e => { e.stopPropagation(); onRenamePortfolio(p); }}
                     style={{ color:THEME.text3, flexShrink:0, display:"flex", opacity:0.5,
-                      padding:"2px 3px", borderRadius:4,
+                      padding:"2px 3px", borderRadius:0,
                       cursor:"pointer", transition:"opacity 0.15s" }}
                     onMouseEnter={e=>e.currentTarget.style.opacity=1}
                     onMouseLeave={e=>e.currentTarget.style.opacity=0.5}>
                     <Pencil size={11}/>
                   </span>
-                  <span style={{ color: isActive ? THEME.accent : THEME.text3, flexShrink:0, display:"flex" }}>
+                  <span style={{ color: isActive ? THEME.text1 : THEME.text3, flexShrink:0, display:"flex" }}>
                     {isActive ? <CheckSquare size={13}/> : <Square size={13}/>}
                   </span>
                 </>
@@ -2110,8 +2057,8 @@ function Rail({
           <button onClick={onAddPortfolio}
             style={{
               display:"flex", alignItems:"center", gap:8, width:"100%",
-              padding:"7px 12px", borderRadius:9, border:`1px dashed ${THEME.border}`,
-              background:"transparent", color:THEME.text3, fontSize:12,
+              padding:"7px 10px", borderRadius:0, border:`1px dashed ${THEME.border}`,
+              background:"transparent", color:THEME.text2, fontSize:12, fontWeight:500,
               fontFamily:THEME.font, cursor:"pointer", marginTop:4,
             }}>
             <Plus size={13}/> New Portfolio
@@ -2123,23 +2070,8 @@ function Rail({
         {/* Actions */}
         <RailSection open={open} label="Actions"/>
         {/* Add Transaction — dashed pill, same style as New Portfolio but blue */}
-        {open ? (
-          <button onClick={() => onTab("_addtx")}
-            style={{
-              display:"flex", alignItems:"center", gap:8, width:"100%",
-              padding:"7px 12px", borderRadius:9,
-              border:`1px dashed ${THEME.accent}`,
-              background:"rgba(59,130,246,0.06)", color:THEME.accent,
-              fontSize:12, fontWeight:600,
-              fontFamily:THEME.font, cursor:"pointer", marginBottom:2,
-              transition:"background 0.12s",
-            }}>
-            <Plus size={13}/> {t("rail.addTransaction")}
-          </button>
-        ) : (
-          <RailBtn open={open} icon={<Plus size={16}/>} label={t("rail.addTransaction")}
-            color={THEME.accent} onClick={() => onTab("_addtx")}/>
-        )}
+        <RailBtn open={open} icon={<Plus size={16}/>} label={t("rail.addTransaction")}
+          color={THEME.text1} onClick={() => onTab("_addtx")}/>
         {onRecalcFX && (
           <RailBtn open={open} icon={<span style={{fontSize:12}}>⟳$</span>} label="Recalc FX Costs"
             onClick={onRecalcFX}
@@ -2155,9 +2087,7 @@ function Rail({
       {/* ─── Bottom: Currency + Account (pinned) ──────────────── */}
       <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 0 8px", flexShrink:0 }}>
           {/* Currency */}
-          {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-            textTransform:"uppercase", letterSpacing:"0.10em",
-            padding:"6px 6px 4px", opacity:0.7 }}>Currency</div>}
+          {open && <div className="label" style={{ padding:"8px 14px 4px" }}>Currency</div>}
           <div style={{
             padding: open ? "2px 4px" : "2px 0",
             display:"flex", flexDirection:"column",
@@ -2175,8 +2105,9 @@ function Rail({
                     display:"flex", alignItems:"center",
                     gap: open ? 8 : 0,
                     padding: open ? "5px 8px" : "5px 0",
-                    border:"none", borderRadius:8,
-                    background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
+                    border:"none", borderRadius:0,
+                    background: isActive ? "var(--surface-2)" : "transparent",
+                    boxShadow: isActive ? "inset 2px 0 0 var(--fg-1)" : "none",
                     cursor:"pointer", fontFamily:THEME.font,
                     transition:"background 0.12s",
                     width:"100%",
@@ -2195,11 +2126,11 @@ function Rail({
                   {open && (
                     <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
                       <span className="ccy-label" style={{
-                        fontSize:11, fontWeight: isActive ? 700 : 500,
-                        color: isActive ? THEME.accent : THEME.text3,
+                        fontFamily:THEME.mono, fontSize:11, fontWeight:500,
+                        color: isActive ? THEME.text1 : THEME.text3,
                       }}>{c}</span>
                       <span className="ccy-name" style={{
-                        fontSize:9, color: isActive ? THEME.accent : THEME.text3,
+                        fontSize:10, color: isActive ? THEME.text2 : THEME.text3,
                       }}>{CCY_NAME[c]}</span>
                     </div>
                   )}
@@ -2308,11 +2239,11 @@ function Rail({
             <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
             {open && (
               <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                <div className="num" style={{ fontSize:12, fontWeight:500, color:"var(--fg-1)",
                   whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                   {user.username}
                 </div>
-                <div style={{ fontSize:10, color:"var(--fg-3)" }}>
+                <div style={{ fontSize:11, color:"var(--fg-3)" }}>
                   {portfolios.length} {t("user.portfolios", { count: portfolios.length })}
                 </div>
               </div>
@@ -2330,6 +2261,7 @@ function Rail({
           onClose={() => setUserModalOpen(false)}
           onLogout={handleLogoutFromModal}
           onSwitch={handleSwitchFromModal}
+          onSettings={onSettings && (() => { setUserModalOpen(false); onSettings(); })}
         />
       )}
     </div>
@@ -2350,13 +2282,13 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
     const root = d3.hierarchy({ name:"root", children:valid })
       .sum(d => Math.max(1, d.valueUSD ?? 0))
       .sort((a,b) => b.value - a.value);
-    d3.treemap().size([w,h]).paddingInner(2).paddingOuter(3).round(true)(root);
+    d3.treemap().size([w,h]).paddingInner(1).round(true)(root);
     setCells(root.leaves().map(l => ({ ...l.data, x:l.x0, y:l.y0, cw:l.x1-l.x0, ch:l.y1-l.y0 })));
   }, [nodes, w, h]);
 
   return (
     <div ref={ref} style={{ width:"100%", height:"100%", background:THEME.bg,
-      borderRadius:12, position:"relative", overflow:"hidden" }}>
+      position:"relative", overflow:"hidden" }}>
       {cells.map(cell => (
         <TreeMapCell key={cell.symbol+cell.portfolioId} cell={cell}
           currency={currency} rates={rates} colorMode={colorMode}
@@ -2366,8 +2298,7 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
       {!nodes.length && (
         <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
           alignItems:"center", justifyContent:"center", gap:12 }}>
-          <div style={{ fontSize:48, opacity:0.15 }}>⬛</div>
-          <div style={{ fontSize:15, fontWeight:700, color:THEME.text3, letterSpacing:"0.05em" }}>NO POSITIONS</div>
+          <div style={{ fontSize:22, fontWeight:200, textTransform:"lowercase", color:THEME.text2 }}>No positions</div>
           <div style={{ fontSize:12, color:THEME.text3 }}>Add transactions to build your portfolio</div>
         </div>
       )}
@@ -2392,14 +2323,13 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
     <div onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
       style={{
         position:"absolute", left:cell.x, top:cell.y, width:cw, height:ch,
-        background:bg, borderRadius:5,
-        border:"1px solid rgba(0,0,0,0.3)", outline:"1px solid rgba(255,255,255,0.04)",
+        background:bg,
         overflow:"hidden", cursor:"pointer", display:"flex", flexDirection:"column",
         justifyContent:"flex-end", padding: small > 60 ? "8px 10px" : "4px 6px",
         transition:"filter 0.1s",
       }}>
       {small > 28 && (
-        <div style={{ fontFamily:THEME.mono, fontWeight:700, lineHeight:1.05,
+        <div style={{ fontFamily:THEME.mono, fontWeight:600, lineHeight:1.05,
           fontSize: Math.min(Math.max(10, small*0.22), 28),
           color:"rgba(255,255,255,0.95)" }}>{symbol}</div>
       )}
@@ -2409,14 +2339,14 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
           whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{shortName}</div>
       )}
       {small > 55 && (
-        <div style={{ fontFamily:THEME.mono, fontWeight:700,
+        <div style={{ fontFamily:THEME.mono, fontWeight:500,
           fontSize: Math.max(9, Math.min(11, small*0.12)),
           color:"rgba(255,255,255,0.88)", marginTop:3 }}>
           {cSym}{price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
         </div>
       )}
       {small > 55 && changePct != null && (
-        <div style={{ fontFamily:THEME.mono, fontWeight:600,
+        <div style={{ fontFamily:THEME.mono, fontWeight:500,
           fontSize: Math.max(9, Math.min(11, small*0.11)),
           color: changePct >= 0 ? "rgba(144,255,180,0.9)" : "rgba(255,140,140,0.9)", marginTop:1 }}>
           {fmtPct(changePct)}
@@ -2444,8 +2374,8 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
   const [groups, setGroups] = useState([]);
 
   const LABEL_H = 20;
-  const PAD_OUTER = 4;
-  const PAD_INNER = 2;
+  const PAD_OUTER = 1;
+  const PAD_INNER = 1;
 
   useEffect(() => {
     if (w < 20 || h < 20) return;
@@ -2496,15 +2426,13 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
 
   return (
     <div ref={ref} style={{ width:"100%", height:"100%", background:THEME.bg,
-      borderRadius:12, position:"relative", overflow:"hidden" }}>
+      position:"relative", overflow:"hidden" }}>
       {groups.map(group => (
         <div key={group.portfolioId} style={{
           position:"absolute",
           left: group.x, top: group.y,
           width: group.gw, height: group.gh,
-          borderRadius:6,
-          border:`1px solid ${group.color}55`,
-          background:`${group.color}09`,
+          borderTop:`2px solid ${group.color}`,
           overflow:"hidden",
         }}>
           {/* Portfolio label */}
@@ -2512,13 +2440,11 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
             position:"absolute", top:3, left:6, zIndex:10,
             height: LABEL_H - 4,
             display:"flex", alignItems:"center",
-            fontSize:9, fontWeight:700, color:group.color,
-            textTransform:"uppercase", letterSpacing:"0.09em",
+            fontSize:9, fontWeight:600, color:THEME.text2,
+            textTransform:"uppercase", letterSpacing:"0.14em",
             whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
             maxWidth: group.gw - 12,
-            textShadow:"0 1px 4px rgba(0,0,0,0.9)",
           }}>
-            <span style={{ marginRight:5, fontSize:8, opacity:0.7 }}>■</span>
             {group.name}
           </div>
 
@@ -2651,7 +2577,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
 
   return (
     <div ref={ref} style={{width:"100%",height:"100%",background:THEME.bg,
-      borderRadius:12,position:"relative",overflow:"hidden",userSelect:"none"}}>
+      borderRadius:0,position:"relative",overflow:"hidden",userSelect:"none"}}>
 
       {w>0&&h>0&&(
         <svg width={w} height={h} style={{position:"absolute",inset:0}}>
@@ -2660,17 +2586,17 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
             if (y<0||y>CHART_H) return null;
             return (
               <g key={tick}>
-                <line x1={AXIS_W} y1={y} x2={w} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} strokeDasharray="4,6"/>
+                <line x1={AXIS_W} y1={y} x2={w} y2={y} style={{ stroke:"var(--border-2)" }} strokeWidth={1} strokeDasharray="4,6"/>
                 <text x={AXIS_W-6} y={y+4} textAnchor="end"
                   fill={tick>0?"rgba(74,222,128,0.55)":"rgba(248,113,113,0.55)"}
-                  fontSize={9} fontFamily="'JetBrains Mono',monospace">
+                  fontSize={9} fontFamily="var(--font-mono)">
                   {tick>0?`+${tick}`:tick} %
                 </text>
               </g>
             );
           })}
-          <line x1={AXIS_W} y1={MID_Y} x2={w} y2={MID_Y} stroke="rgba(255,255,255,0.20)" strokeWidth={1.5}/>
-          <text x={AXIS_W-6} y={MID_Y+4} textAnchor="end" fill={THEME.text3} fontSize={9} fontFamily="'JetBrains Mono',monospace">0 %</text>
+          <line x1={AXIS_W} y1={MID_Y} x2={w} y2={MID_Y} style={{ stroke:"var(--fg-3)" }} strokeWidth={1.5}/>
+          <text x={AXIS_W-6} y={MID_Y+4} textAnchor="end" fill={THEME.text3} fontSize={9} fontFamily="var(--font-mono)">0 %</text>
           {renderOrder.map(node=>{
             const key=node.symbol+node.portfolioId;
             const anim=animBars.current[key]??toTargets.get(key);
@@ -2687,26 +2613,26 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
                 {showPerf&&perf!=null&&(
                   <text x={x+bw/2} y={isPos?barY+13:barY+barH-5} textAnchor="middle"
                     fill={isPos?"rgba(144,255,180,0.95)":"rgba(255,160,160,0.95)"}
-                    fontSize={Math.min(10,bw*0.18)} fontWeight="700" fontFamily="'JetBrains Mono',monospace">
+                    fontSize={Math.min(10,bw*0.18)} fontWeight="700" fontFamily="var(--font-mono)">
                     {perf>=0?"+":""}{perf.toFixed(1)}%
                   </text>
                 )}
                 {showSym&&(
                   <text x={x+bw/2} y={isPos?MID_Y+16:MID_Y-5} textAnchor="middle"
-                    fill={THEME.text2} fontSize={Math.min(11,Math.max(8,bw*0.16))} fontWeight="700" fontFamily="'Syne',sans-serif">
+                    fill={THEME.text2} fontSize={Math.min(11,Math.max(8,bw*0.16))} fontWeight="700" fontFamily="'Fira Sans',sans-serif">
                     {node.symbol.length>8?node.symbol.slice(0,7)+"…":node.symbol}
                   </text>
                 )}
                 {showVal&&(
                   <text x={x+bw/2} y={isPos?MID_Y+27:MID_Y+16} textAnchor="middle"
-                    fill={THEME.text3} fontSize={8} fontFamily="'JetBrains Mono',monospace">
+                    fill={THEME.text3} fontSize={8} fontFamily="var(--font-mono)">
                     {cSym}{((node.valueUSD??0)*rate/1000).toFixed(0)}K
                   </text>
                 )}
               </g>
             );
           })}
-          <text x={w-8} y={16} textAnchor="end" fill="rgba(255,255,255,0.12)" fontSize={10} fontWeight="700" fontFamily="'Syne',sans-serif" letterSpacing="0.08em">
+          <text x={w-8} y={16} textAnchor="end" style={{ fill:"var(--border)" }} fontSize={10} fontWeight="700" fontFamily="'Fira Sans',sans-serif" letterSpacing="0.08em">
             {colorMode==="gainloss"?"G&L vs. Cost":period==="Intraday"?"1D vs Prev Close":`${period} Performance`}
             {subView==="size"?"  ·  sorted by size":""}
           </text>
@@ -2748,7 +2674,7 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
             flexShrink:0 }}>
             <div style={{ width:8, height:8, borderRadius:"50%", background:portfolio.color, flexShrink:0 }}/>
             <span style={{ fontSize:11, fontWeight:700, color:portfolio.color,
-              textTransform:"uppercase", letterSpacing:"0.07em" }}>{portfolio.name}</span>
+              textTransform:"uppercase", letterSpacing:"0.14em" }}>{portfolio.name}</span>
             <span style={{ fontSize:10, color:THEME.text3, marginLeft:4 }}>
               · {nodes.length} position{nodes.length!==1?"s":""}
             </span>
@@ -2794,7 +2720,6 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const glPerf = data.glPerf;
   const isPos = (perf ?? 0) >= 0;
   const perfColor = isPos ? THEME.green : THEME.red;
-  const bg    = getPerfColor(perf);
 
   // Smart tooltip positioning — constrain to viewport
   // In Comfort Mode the body has CSS zoom:1.18, which shrinks the effective
@@ -2840,7 +2765,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
     const pts = chartPoints.map(p => `${scaleX(p.t).toFixed(1)},${scaleY(p.v).toFixed(1)}`).join(" ");
     const lastX = scaleX(xs[xs.length-1]);
     const lastY = scaleY(ys[ys.length-1]);
-    const lineColor = isPos ? "#4ade80" : "#f87171";
+    const lineColor = isPos ? "var(--green)" : "var(--red)";
     return { pts, lastX, lastY, lineColor, W, H };
   }, [chartPoints, isPos]);
 
@@ -2850,32 +2775,29 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const gainLoss = (data.gainLossUSD ?? 0) * rate;
 
   return (
-    <div style={{
+    <div className="overlay-card" style={{
       position:"fixed", left, top, width:TW, zIndex:500,
-      background:THEME.surface, borderRadius:16,
-      border:`1px solid ${THEME.border}`,
-      boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
       maxHeight:`calc(${viewH - MARGIN * 2}px)`, overflowY:"auto", overflowX:"hidden",
       pointerEvents:"none",
     }}>
-      <div style={{ background:bg, padding:"10px 14px 12px" }}>
+      <div style={{ padding:"12px 14px", borderBottom:`1px solid ${THEME.border2}` }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
           <div>
-            <div style={{ fontFamily:THEME.mono, fontSize:20, fontWeight:700, color:"#fff" }}>{data.symbol}</div>
+            <div style={{ fontFamily:THEME.mono, fontSize:20, fontWeight:500, color:THEME.text1 }}>{data.symbol}</div>
             {(data.longName || data.name) && (
-              <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginTop:2, maxWidth:190,
+              <div style={{ fontSize:11, color:THEME.text2, marginTop:2, maxWidth:190,
                 whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                 {data.longName || data.name}
               </div>
             )}
             {data.isin && (
-              <div style={{ fontSize:9, color:"rgba(255,255,255,0.38)", marginTop:2,
-                fontFamily:"'JetBrains Mono',monospace", letterSpacing:"0.04em" }}>
+              <div style={{ fontSize:9, color:THEME.text3, marginTop:2,
+                fontFamily:"var(--font-mono)", letterSpacing:"0.04em" }}>
                 {data.isin}
               </div>
             )}
           </div>
-          <div style={{ fontSize:15, fontWeight:700, color:perfColor }}>{fmtPct(perf)}</div>
+          <div className="num" style={{ fontSize:15, color:perfColor }}>{fmtPct(perf)}</div>
         </div>
       </div>
 
@@ -2917,18 +2839,18 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
               ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
               ...(data.trailingPE != null || data.forwardPE != null ? [
                 [null],
-                ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1), THEME.accent]] : []),
-                ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1),  THEME.accent]] : []),
+                ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1)]] : []),
+                ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1)]] : []),
               ] : []),
             ] : []),
           ]),
           // Dividend data rows (only if available)
           ...(divData && divData.yieldPct != null ? [
             [null],
-            ["Div. Yield",   `${divData.yieldPct.toFixed(2)}%`, "#fbbf24"],
+            ["Div. Yield",   `${divData.yieldPct.toFixed(2)}%`, THEME.yellow],
             ["Annual Rate",  divData.annualRate != null ? `${cSym}${(divData.annualRate * rate).toFixed(3)}` : "—"],
             ["Last Ex-Date", divData.exDate ?? "—"],
-            ...(divData.nextExDate ? [["Est. Next Ex-Date", divData.nextExDate, "#60a5fa"]] : []),
+            ...(divData.nextExDate ? [["Est. Next Ex-Date", divData.nextExDate]] : []),
           ] : divData && divData.annualRate == null ? [] : [
             [null],
             ["Dividends", divData ? "Loading…" : "…"],
@@ -2939,7 +2861,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
             <div key={i} style={{ display:"flex", justifyContent:"space-between",
               alignItems:"baseline", gap:8, padding:"2px 0" }}>
               <span style={{ fontSize:11, color:THEME.text3, flexShrink:0 }}>{row[0]}</span>
-              <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
+              <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:500,
                 color:row[2]||THEME.text1, textAlign:"right", wordBreak:"break-all" }}>{row[1]}</span>
             </div>
           );
@@ -2956,81 +2878,30 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
 function DeleteConfirmOverlay({ tx, portfolio, onConfirm, onCancel }) {
   const isBuy = tx.type === "BUY";
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", backdropFilter:"blur(6px)",
-      display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000,
-    }} onClick={onCancel}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width:380, background:THEME.surface, borderRadius:18,
-        border:`1px solid rgba(248,113,113,0.35)`,
-        boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-        padding:"28px 28px 24px",
-      }}>
-        {/* Icon */}
-        <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}>
-          <div style={{ width:52, height:52, borderRadius:"50%",
-            background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)",
-            display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <Trash2 size={22} color={THEME.red}/>
-          </div>
-        </div>
-        <div style={{ textAlign:"center", marginBottom:20 }}>
-          <div style={{ fontSize:16, fontWeight:700, color:THEME.text1, marginBottom:8 }}>
-            Delete Transaction
-          </div>
-          <div style={{ fontSize:12, color:THEME.text2, lineHeight:1.6 }}>
-            Are you sure you want to delete this transaction?
-            <br/>This action cannot be undone.
-          </div>
-        </div>
-        {/* Transaction summary */}
-        <div style={{
-          padding:"10px 14px", borderRadius:10, marginBottom:20,
-          background:"rgba(255,255,255,0.04)", border:`1px solid ${THEME.border}`,
-          display:"flex", alignItems:"center", gap:10,
-        }}>
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <div style={{ width:8, height:8, borderRadius:"50%", background:portfolio.color }}/>
-            <span style={{ fontSize:11, color:THEME.text3 }}>{portfolio.name}</span>
-          </div>
-          <div style={{ width:1, height:12, background:THEME.border }}/>
-          <span style={{
-            padding:"2px 7px", borderRadius:5, fontSize:9, fontWeight:700,
-            background:isBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
-            color:isBuy?THEME.green:THEME.red,
-            border:`1px solid ${isBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
-          }}>{tx.type}</span>
-          <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
-          <span style={{ fontSize:11, color:THEME.text2, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tx.name || ""}</span>
-          <span style={{ fontFamily:THEME.mono, fontSize:11, color:THEME.text3, flexShrink:0 }}>
-            {tx.quantity} × ${parseFloat(tx.price).toFixed(2)}
-          </span>
-        </div>
-        {/* Buttons */}
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onCancel} style={{
-            flex:1, padding:"11px 0", borderRadius:10,
-            border:`1px solid ${THEME.border}`, background:"transparent",
-            color:THEME.text2, fontSize:12, fontWeight:600, cursor:"pointer",
-            fontFamily:THEME.font, transition:"background 0.12s",
-          }}
-          onMouseEnter={e=>e.target.style.background="rgba(255,255,255,0.05)"}
-          onMouseLeave={e=>e.target.style.background="transparent"}>
-            Cancel
-          </button>
-          <button onClick={onConfirm} style={{
-            flex:1, padding:"11px 0", borderRadius:10,
-            border:"none", background:"rgba(248,113,113,0.18)",
-            color:THEME.red, fontSize:12, fontWeight:700, cursor:"pointer",
-            fontFamily:THEME.font, transition:"background 0.12s",
-          }}
-          onMouseEnter={e=>e.target.style.background="rgba(248,113,113,0.28)"}
-          onMouseLeave={e=>e.target.style.background="rgba(248,113,113,0.18)"}>
-            Delete
-          </button>
-        </div>
+    <Modal title="Delete Transaction" onClose={onCancel} width={380} zIndex={2000}
+      footer={<div className="btn-row">
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn danger" onClick={onConfirm}><Trash2 size={14}/> Delete</button>
+      </div>}>
+      <div style={{ fontSize:13, color:THEME.text2, lineHeight:1.55, marginBottom:14 }}>
+        Are you sure you want to delete this transaction? This action cannot be undone.
       </div>
-    </div>
+      {/* Transaktion */}
+      <div style={{ padding:"10px 12px", border:`1px solid ${THEME.border}`, background:THEME.surface2,
+        display:"flex", alignItems:"center", gap:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <div style={{ width:8, height:8, borderRadius:"50%", background:portfolio.color }}/>
+          <span style={{ fontSize:11, color:THEME.text3 }}>{portfolio.name}</span>
+        </div>
+        <span className="num" style={{ padding:"0 6px", borderRadius:2, fontSize:10, letterSpacing:"0.08em",
+          border:`1px solid ${isBuy ? THEME.green : THEME.red}`, color:isBuy ? THEME.green : THEME.red }}>{tx.type}</span>
+        <span className="num" style={{ fontWeight:500, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
+        <span style={{ fontSize:11, color:THEME.text2, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tx.name || ""}</span>
+        <span className="num" style={{ fontSize:11, color:THEME.text3, flexShrink:0 }}>
+          {tx.quantity} × ${parseFloat(tx.price).toFixed(2)}
+        </span>
+      </div>
+    </Modal>
   );
 }
 
@@ -3082,7 +2953,7 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
             background:`${p.color}09`, position:"sticky", top:0, zIndex:5 }}>
             <div style={{ width:10, height:10, borderRadius:"50%", background:p.color }}/>
             <span style={{ fontSize:12, fontWeight:700, color:p.color,
-              textTransform:"uppercase", letterSpacing:"0.07em" }}>{p.name}</span>
+              textTransform:"uppercase", letterSpacing:"0.14em" }}>{p.name}</span>
             <span style={{ fontSize:10, color:THEME.text3 }}>
               · {(allTransactions[p.id]?.length ?? 0)} transaction{(allTransactions[p.id]?.length??0)!==1?"s":""}
             </span>
@@ -3907,7 +3778,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
               ...(stats.worstDay ? [{ label:t("perf.worstDay"), val:`${fmtPct(stats.worstDay.pct)} · ${fmtDate(stats.worstDay.date)}`, color:THEME.red   }] : []),
             ].map(s => (
               <div key={s.label}>
-                <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.05em", textTransform:"uppercase" }}>{s.label}</div>
+                <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.14em", textTransform:"uppercase" }}>{s.label}</div>
                 <div style={{ fontSize:13, fontWeight:700, color:s.color, fontFamily:THEME.mono, marginTop:1 }}>{s.val}</div>
               </div>
             ))}
@@ -3960,7 +3831,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
               return (
                 <g key={v}>
                   <line x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y}
-                    stroke="rgba(255,255,255,0.05)" strokeWidth={1}/>
+                    style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
                   <text x={PAD.left - 6} y={y + 4} textAnchor="end"
                     fill={THEME.text3} fontSize={9} fontFamily={THEME.mono}>{fmtDisplay(v)}</text>
                 </g>
@@ -4006,7 +3877,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
               {hoverIdx != null && (
                 <>
                   <line x1={xS(hoverIdx)} y1={0} x2={xS(hoverIdx)} y2={CH}
-                    stroke="rgba(255,255,255,0.18)" strokeWidth={1} strokeDasharray="3 3"/>
+                    style={{ stroke:"var(--fg-3)" }} strokeWidth={1} strokeDasharray="3 3"/>
                   {displaySeries.map(s => {
                     const pt = s.vs.find(p => p.date === chartDates[hoverIdx]);
                     if (!pt) return null;
@@ -4083,9 +3954,9 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
             {/* Axes border */}
             <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH}
-              stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>
+              style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
             <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH}
-              stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>
+              style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
           </svg>
         )}
 
@@ -4095,7 +3966,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             left: Math.min(xS(hoverIdx) + PAD.left + 14, w - 200),
             top:  Math.max(4, PAD.top + 4),
             background:THEME.surface, border:`1px solid ${THEME.border}`,
-            borderRadius:10, padding:"8px 12px", minWidth:170 }}>
+            borderRadius:"var(--radius-12)", boxShadow:"var(--shadow-modal)", padding:"8px 12px", minWidth:170 }}>
             <div style={{ fontSize:9, color:THEME.text3, marginBottom:6 }}>{fmtDate(hoverDate)}</div>
             {displaySeries.map(s => {
               const pt   = s.vs.find(p => p.date === hoverDate);
@@ -4139,8 +4010,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           return (
             <div style={{ position:"absolute", left, top:Math.max(8, py - 20), width:popW,
               pointerEvents:"none", background:THEME.surface, border:`1px solid ${THEME.border}`,
-              borderRadius:12, padding:"10px 12px", zIndex:200,
-              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              borderRadius:"var(--radius-12)", padding:"10px 12px", zIndex:200,
+              boxShadow:"var(--shadow-modal)" }}>
               <div style={{ fontSize:10, color:THEME.text3, marginBottom:8, fontWeight:700,
                 letterSpacing:"0.05em" }}>
                 {marker.txs.length} TRANSAKTION{marker.txs.length > 1 ? "EN" : ""} · {fmtDate(marker.date)}
@@ -4151,7 +4022,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                 return (
                   <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 0",
                     borderBottom: i < marker.txs.length - 1 ? `1px solid ${THEME.border2}` : "none" }}>
-                    <span style={{ padding:"2px 5px", borderRadius:4, fontSize:9, fontWeight:700,
+                    <span style={{ padding:"2px 5px", borderRadius:2, fontSize:9, fontWeight:700,
                       background: isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
                       color: isBuy ? THEME.green : THEME.red,
                       border:`1px solid ${isBuy ? "rgba(74,222,128,0.2)" : "rgba(248,113,113,0.2)"}`,
@@ -4198,12 +4069,12 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           return (
             <div style={{ position:"absolute", left, top:Math.max(8, py - 20), width:popW,
               pointerEvents:"none", background:THEME.surface, border:`1px solid ${m.color}44`,
-              borderRadius:12, padding:"10px 12px", zIndex:201,
-              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              borderRadius:"var(--radius-12)", padding:"10px 12px", zIndex:201,
+              boxShadow:"var(--shadow-modal)" }}>
               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
                 <span style={{ width:8, height:8, borderRadius:2, background:m.color, flexShrink:0 }}/>
                 <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:11, color:m.color }}>{m.sym}</span>
-                <span style={{ padding:"1px 6px", borderRadius:4, fontSize:9, fontWeight:700, marginLeft:"auto",
+                <span style={{ padding:"1px 6px", borderRadius:2, fontSize:9, fontWeight:700, marginLeft:"auto",
                   background: isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
                   color: isBuy ? THEME.green : THEME.red,
                   border:`1px solid ${isBuy?"rgba(74,222,128,0.25)":"rgba(248,113,113,0.25)"}` }}>{tx.type}</span>
@@ -4238,8 +4109,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           return (
             <div style={{ position:"absolute", left, top:Math.max(8, py - 20), width:popW,
               pointerEvents:"none", background:THEME.surface, border:`1px solid ${THEME.border}`,
-              borderRadius:12, padding:"10px 12px", zIndex:200,
-              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              borderRadius:"var(--radius-12)", padding:"10px 12px", zIndex:200,
+              boxShadow:"var(--shadow-modal)" }}>
               <div style={{ fontSize:10, color:"#facc15", marginBottom:8, fontWeight:700,
                 letterSpacing:"0.05em" }}>💰 DIVIDENDEN</div>
               {dm.items.map((item, i) => (
@@ -4267,18 +4138,17 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           borderTop:`1px solid ${THEME.border2}` }}>
 
           {/* Y-axis mode toggle */}
-          {[["abs","Abs"],["rel","±$"],["pct","±%"]].map(([m, label]) => (
-            <button key={m} onClick={() => setYMode(m)}
-              style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer", fontSize:10,
-                fontFamily:THEME.mono, transition:"all 0.15s",
-                border: `1px solid ${yMode === m ? "rgba(99,179,237,0.5)" : "rgba(255,255,255,0.08)"}`,
-                background: yMode === m ? "rgba(99,179,237,0.12)" : "rgba(255,255,255,0.04)",
-                color: yMode === m ? "#93c5fd" : THEME.text3 }}>
-              {label}
-            </button>
-          ))}
+          <div className="rail-density-row">
+            {[["abs","Abs"],["rel","±$"],["pct","±%"]].map(([m, label]) => (
+              <button key={m} onClick={() => setYMode(m)}
+                className={"rail-density-btn" + (yMode === m ? " active" : "")}
+                style={{ padding:"3px 9px", fontFamily:THEME.mono }}>
+                {label}
+              </button>
+            ))}
+          </div>
 
-          <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 4px" }}/>
+          <div style={{ width:1, height:16, background:"var(--border)", margin:"0 4px" }}/>
 
           {/* Series toggle chips */}
           {allSeries.map(s => {
@@ -4286,19 +4156,18 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             return (
               <button key={s.key} onClick={() => toggleKey(s.key)} title={s.label}
                 style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
-                  borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-                  border: `1px solid ${hidden ? "rgba(255,255,255,0.08)" : s.color + "88"}`,
-                  background: hidden ? "rgba(255,255,255,0.04)" : s.color + "18",
+                  borderRadius:2, cursor:"pointer", transition:"all 0.15s",
+                  border:"1px solid var(--border)", background:"transparent",
                   opacity: hidden ? 0.35 : 1 }}>
                 {s.isBenchmark ? (
                   <svg width={14} height={8} style={{ flexShrink:0 }}>
                     <line x1={0} y1={4} x2={14} y2={4}
-                      stroke={hidden ? "rgba(255,255,255,0.2)" : s.color}
+                      stroke={hidden ? "var(--fg-3)" : s.color}
                       strokeWidth={1.5} strokeDasharray="3 2"/>
                   </svg>
                 ) : (
                   <span style={{ width:8, height:8, borderRadius:2, flexShrink:0,
-                    background: hidden ? "rgba(255,255,255,0.2)" : s.color }}/>
+                    background: hidden ? "var(--fg-3)" : s.color }}/>
                 )}
                 <span style={{ fontSize:10, color: hidden ? THEME.text3 : THEME.text2,
                   fontFamily:THEME.font, maxWidth:160,
@@ -4311,18 +4180,17 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
           {/* Separator */}
           {allSeries.length > 0 && (
-            <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 4px" }}/>
+            <div style={{ width:1, height:16, background:"var(--border)", margin:"0 4px" }}/>
           )}
 
           {/* Einstand toggle */}
           <button onClick={() => setShowCost(v => !v)}
             style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
-              borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-              border: `1px solid ${showCost ? "rgba(148,163,184,0.4)" : "rgba(255,255,255,0.08)"}`,
-              background: showCost ? "rgba(148,163,184,0.1)" : "rgba(255,255,255,0.04)",
+              borderRadius:2, cursor:"pointer", transition:"all 0.15s",
+              border:"1px solid var(--border)", background:"transparent",
               opacity: showCost ? 1 : 0.35 }}>
             <svg width={14} height={8} style={{ flexShrink:0 }}>
-              <line x1={0} y1={4} x2={14} y2={4} stroke="rgba(148,163,184,0.8)"
+              <line x1={0} y1={4} x2={14} y2={4} style={{ stroke:"var(--fg-2)" }}
                 strokeWidth={1.5} strokeDasharray="3 2"/>
             </svg>
             <span style={{ fontSize:10, color:THEME.text3 }}>Einstand</span>
@@ -4331,9 +4199,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           {/* Dividenden toggle */}
           <button onClick={() => setShowDivs(v => !v)}
             style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
-              borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-              border: `1px solid ${showDivs ? "rgba(250,204,21,0.4)" : "rgba(255,255,255,0.08)"}`,
-              background: showDivs ? "rgba(250,204,21,0.08)" : "rgba(255,255,255,0.04)",
+              borderRadius:2, cursor:"pointer", transition:"all 0.15s",
+              border:"1px solid var(--border)", background:"transparent",
               opacity: showDivs ? 1 : 0.35 }}>
             <span style={{ fontSize:11, lineHeight:1 }}>◇</span>
             <span style={{ fontSize:10, color:THEME.text3 }}>Dividenden</span>
@@ -4434,9 +4301,9 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
     <Modal title={t("savingsPlan.edit")} onClose={onClose}>
       {/* Plan summary */}
       <div style={{ display:"flex", gap:8, marginBottom:16, padding:"10px 12px",
-        background:"rgba(59,130,246,0.07)", borderRadius:10, border:"1px solid rgba(59,130,246,0.18)",
+        background:"var(--surface-2)", border:`1px solid ${THEME.border}`,
         alignItems:"center", flexWrap:"wrap" }}>
-        <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:13, color:THEME.accent }}>{plan.symbol}</span>
+        <span style={{ fontFamily:THEME.mono, fontWeight:600, fontSize:13, color:THEME.text1 }}>{plan.symbol}</span>
         <span style={{ fontSize:11, color:THEME.text2 }}>{plan.name}</span>
         {portfolio && (
           <span style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:5, fontSize:11, color:THEME.text3 }}>
@@ -4462,13 +4329,13 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
         <div>
           <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>ENDDATUM</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
         </div>
         <div>
           <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>RHYTHMUS</label>
           <select value={periodicity} onChange={e => setPeriodicity(e.target.value)}
-            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
             {PERIODICITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>)}
           </select>
@@ -4481,7 +4348,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
           </label>
           <input type="number" min="0.01" step="0.01" value={budget}
             onChange={e => setBudget(e.target.value)}
-            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
         </div>
         <div>
@@ -4492,10 +4359,10 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
             <input type="number" min="0" step="0.01" value={price}
               onChange={e => { priceEditedRef.current = true; setPrice(e.target.value); }}
               placeholder="aktueller Kurs"
-              style={{ flex:1, padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+              style={{ flex:1, padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
                 background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
             <select value={currency} onChange={e => setCurrency(e.target.value)}
-              style={{ width:70, padding:"8px 6px", borderRadius:8, border:`1px solid ${THEME.border}`,
+              style={{ width:70, padding:"8px 6px", borderRadius:2, border:`1px solid ${THEME.border}`,
                 background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
               {["USD","EUR","GBP","CHF","JPY","CAD","AUD","HKD","CNY","SGD","SEK","NOK","DKK"].map(c =>
                 <option key={c} value={c}>{c}</option>
@@ -4512,8 +4379,8 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
 
       {/* Preview card */}
       {(newPastDates.length > 0 || futureDates.length > 0) && (
-        <div style={{ borderRadius:10, border:`1px solid ${THEME.border}`, overflow:"hidden", marginBottom:12 }}>
-          <div style={{ padding:"8px 12px", background:"rgba(255,255,255,0.04)",
+        <div style={{ borderRadius:2, border:`1px solid ${THEME.border}`, overflow:"hidden", marginBottom:12 }}>
+          <div style={{ padding:"8px 12px", background:"var(--surface-2)",
             borderBottom:`1px solid ${THEME.border}`, display:"flex", alignItems:"center", gap:6 }}>
             <span style={{ fontSize:11, color:THEME.text2, fontWeight:700 }}>{t("savingsPlan.preview")}</span>
             <span style={{ marginLeft:"auto", fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
@@ -4538,7 +4405,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
                 {newPastDates.slice(0,8).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, padding:"2px 6px",
                     background:"rgba(74,222,128,0.1)", color:THEME.green,
-                    borderRadius:4, border:"1px solid rgba(74,222,128,0.2)" }}>{d}</span>
+                    borderRadius:2, border:"1px solid rgba(74,222,128,0.2)" }}>{d}</span>
                 ))}
                 {newPastDates.length > 8 && (
                   <span style={{ fontSize:9, color:THEME.text3 }}>+{newPastDates.length-8} weitere</span>
@@ -4559,7 +4426,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
                 {futureDates.slice(0,5).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, padding:"2px 6px",
                     background:"rgba(148,163,184,0.08)", color:THEME.text3,
-                    borderRadius:4, border:`1px solid ${THEME.border}` }}>{d}</span>
+                    borderRadius:2, border:`1px solid ${THEME.border}` }}>{d}</span>
                 ))}
                 {futureDates.length > 5 && (
                   <span style={{ fontSize:9, color:THEME.text3 }}>+{futureDates.length-5} weitere</span>
@@ -4572,17 +4439,13 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
 
       {error && <div style={{ color:THEME.red, fontSize:11, marginBottom:10 }}>{error}</div>}
       <div style={{ display:"flex", gap:8 }}>
-        <button onClick={onClose}
-          style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
-            background:"transparent", color:THEME.text2, cursor:"pointer", fontSize:12 }}>
+        <button onClick={onClose} className="btn" style={{ flex:1 }}>
           {t("common.cancel")}
         </button>
         <button onClick={handleSave}
           disabled={busy || !endDate || !budget}
-          style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
-            background: newPastDates.length > 0 ? THEME.accent : "rgba(59,130,246,0.4)",
-            color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700,
-            opacity: (busy || !endDate || !budget) ? 0.5 : 1 }}>
+          className="btn primary"
+          style={{ flex:2, opacity: (busy || !endDate || !budget || newPastDates.length === 0) ? 0.5 : 1 }}>
           {busy ? t("savingsPlan.saving")
             : newPastDates.length > 0
               ? `✓ ${newPastDates.length} Kauf${newPastDates.length!==1?"käufe":""} + Plan speichern`
@@ -4618,8 +4481,8 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
   const CCY_SYM = { USD:"$", EUR:"€", GBP:"£", CHF:"Fr", JPY:"¥" };
 
   return (
-    <div style={{ borderRadius:12, border:`1px solid ${THEME.border}`, overflow:"hidden",
-      background:"rgba(255,255,255,0.02)", marginBottom:12 }}>
+    <div style={{ borderRadius:0, border:`1px solid ${THEME.border}`, overflow:"hidden",
+      background:"var(--surface-2)", marginBottom:12 }}>
       {/* Header */}
       <div style={{ padding:"8px 14px", borderBottom: collapsed ? "none" : `1px solid ${THEME.border2}`,
         display:"flex", alignItems:"center", gap:8, cursor:"pointer", userSelect:"none" }}
@@ -4682,7 +4545,7 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
                     </td>
                     <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>
                       {pending > 0 ? (
-                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:5,
+                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:2,
                           background:"rgba(251,191,36,0.15)", color:"#f59e0b",
                           border:"1px solid rgba(251,191,36,0.3)" }}>
                           {pending} offen
@@ -4690,7 +4553,7 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
                       ) : expired ? (
                         <span style={{ fontSize:9, color:THEME.text3 }}>—</span>
                       ) : (
-                        <span style={{ fontSize:9, padding:"2px 6px", borderRadius:5,
+                        <span style={{ fontSize:9, padding:"2px 6px", borderRadius:2,
                           background:"rgba(74,222,128,0.1)", color:THEME.green,
                           border:"1px solid rgba(74,222,128,0.2)" }}>aktiv</span>
                       )}
@@ -4698,12 +4561,12 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
                     <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>
                       <div style={{ display:"flex", gap:4 }}>
                         <button onClick={() => onEdit(plan)}
-                          style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${THEME.border}`,
+                          style={{ padding:"3px 8px", borderRadius:2, border:`1px solid ${THEME.border}`,
                             background:"transparent", color:THEME.accent, cursor:"pointer", fontSize:10, fontWeight:700 }}>
                           ✎ Edit
                         </button>
                         <button onClick={() => onDelete(plan.portfolio_id, plan.id)}
-                          style={{ padding:"3px 8px", borderRadius:6, border:"1px solid rgba(248,113,113,0.3)",
+                          style={{ padding:"3px 8px", borderRadius:2, border:"1px solid rgba(248,113,113,0.3)",
                             background:"transparent", color:THEME.red, cursor:"pointer", fontSize:10 }}>
                           ✕
                         </button>
@@ -4993,8 +4856,8 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
   );
 
   const thStyle = (col) => ({
-    padding:"0 10px", textAlign:"left", fontWeight:700, fontSize:10,
-    color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.07em",
+    padding:"0 10px", textAlign:"left", fontWeight:600, fontSize:9,
+    color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.14em",
     whiteSpace:"nowrap", userSelect:"none", cursor:col.sortable?"pointer":"default",
     width:colWidths[col.key], minWidth:colWidths[col.key], maxWidth:colWidths[col.key],
     position: pinnedVisible.includes(col.key) ? "sticky" : "relative",
@@ -5004,7 +4867,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     borderRight:`1px solid ${THEME.border2}`,
     background: pinnedVisible.includes(col.key) ? THEME.surface
       : sortKey===col.key ? "rgba(59,130,246,0.06)" : THEME.surface,
-    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
+    ...(isLastPinned(col.key) && { borderRight:`1px solid ${THEME.border}` }),
   });
 
   const tdStyle = (col, _solidBg = THEME.surface, extra={}) => ({
@@ -5019,7 +4882,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     //  (b) automatically pick up hover/selected row colour changes on the <tr>
     background: pinnedVisible.includes(col.key) ? "inherit"
       : sortKey===col.key ? "rgba(59,130,246,0.03)" : "transparent",
-    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
+    ...(isLastPinned(col.key) && { borderRight:`1px solid ${THEME.border}` }),
     ...extra,
   });
 
@@ -5058,10 +4921,10 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
             onClick={() => setGroupingMode(m => !m)}
             style={{
               display:"flex", alignItems:"center", gap:5,
-              padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
-              background: groupingMode ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.05)",
-              border: `1px solid ${groupingMode ? "rgba(59,130,246,0.35)" : THEME.border2}`,
-              color: groupingMode ? THEME.accent : THEME.text3,
+              padding:"3px 8px", borderRadius:2, fontSize:10, fontWeight:600,
+              background: groupingMode ? THEME.text1 : "transparent",
+              border: `1px solid ${groupingMode ? THEME.text1 : THEME.border}`,
+              color: groupingMode ? THEME.surface : THEME.text3,
               cursor:"pointer", fontFamily:THEME.font, transition:"all 0.15s",
             }}
           >{groupingMode ? "⊕ Grouped" : "≡ Flat"}</button>
@@ -5077,7 +4940,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               }}
               style={{
                 display:"flex", alignItems:"center", gap:5,
-                padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
+                padding:"3px 8px", borderRadius:2, fontSize:10, fontWeight:600,
                 background: colPanelOpen ? "var(--accent-15)" : "var(--surface-2)",
                 color: colPanelOpen ? "var(--accent)" : THEME.text3,
                 border:`1px solid ${colPanelOpen ? "var(--accent-35)" : THEME.border}`,
@@ -5086,7 +4949,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
             >
               <Settings size={11}/> Columns
               {hiddenCols.size > 0 && (
-                <span style={{ background:"var(--accent)", color:"#fff", borderRadius:9, fontSize:8, fontWeight:700, padding:"0 4px", marginLeft:2 }}>
+                <span style={{ background:"var(--accent)", color:"#fff", borderRadius:2, fontSize:8, fontWeight:700, padding:"0 4px", marginLeft:2 }}>
                   {hiddenCols.size}
                 </span>
               )}
@@ -5101,11 +4964,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     left: panelAnchor.left,
                     width: 268, maxHeight: 420, overflowY:"auto",
                     background:"var(--surface)", border:`1px solid ${THEME.border}`,
-                    borderRadius:10, padding:8,
+                    borderRadius:"var(--radius-12)", padding:8,
                     boxShadow:"var(--shadow-modal)", zIndex:9999,
                   }}>
                     <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-                      letterSpacing:"0.06em", padding:"0 4px 6px", borderBottom:`1px solid ${THEME.border2}`, marginBottom:6 }}>
+                      letterSpacing:"0.14em", padding:"0 4px 6px", borderBottom:`1px solid ${THEME.border2}`, marginBottom:6 }}>
                       Columns
                     </div>
                     {TX_COLS_DEFAULT.filter(c => c.key !== "actions").map(col => {
@@ -5117,7 +4980,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                                   : col.label || col.key;
                       return (
                         <div key={col.key}
-                          style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 6px", borderRadius:6,
+                          style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 6px", borderRadius:2,
                             opacity: alwaysOn ? 0.5 : 1 }}
                           onMouseEnter={e => !alwaysOn && (e.currentTarget.style.background = "var(--surface-2)")}
                           onMouseLeave={e => (e.currentTarget.style.background = "")}>
@@ -5134,7 +4997,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                             disabled={alwaysOn || hidden}
                             title={pinned && !alwaysOn ? "Unpin column" : "Pin column to left"}
                             style={{ background:"none", border:"none", cursor: (alwaysOn || hidden) ? "default" : "pointer",
-                              padding:"1px 3px", borderRadius:3, display:"flex", alignItems:"center",
+                              padding:"1px 3px", borderRadius:2, display:"flex", alignItems:"center",
                               color: pinned ? "var(--accent)" : "var(--fg-3)", opacity: (alwaysOn || hidden) ? 0.3 : 1 }}>
                             {pinned && !alwaysOn ? <PinOff size={11}/> : <Pin size={11}/>}
                           </button>
@@ -5142,7 +5005,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       );
                     })}
                     <button onClick={resetColSettings}
-                      style={{ width:"100%", marginTop:8, padding:"5px 8px", borderRadius:6,
+                      style={{ width:"100%", marginTop:8, padding:"5px 8px", borderRadius:2,
                         border:`1px solid ${THEME.border}`, background:"none", cursor:"pointer",
                         fontSize:11, color:THEME.text3, fontFamily:"var(--font-sans)" }}>
                       Reset to defaults
@@ -5214,14 +5077,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                         <button onClick={()=>toggleGroup(grp._key)}
                           style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
-                            padding:"1px 3px", display:"flex", borderRadius:3, transition:"color 0.12s",
+                            padding:"1px 3px", display:"flex", borderRadius:2, transition:"color 0.12s",
                             fontSize:9, lineHeight:1 }}
                           onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                           onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                           title={isExpanded ? "Collapse" : "Expand transactions"}
                         >{isExpanded ? "▼" : "▶"}</button>
                         <span style={{
-                          padding:"2px 5px", borderRadius:4, fontSize:9, fontWeight:700,
+                          padding:"2px 5px", borderRadius:2, fontSize:9, fontWeight:700,
                           background: grp.type==="MIX" ? "rgba(148,163,184,0.12)"
                                      : isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
                           color: grp.type==="MIX" ? THEME.text3 : isBuy ? THEME.green : THEME.red,
@@ -5240,8 +5103,8 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <span style={{ fontSize:11, color:THEME.text2 }}>{grp.name || ""}</span>
                         {grp._txs.length > 1 && (
-                          <span style={{ fontSize:9, color:THEME.text3, background:"rgba(255,255,255,0.06)",
-                            border:`1px solid ${THEME.border2}`, borderRadius:3, padding:"1px 4px", fontFamily:THEME.mono }}>
+                          <span style={{ fontSize:9, color:THEME.text3, background:"var(--surface-2)",
+                            border:`1px solid ${THEME.border2}`, borderRadius:2, padding:"1px 4px", fontFamily:THEME.mono }}>
                             ×{grp._txs.length}
                           </span>
                         )}
@@ -5301,14 +5164,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     case "links": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <a href={`https://finance.yahoo.com/quote/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
-                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                             background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
                             color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                           onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                         >Y!</a>
                         <a href={`https://www.perplexity.ai/finance/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
-                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                             background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
                             color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
@@ -5320,7 +5183,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       <button onClick={()=>onRefreshSymbol && onRefreshSymbol(grp.symbol)}
                         title={`Refresh ${grp.symbol}`}
                         style={{ background:"none",border:"none",cursor:"pointer",color:THEME.text3,
-                          padding:4,display:"flex",borderRadius:5,transition:"color 0.12s" }}
+                          padding:4,display:"flex",borderRadius:2,transition:"color 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><RefreshCw size={12}/></button>
@@ -5357,7 +5220,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       onClick={() => onRefreshSymbol && onRefreshSymbol(tx.symbol)}
                       title={`Refresh ${tx.symbol} quote`}
                       style={{
-                        padding:"2px 7px", borderRadius:5, fontSize:9, fontWeight:700,
+                        padding:"2px 7px", borderRadius:2, fontSize:9, fontWeight:700,
                         background:txIsBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
                         color:txIsBuy?THEME.green:THEME.red,
                         border:`1px solid ${txIsBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
@@ -5452,14 +5315,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   case "links": return (
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                       <a href={`https://finance.yahoo.com/quote/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
-                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                           background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
                           color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                         onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                       >Y!</a>
                       <a href={`https://www.perplexity.ai/finance/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
-                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                           background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
                           color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
@@ -5471,7 +5334,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                       <button onClick={()=>onEdit(tx.portfolioId, tx)}
                         style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
-                          padding:4, display:"flex", borderRadius:5, transition:"color 0.12s" }}
+                          padding:4, display:"flex", borderRadius:2, transition:"color 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><Edit2 size={12}/></button>
@@ -5480,7 +5343,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                           portfolio: portfolios.find(p=>p.id===tx.portfolioId),
                         })}
                         style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
-                          padding:4, display:"flex", borderRadius:5, transition:"color 0.12s" }}
+                          padding:4, display:"flex", borderRadius:2, transition:"color 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.red}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><Trash2 size={12}/></button>
@@ -5809,8 +5672,8 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {portfolios.map(p => (
               <button key={p.id} onClick={() => setPortfolioId(p.id)} style={{
-                padding:"5px 12px", borderRadius:8, fontSize:11, fontWeight:600,
-                border:`1.5px solid ${portfolioId===p.id ? p.color : THEME.border}`,
+                padding:"5px 12px", borderRadius:0, fontSize:12, fontWeight:500,
+                border:`1px solid ${portfolioId===p.id ? p.color : THEME.border}`,
                 background: portfolioId===p.id ? p.color+"22" : "transparent",
                 color: portfolioId===p.id ? p.color : THEME.text3,
                 cursor:"pointer", display:"flex", alignItems:"center", gap:6,
@@ -5826,45 +5689,36 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
       {/* Buy/Sell toggle */}
       <div style={{ display:"flex", gap:8, marginBottom:12 }}>
         {["buy","sell"].map(t => (
-          <button key={t} onClick={() => setType(t)} style={{
-            flex:1, padding:"9px 0", borderRadius:10, fontSize:12, fontWeight:700,
-            border:`1.5px solid ${type===t?THEME.accent:THEME.border}`,
-            background:type===t?"rgba(59,130,246,0.15)":"transparent",
-            color:type===t?THEME.accent:THEME.text3, cursor:"pointer",
-            textTransform:"uppercase", letterSpacing:"0.06em",
-          }}>{t==="buy"?"▲ Buy":"▼ Sell"}</button>
+          <button key={t} onClick={() => setType(t)}
+            className={"rail-density-btn" + (type===t ? " active" : "")}
+            style={{ padding:"7px 0", fontSize:12, textTransform:"uppercase", letterSpacing:"0.14em" }}>{t==="buy"?"▲ Buy":"▼ Sell"}</button>
         ))}
       </div>
 
       {/* Purchase mode toggle — only in add mode */}
       {!editMode && (
-        <div style={{ display:"flex", marginBottom:16, borderRadius:9, overflow:"hidden",
+        <div style={{ display:"flex", marginBottom:16, borderRadius:2, overflow:"hidden",
           border:`1px solid ${THEME.border}`, background:THEME.surface }}>
           {[["single","☐ Einmaliger Kauf"],["recurring","↻ Wiederkehrend"]].map(([m, label]) => (
-            <button key={m} onClick={() => setPurchaseMode(m)} style={{
-              flex:1, padding:"7px 0", fontSize:11, fontWeight:700, border:"none",
-              cursor:"pointer", transition:"all 0.15s", fontFamily:THEME.font,
-              background: purchaseMode===m ? "rgba(59,130,246,0.18)" : "transparent",
-              color:       purchaseMode===m ? THEME.accent : THEME.text3,
-              letterSpacing:"0.03em",
-            }}>{label}</button>
+            <button key={m} onClick={() => setPurchaseMode(m)}
+              className={"rail-density-btn" + (purchaseMode===m ? " active" : "")}
+              style={{ padding:"7px 0" }}>{label}</button>
           ))}
         </div>
       )}
 
       {/* PDF-Import Bar */}
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4,
-        padding:"9px 12px", borderRadius:10, background:"rgba(59,130,246,0.06)",
+        padding:"9px 12px", background:"var(--surface-2)",
         border:`1px solid ${THEME.border}` }}>
         <input ref={pdfInputRef} type="file" accept=".pdf" style={{ display:"none" }}
           onChange={e => { const f = e.target.files?.[0]; if(f) handlePdfFile(f); e.target.value=''; }}/>
         <InfoTip i18nKey="tips.pdfImport" side="bottom" width={240}/>
         <button onClick={() => pdfInputRef.current?.click()}
           disabled={pdfLoading}
-          style={{ padding:"6px 13px", borderRadius:8, border:"none",
-            background:THEME.accent, color:"#fff", fontSize:11, fontWeight:700,
-            cursor: pdfLoading ? "wait" : "pointer", opacity: pdfLoading ? 0.7 : 1,
-            display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", flexShrink:0 }}>
+          className="btn primary"
+          style={{ cursor: pdfLoading ? "wait" : "pointer", opacity: pdfLoading ? 0.7 : 1,
+            whiteSpace:"nowrap", flexShrink:0 }}>
           {pdfLoading
             ? <><span style={{ fontSize:13 }}>⏳</span> {t("pdf.loading")}</>
             : <><FileText size={12}/> {t("pdf.btn")}</>}
@@ -5931,7 +5785,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                 color: lookupHistorical ? THEME.green : THEME.yellow,
                 background: lookupHistorical ? "rgba(74,222,128,0.10)" : "rgba(251,191,36,0.10)",
                 border: `1px solid ${lookupHistorical ? "rgba(74,222,128,0.25)" : "rgba(251,191,36,0.25)"}`,
-                borderRadius:4, padding:"1px 5px",
+                borderRadius:2, padding:"1px 5px",
               }}>
                 {lookupHistorical ? "📅 hist." : "⚡ live"} {lookupDate}
               </span>
@@ -5953,14 +5807,11 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             <button onClick={handleIsinLookup}
               disabled={isin.length < 12 || isinBusy}
               title={t("tips.isinSearch")}
+              className="btn"
               style={{
-                padding:"0 13px", borderRadius:10, flexShrink:0,
-                border:`1.5px solid ${isin.length>=12 ? THEME.accent : THEME.border}`,
-                background: isin.length>=12 ? "rgba(59,130,246,0.12)" : "transparent",
-                color: isin.length>=12 ? THEME.accent : THEME.text3,
+                padding:"0 13px", flexShrink:0,
+                opacity: isin.length>=12 ? 1 : 0.45,
                 cursor: isin.length>=12 && !isinBusy ? "pointer" : "default",
-                display:"flex", alignItems:"center", gap:5,
-                fontSize:11, fontWeight:700, transition:"all 0.15s",
               }}>
               {isinBusy
                 ? <span style={{ fontSize:13, display:"inline-block",
@@ -5971,7 +5822,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
           {/* Candidates picker */}
           {isinCandidates && isinCandidates.length > 0 && (
-            <div style={{ marginTop:6, borderRadius:10, border:`1px solid ${THEME.border}`,
+            <div style={{ marginTop:6, borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.card, overflow:"hidden", maxHeight:260, overflowY:"auto" }}>
               {isinCandidates.map((c, idx) => (
                 <button key={c.symbol}
@@ -5982,7 +5833,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                     borderBottom: idx < isinCandidates.length-1 ? `1px solid ${THEME.border}` : "none",
                     cursor:"pointer", textAlign:"left", gap:10,
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background="rgba(59,130,246,0.08)"}
+                  onMouseEnter={e => e.currentTarget.style.background="var(--surface-2)"}
                   onMouseLeave={e => e.currentTarget.style.background="transparent"}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, overflow:"hidden" }}>
                     <span style={{ fontFamily:THEME.mono, fontSize:13, fontWeight:700,
@@ -5996,8 +5847,8 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                         {c.price.toFixed(2)}&thinsp;{c.currency}
                       </span>
                     )}
-                    <span style={{ fontSize:9, color:THEME.text3, background:"rgba(255,255,255,0.06)",
-                      borderRadius:4, padding:"2px 5px", letterSpacing:"0.04em" }}>
+                    <span style={{ fontSize:9, color:THEME.text3, background:"var(--surface-2)",
+                      borderRadius:2, padding:"2px 5px", letterSpacing:"0.04em" }}>
                       {c.exchDisp || c.exchange || "—"}
                     </span>
                   </div>
@@ -6027,11 +5878,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
             <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
               disabled={!symbol||!date||lookupBusy}
               title={t("tips.getPrice")}
+              className="btn"
               style={{
-                height:42, padding:"0 16px", borderRadius:10, cursor:"pointer",
-                border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
-                color:lookupBusy?THEME.text3:THEME.accent, fontSize:11, fontWeight:700,
-                fontFamily:"inherit", whiteSpace:"nowrap",
+                alignSelf:"stretch", padding:"0 16px", whiteSpace:"nowrap",
+                color: lookupBusy ? THEME.text3 : undefined,
                 opacity:(!symbol||!date)?0.45:1,
               }}>
               {lookupBusy ? <span className="spin">⟳</span> : "⬇ Get Price"}
@@ -6048,11 +5898,10 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
               <button onClick={() => { setPriceEdited(false); doLookup(symbol, date); }}
                 disabled={!symbol||!date||lookupBusy}
                 title={t("tips.getPrice")}
+                className="btn"
                 style={{
-                  height:42, padding:"0 14px", borderRadius:10, cursor:"pointer",
-                  border:`1.5px solid ${THEME.accent}`, background:"rgba(59,130,246,0.12)",
-                  color:lookupBusy?THEME.text3:THEME.accent, fontSize:11, fontWeight:700,
-                  fontFamily:"inherit", whiteSpace:"nowrap",
+                  alignSelf:"stretch", padding:"0 14px", whiteSpace:"nowrap",
+                  color: lookupBusy ? THEME.text3 : undefined,
                   opacity:(!symbol||!date)?0.45:1,
                 }}>
                 {lookupBusy ? <span className="spin">⟳</span> : "⬇ Get Price"}
@@ -6090,7 +5939,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
       {/* Recurring preview card */}
       {purchaseMode === "recurring" && recurDates.length > 0 && budget && price && (
-        <div style={{ marginTop:14, border:`1px solid ${THEME.border}`, borderRadius:10, overflow:"hidden" }}>
+        <div style={{ marginTop:14, border:`1px solid ${THEME.border}`, borderRadius:2, overflow:"hidden" }}>
           {/* Header */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
             padding:"9px 14px", background:THEME.surface }}>
@@ -6121,7 +5970,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                 {pastRecurDates.slice(0,8).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, color:THEME.green,
                     background:"rgba(74,222,128,0.08)", border:`1px solid rgba(74,222,128,0.2)`,
-                    borderRadius:4, padding:"2px 5px" }}>{d}</span>
+                    borderRadius:2, padding:"2px 5px" }}>{d}</span>
                 ))}
                 {pastRecurDates.length > 8 && (
                   <span style={{ fontSize:9, color:THEME.text3, padding:"2px 4px" }}>
@@ -6134,7 +5983,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           {/* Future — planned rule, not booked */}
           {futureRecurDates.length > 0 && (
             <div style={{ padding:"8px 14px", borderTop:`1px solid ${THEME.border}`,
-              background:"rgba(255,255,255,0.02)" }}>
+              background:"var(--surface-2)" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                 <span style={{ fontSize:10, fontWeight:700, color:THEME.text3, letterSpacing:"0.05em" }}>
                   ↻ GEPLANT, NOCH NICHT FÄLLIG ({futureRecurDates.length})
@@ -6147,7 +5996,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                 {futureRecurDates.slice(0,5).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, color:THEME.text3,
                     background:THEME.surface2, border:`1px solid ${THEME.border2}`,
-                    borderRadius:4, padding:"2px 5px", opacity:0.7 }}>{d}</span>
+                    borderRadius:2, padding:"2px 5px", opacity:0.7 }}>{d}</span>
                 ))}
                 {futureRecurDates.length > 5 && (
                   <span style={{ fontSize:9, color:THEME.text3, padding:"2px 4px", opacity:0.6 }}>
@@ -6172,16 +6021,13 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
       {error && <div style={{ fontSize:12, color:THEME.red, marginTop:10 }}>{error}</div>}
       <div style={{ display:"flex", gap:10, marginTop:20 }}>
-        <button onClick={onClose} style={{ flex:1, padding:"11px 0", borderRadius:10,
-          border:`1px solid ${THEME.border}`, background:"transparent",
-          color:THEME.text3, cursor:"pointer", fontSize:13, fontWeight:600 }}>Cancel</button>
+        <button onClick={onClose} className="btn" style={{ flex:1 }}>Cancel</button>
         <button onClick={handleAdd}
           disabled={purchaseMode==="single"
             ? (!symbol||!qty||!price||busy)
             : (!symbol||!budget||!price||pastRecurDates.length===0||busy)}
-          style={{ flex:2, padding:"11px 0", borderRadius:10, border:"none",
-            background:type==="buy"?THEME.accent:THEME.red, color:"#fff",
-            cursor:"pointer", fontSize:13, fontWeight:700,
+          className="btn primary"
+          style={{ flex:2,
             opacity:(purchaseMode==="single"
               ? (!symbol||!qty||!price||busy)
               : (!symbol||!budget||!price||pastRecurDates.length===0||busy)
@@ -6236,13 +6082,9 @@ function AddPortfolioModal({ onClose, onAdd }) {
         </div>
       </div>
       <div style={{ display:"flex", gap:10, marginTop:20 }}>
-        <button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:10,
-          border:`1px solid ${THEME.border}`, background:"transparent",
-          color:THEME.text3, cursor:"pointer", fontSize:13, fontWeight:600 }}>Cancel</button>
+        <button onClick={onClose} className="btn" style={{ flex:1 }}>Cancel</button>
         <button onClick={handle} disabled={!name.trim()||busy}
-          style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
-            background:color, color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700,
-            opacity:!name.trim()?0.5:1 }}>
+          className="btn primary" style={{ flex:2, opacity:!name.trim()?0.5:1 }}>
           {busy?"Creating…":"Create Portfolio"}
         </button>
       </div>
@@ -6345,13 +6187,9 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
           <FLabel>{t("settings.quoteSource")}</FLabel>
           <div style={{ display:"flex", gap:8, marginTop:6 }}>
             {[["yahoo","Yahoo Finance"],["alphavantage","Alpha Vantage"]].map(([val,label]) => (
-              <button key={val} onClick={() => setDataSource(val)} style={{
-                flex:1, padding:"10px 0", borderRadius:10, fontSize:12, fontWeight:700,
-                border:`1.5px solid ${dataSource===val?THEME.accent:THEME.border}`,
-                background:dataSource===val?"rgba(59,130,246,0.15)":"transparent",
-                color:dataSource===val?THEME.accent:THEME.text3,
-                cursor:"pointer", letterSpacing:"0.04em",
-              }}>{label}</button>
+              <button key={val} onClick={() => setDataSource(val)}
+                className={"rail-density-btn" + (dataSource===val ? " active" : "")}
+                style={{ padding:"7px 0", fontSize:12 }}>{label}</button>
             ))}
           </div>
         </div>
@@ -6373,8 +6211,8 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
                 <span>Today's usage</span>
                 <span className="mono" style={{ color:barColor }}>{used} / {limit}</span>
               </div>
-              <div style={{ height:5, borderRadius:3, background:"rgba(255,255,255,0.08)" }}>
-                <div style={{ height:"100%", borderRadius:3, background:barColor,
+              <div style={{ height:4, borderRadius:0, background:"var(--border-2)" }}>
+                <div style={{ height:"100%", borderRadius:0, background:barColor,
                   width:`${pct}%`, transition:"width 0.3s" }}/>
               </div>
             </div>
@@ -6432,12 +6270,10 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
               <button
                 onClick={handleTestAi}
                 disabled={aiTestState === "testing" || !aiEndpoint}
+                className="btn"
                 style={{
-                  padding:"7px 16px", borderRadius:8, border:`1.5px solid ${THEME.border}`,
-                  background:"transparent", color:THEME.text2, fontSize:11, fontWeight:700,
                   cursor: aiTestState==="testing" ? "wait" : "pointer",
                   opacity: !aiEndpoint ? 0.45 : 1,
-                  display:"flex", alignItems:"center", gap:6,
                 }}>
                 {aiTestState === "testing"
                   ? <><span className="spin" style={{ display:"inline-block" }}>⟳</span> {t("settings.testing")}</>
@@ -6460,9 +6296,7 @@ function SettingsModal({ onClose, dataSource, setDataSource, avApiKey, setAvApiK
           </>)}
         </div>
 
-        <button onClick={onSave} style={{ padding:"11px 0", borderRadius:10, border:"none",
-          background:THEME.accent, color:"#fff", cursor:"pointer",
-          fontSize:13, fontWeight:700 }}>{t("settings.save")}</button>
+        <button onClick={onSave} className="btn primary" style={{ width:"100%", padding:"8px 0" }}>{t("settings.save")}</button>
 
         {userId && <AccountSettings focus={focus} onProfileSaved={onProfileSaved}/>}
       </div>
@@ -6554,7 +6388,7 @@ function AccountSettings({ focus, onProfileSaved }) {
   };
 
   const section = { borderTop:`1px solid ${THEME.border}`, paddingTop:16, display:"flex", flexDirection:"column", gap:8 };
-  const smallBtn = { padding:"7px 14px", borderRadius:8, border:`1.5px solid ${THEME.border}`, background:"transparent",
+  const smallBtn = { padding:"7px 14px", borderRadius:2, border:`1.5px solid ${THEME.border}`, background:"transparent",
                      color:THEME.text2, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", alignSelf:"flex-start" };
   const linkBtn  = { background:"none", border:"none", color:THEME.accent, cursor:"pointer", fontSize:11,
                      fontWeight:600, fontFamily:"inherit", padding:0 };
@@ -6601,7 +6435,7 @@ function AccountSettings({ focus, onProfileSaved }) {
       <div style={{ fontSize:11, color:THEME.text3, lineHeight:1.5 }}>{t("passkeys.hint")}</div>
       {passkeys.map(pk => (
         <div key={pk.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 10px",
-          borderRadius:8, background:THEME.surface2, border:`1px solid ${THEME.border}` }}>
+          borderRadius:2, background:THEME.surface2, border:`1px solid ${THEME.border}` }}>
           <KeyRound size={14} style={{ color:THEME.accent, flexShrink:0 }}/>
           <span style={{ fontSize:12, color:THEME.text1 }}>{pk.device_name || t("passkeys.unnamed")}</span>
           <span style={{ flex:1, fontSize:10, color:THEME.text3 }}>
@@ -6631,7 +6465,7 @@ function AccountSettings({ focus, onProfileSaved }) {
       {note("invites")}
       {invites.map(inv => (
         <div key={inv.code} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 10px",
-          borderRadius:8, background:THEME.surface2, border:`1px solid ${THEME.border}`,
+          borderRadius:2, background:THEME.surface2, border:`1px solid ${THEME.border}`,
           opacity: inv.status === "open" ? 1 : 0.6 }}>
           <span style={{ fontFamily:THEME.mono, fontSize:12, letterSpacing:"0.1em", color:THEME.text1 }}>{fmtInvite(inv.code)}</span>
           <span style={{ flex:1, fontSize:10, color:THEME.text3 }}>
@@ -6657,12 +6491,10 @@ function EmailReminderModal({ onClose, onOpenProfile }) {
       <p style={{ fontSize:13, color:THEME.text2, lineHeight:1.6, margin:"0 0 10px" }}>{t("emailReminder.text")}</p>
       <p style={{ fontSize:12, color:THEME.text3, lineHeight:1.6, margin:"0 0 20px" }}>{t("emailReminder.how")}</p>
       <div style={{ display:"flex", gap:10 }}>
-        <button onClick={onOpenProfile} style={{ flex:1, padding:"11px 0", borderRadius:10, border:"none",
-          background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={onOpenProfile} className="btn primary" style={{ flex:1 }}>
           {t("emailReminder.open")}
         </button>
-        <button onClick={onClose} style={{ padding:"11px 18px", borderRadius:10, border:`1.5px solid ${THEME.border}`,
-          background:"transparent", color:THEME.text2, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={onClose} className="btn">
           {t("emailReminder.later")}
         </button>
       </div>
@@ -6719,12 +6551,30 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
 // ════════════════════════════════════════════════════════════════════════════
 // SUMMARY BAR
 // ════════════════════════════════════════════════════════════════════════════
+// KPI tile: caps label over a mono value; tiles meet with hairlines
+const KpiTile = ({ label, children, color }) => (
+  <div style={{ padding:"12px 22px", borderRight:`1px solid ${THEME.border}` }}>
+    <div className="label" style={{ marginBottom:6, display:"flex", alignItems:"center", gap:2 }}>{label}</div>
+    <div className="num" style={{ fontSize:16, fontWeight:400, color:color ?? THEME.text1 }}>{children}</div>
+  </div>
+);
+const PerfLegend = ({ label }) => (
+  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
+    <div className="label">{label}</div>
+    <div style={{ display:"flex", alignItems:"center", gap:1 }}>
+      <span className="num" style={{ fontSize:9, color:THEME.text3, marginRight:4 }}>−5%</span>
+      {[-5,-2,-0.5,0,0.5,2,5].map(v => <div key={v} style={{ width:14, height:10, background:getPerfColor(v) }}/>)}
+      <span className="num" style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>+5%</span>
+    </div>
+  </div>
+);
+
 function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period, currency, rates, colorMode, onColorMode }) {
   const { t } = useTranslation();
   const totalNetGain = totalValueUSD - totalCostUSD;
   return (
-    <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
-      background:THEME.surface, display:"flex", alignItems:"center", gap:24, flexShrink:0 }}>
+    <div style={{ padding:"0 16px 0 0", borderBottom:`1px solid ${THEME.border}`,
+      background:THEME.surface, display:"flex", alignItems:"stretch", flexShrink:0 }}>
       {[
         [t("summary.totalValue"), fmtVal(totalValueUSD, currency, rates), null, "Current market value of all positions across all portfolios."],
         [t("summary.totalCost"),  fmtVal(totalCostUSD,  currency, rates), null, "Total cost basis: sum of all purchases at their original prices converted to USD."],
@@ -6733,13 +6583,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
         [`${period==="Intraday"?"1D":period} ${t("summary.return")}`, fmtPct(portfolioPerf),
                           portfolioPerf!=null?(portfolioPerf>=0?THEME.green:THEME.red):THEME.text3, `Weighted price change over the selected period (${period}).`],
       ].map(([lbl,val,color,tip]) => (
-        <div key={lbl}>
-          <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:2, display:"flex", alignItems:"center", gap:2 }}>
-            {tip ? <LabelTip text={tip} width={210}>{lbl}</LabelTip> : lbl}
-          </div>
-          <div className="mono" style={{ fontSize:13, fontWeight:700, color:color??THEME.text1 }}>{val}</div>
-        </div>
+        <KpiTile key={lbl} color={color} label={tip ? <LabelTip text={tip} width={210}>{lbl}</LabelTip> : lbl}>{val}</KpiTile>
       ))}
 
       <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
@@ -6756,20 +6600,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
               </button>
             ))}
           </div>
-        {/* Legend */}
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
-          <div style={{ fontSize:7, color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.08em" }}>
-            {colorMode==="gainloss"?`${t("summary.gl")} %`:t("summary.mktPct")}
-          </div>
-          <div style={{ display:"flex", alignItems:"center", gap:2 }}>
-            <span style={{ fontSize:7, color:THEME.text3 }}>−5%</span>
-            {[-5,-2,-0.5,0,0.5,2,5].map(v => (
-              <div key={v} style={{ width:14, height:14, borderRadius:3, background:getPerfColor(v),
-                border:"1px solid rgba(255,255,255,0.06)" }}/>
-            ))}
-            <span style={{ fontSize:7, color:THEME.text3 }}>+5%</span>
-          </div>
-        </div>
+        <PerfLegend label={colorMode==="gainloss"?`${t("summary.gl")} %`:t("summary.mktPct")}/>
         </div>{/* end color mode wrapper */}
       </div>
     </div>
@@ -7021,40 +6852,39 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
     }
   };
 
+  // Pal-Dialog: Hülle wie Modal (overlay-card), Felder wie FInput, Buttons ohne Radius
   const overlay = {
-    position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
-    backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
-    justifyContent:"center", zIndex:3000,
+    position:"fixed", inset:0, background:"var(--overlay)",
+    display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000,
   };
   const card = {
-    width:340, background:THEME.surface, borderRadius:16,
-    border:`1px solid ${THEME.border}`,
-    boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-    padding:"22px 22px 18px", position:"relative",
+    width:340, background:THEME.surface, borderRadius:"var(--radius-12)",
+    border:`1px solid ${THEME.border}`, boxShadow:"var(--shadow-modal)",
+    padding:16, position:"relative",
   };
   const inp = {
-    width:"100%", padding:"9px 12px", borderRadius:9,
-    border:`1px solid ${THEME.border}`, background:"rgba(255,255,255,0.05)",
-    color:THEME.text1, fontSize:12, fontFamily:"inherit",
+    width:"100%", padding:"7px 10px", borderRadius:2,
+    border:`1px solid ${THEME.border}`, background:THEME.surface,
+    color:THEME.text1, fontSize:13, fontFamily:"inherit",
     outline:"none", boxSizing:"border-box", marginBottom:10,
   };
   const btn = (primary) => ({
-    width:"100%", padding:"10px 0", borderRadius:9, border:"none",
-    background: primary ? THEME.accent : "rgba(255,255,255,0.06)",
-    color: primary ? "#fff" : THEME.text3,
-    fontSize:12, fontWeight:700, cursor:"pointer",
+    width:"100%", padding:"7px 0", borderRadius:0,
+    border:`1px solid ${primary ? THEME.text1 : THEME.border}`,
+    background: primary ? THEME.text1 : "transparent",
+    color: primary ? THEME.surface : THEME.text1,
+    fontSize:12, fontWeight:500, cursor:"pointer",
     fontFamily:"inherit", marginTop:4, transition:"all 0.12s",
   });
 
   // ETF pill header
   const EtfPill = () => (
     <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16,
-      padding:"8px 12px", borderRadius:10,
-      background:"rgba(59,130,246,0.08)", border:`1px solid rgba(59,130,246,0.2)` }}>
-      <div style={{ width:32, height:32, borderRadius:7, background:"rgba(59,130,246,0.15)",
+      padding:"8px 10px", border:`1px solid ${THEME.border}`, background:THEME.surface2 }}>
+      <div style={{ width:32, height:32, borderRadius:2, background:THEME.text1,
         display:"flex", alignItems:"center", justifyContent:"center",
-        fontFamily:"'JetBrains Mono',monospace", fontSize:8, fontWeight:800,
-        color:THEME.accent, flexShrink:0 }}>
+        fontFamily:"var(--font-mono)", fontSize:8, fontWeight:500,
+        color:THEME.surface, flexShrink:0 }}>
         {etf.ticker.slice(0,5).replace(/\.(DE|SW|L|PA)$/,'')}
       </div>
       <div>
@@ -7089,7 +6919,7 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
 
         {/* Error */}
         {error && !loading && (
-          <div style={{ padding:"7px 10px", borderRadius:8, marginBottom:10,
+          <div style={{ padding:"7px 10px", borderRadius:2, marginBottom:10,
             background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
             fontSize:11, color:THEME.red, display:"flex", gap:6 }}>
             <AlertCircle size={12} style={{flexShrink:0,marginTop:1}}/> {error}
@@ -7160,68 +6990,28 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
 // ── Delete Confirm Modal ─────────────────────────────────────────────────────
 function DeleteEtfModal({ etf, onConfirm, onCancel }) {
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
-      backdropFilter:"blur(6px)", display:"flex", alignItems:"center",
-      justifyContent:"center", zIndex:4000,
-    }} onClick={e => { if(e.target===e.currentTarget) onCancel(); }}>
-      <div style={{
-        width:320, background:"#1a1d23", borderRadius:16,
-        border:"1px solid rgba(239,68,68,0.3)",
-        boxShadow:"0 32px 80px rgba(0,0,0,0.7)",
-        padding:"22px 22px 18px",
-      }}>
-        {/* Icon */}
-        <div style={{ width:40, height:40, borderRadius:10, marginBottom:14,
-          background:"rgba(239,68,68,0.12)", display:"flex",
-          alignItems:"center", justifyContent:"center" }}>
-          <Trash2 size={18} style={{ color:"#ef4444" }}/>
+    <Modal title="Remove ETF?" onClose={onCancel} width={340} zIndex={4000}
+      footer={<div className="btn-row">
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn danger" onClick={onConfirm}><Trash2 size={14}/> Remove</button>
+      </div>}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12,
+        padding:"8px 10px", border:`1px solid ${THEME.border}`, background:THEME.surface2 }}>
+        <div style={{ width:36, height:36, borderRadius:2, flexShrink:0, background:THEME.text1,
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <span className="num" style={{ fontSize:7, color:THEME.surface, textAlign:"center", lineHeight:1.1 }}>
+            {etf.ticker.replace(/\.(DE|SW|L|PA)$/,"").slice(0,5)}
+          </span>
         </div>
-        <div style={{ fontSize:15, fontWeight:700, color:"#f1f5f9", marginBottom:6 }}>
-          Remove ETF?
-        </div>
-        {/* ETF pill */}
-        <div style={{ display:"flex", alignItems:"center", gap:10, margin:"12px 0 16px",
-          padding:"8px 12px", borderRadius:10,
-          background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ width:36, height:36, borderRadius:8, flexShrink:0,
-            background:"rgba(59,130,246,0.12)", display:"flex",
-            alignItems:"center", justifyContent:"center" }}>
-            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:7,
-              fontWeight:800, color:"#60a5fa", textAlign:"center", lineHeight:1.1 }}>
-              {etf.ticker.replace(/\.(DE|SW|L|PA)$/,"").slice(0,5)}
-            </span>
-          </div>
-          <div>
-            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
-              fontWeight:700, color:"#60a5fa", letterSpacing:"0.05em" }}>{etf.ticker}</div>
-            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
-              {etf.name || etf.ticker}
-            </div>
-          </div>
-        </div>
-        <p style={{ fontSize:11, color:"#64748b", margin:"0 0 18px", lineHeight:1.5 }}>
-          This will remove the ETF from your custom list. This action cannot be undone.
-        </p>
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onCancel} style={{
-            flex:1, padding:"9px 0", borderRadius:9, border:"1px solid rgba(255,255,255,0.1)",
-            background:"rgba(255,255,255,0.05)", color:"#94a3b8",
-            fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
-          }}>Cancel</button>
-          <button onClick={onConfirm} style={{
-            flex:1, padding:"9px 0", borderRadius:9, border:"none",
-            background:"rgba(239,68,68,0.15)", color:"#ef4444",
-            fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-            transition:"background 0.12s",
-          }}
-          onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.25)"}
-          onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}>
-            Remove
-          </button>
+        <div>
+          <div className="num" style={{ fontSize:12, fontWeight:500, color:THEME.text1 }}>{etf.ticker}</div>
+          <div style={{ fontSize:11, color:THEME.text3, marginTop:2 }}>{etf.name || etf.ticker}</div>
         </div>
       </div>
-    </div>
+      <p style={{ fontSize:12, color:THEME.text2, margin:0, lineHeight:1.55 }}>
+        This will remove the ETF from your custom list. This action cannot be undone.
+      </p>
+    </Modal>
   );
 }
 
@@ -7288,22 +7078,23 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         width:"100%", display:"flex", alignItems:"center",
         gap: open?9:0, padding: open?"7px 10px":"8px 0",
         justifyContent: open?"flex-start":"center",
-        borderRadius:9, border:"none", cursor:"pointer",
-        background: isActive?"rgba(59,130,246,0.15)":"transparent",
-        color: isActive?THEME.accent:THEME.text3,
+        borderRadius:0, border:"none", cursor:"pointer",
+        background: isActive?"var(--surface-2)":"transparent",
+        boxShadow: isActive?"inset 2px 0 0 var(--fg-1)":"none",
+        color: isActive?THEME.text1:THEME.text2,
         fontFamily:THEME.font, transition:"background 0.12s",
-        fontWeight: isActive?700:500, textAlign:"left",
+        fontWeight:500, textAlign:"left",
       }}>
       {/* Ticker badge */}
       <div style={{
         flexShrink:0, width:36, height:36,
-        background: isActive?"rgba(59,130,246,0.2)":"rgba(255,255,255,0.06)",
-        borderRadius:8, display:"flex", alignItems:"center",
+        background: isActive?"var(--fg-1)":"var(--hover)",
+        borderRadius:2, display:"flex", alignItems:"center",
         justifyContent:"center", padding:"0 2px",
       }}>
-        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:7,
-          lineHeight:1.1, textAlign:"center", fontWeight:800,
-          color: isActive?THEME.accent:THEME.text2 }}>
+        <span style={{ fontFamily:"var(--font-mono)", fontSize:7,
+          lineHeight:1.1, textAlign:"center", fontWeight:500,
+          color: isActive?THEME.surface:THEME.text2 }}>
           {etf.ticker.length <= 5
             ? etf.ticker.replace('.DE','').replace('.SW','').replace('.LON','')
             : etf.ticker.slice(0,5)}
@@ -7311,22 +7102,22 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       </div>
       {open && (
         <div style={{ overflow:"hidden", flex:1 }}>
-          <div style={{ fontSize:11, fontWeight:700,
-            color: isActive?THEME.accent:THEME.text1,
+          <div style={{ fontSize:12, fontWeight:500,
+            color: THEME.text1,
             whiteSpace:"nowrap", overflow:"hidden",
             textOverflow:"ellipsis" }}>
             {etf.name}
           </div>
-          <div style={{ fontSize:9, color: isActive?THEME.accent:THEME.text3, marginTop:1,
+          <div style={{ fontSize:10, color:THEME.text3, marginTop:1,
             display:"flex", alignItems:"center", gap:4 }}>
             <span style={{ whiteSpace:"nowrap", overflow:"hidden",
               textOverflow:"ellipsis", maxWidth:120 }}>
               {etf.provider || etf.ticker}
             </span>
             {etf.isPreset && (
-              <span style={{ fontSize:7, padding:"1px 4px", borderRadius:3,
-                background:"rgba(59,130,246,0.15)", color:THEME.accent,
-                fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em",
+              <span style={{ fontSize:8, padding:"0 4px", borderRadius:2,
+                border:"1px solid var(--border)", color:THEME.text2, fontFamily:THEME.mono,
+                fontWeight:400, textTransform:"uppercase", letterSpacing:"0.14em",
                 flexShrink:0 }}>preset</span>
             )}
           </div>
@@ -7351,7 +7142,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           style={{
             flexShrink:0, background:"none", border:"none",
             cursor:"pointer", color: THEME.red ?? "#ef4444",
-            padding:"5px 4px", borderRadius:5, display:"flex",
+            padding:"5px 4px", borderRadius:0, display:"flex",
             opacity: hovered ? 1 : 0,
             transform: hovered ? "scale(1)" : "scale(0.7)",
             transition:"opacity 0.15s, transform 0.15s",
@@ -7377,18 +7168,16 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         gap:6, borderBottom:`1px solid ${THEME.border}`, flexShrink:0 }}>
         {open && (
           <div style={{ flex:1 }}>
-            <div style={{ fontFamily:THEME.serif, fontSize:20, fontWeight:400,
-              letterSpacing:"-0.02em" }}>
-              ETF<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+            <div style={{ fontSize:14, letterSpacing:"0.16em", lineHeight:1.2, color:THEME.text1 }}>
+              <span style={{ fontWeight:700 }}>PORTFOLIO</span><span style={{ fontWeight:100 }}>-PAL</span>
             </div>
-            <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.10em", marginTop:-2 }}>{t("etf.screener").replace("ETF ","").replace("ETF-","")}</div>
+            <div className="label" style={{ marginTop:3 }}>{t("etf.screener")}</div>
           </div>
         )}
         {/* Mode switcher — removed, navigation via sidebar bottom */}
         <button onClick={onToggle} style={{
           background:"none", border:"none", cursor:"pointer",
-          color:THEME.text3, display:"flex", padding:4, borderRadius:7,
+          color:THEME.text3, display:"flex", padding:4, borderRadius:0,
           marginLeft: open ? 0 : "auto", marginRight: open ? 0 : "auto",
         }}><PanelLeft size={16}/></button>
       </div>
@@ -7413,8 +7202,8 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               placeholder={t("etf.searchPlaceholder")}
               style={{
                 width:"100%", padding:"7px 28px 7px 28px",
-                background:"rgba(255,255,255,0.05)", border:`1px solid ${inSearch ? THEME.accent+"44" : THEME.border}`,
-                borderRadius:8, color:THEME.text1, fontSize:11,
+                background:"var(--surface)", border:`1px solid ${inSearch ? "var(--fg-3)" : THEME.border}`,
+                borderRadius:2, color:THEME.text1, fontSize:12,
                 fontFamily:"inherit", outline:"none", boxSizing:"border-box",
                 transition:"border-color 0.15s",
               }}/>
@@ -7461,7 +7250,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <div style={{ padding:"14px 8px", textAlign:"center", color:THEME.text3,
             fontSize:11, lineHeight:1.5 }}>
             {t("etf.noResults")}<br/>
-            <span style={{ fontFamily:"'JetBrains Mono',monospace",
+            <span style={{ fontFamily:"var(--font-mono)",
               color:THEME.text2 }}>"{search}"</span>
           </div>
         )}
@@ -7470,7 +7259,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         {open && (
           <>
             <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.08em", padding:"4px 4px 6px" }}>{t("etf.presets")}</div>
+              letterSpacing:"0.14em", padding:"4px 4px 6px" }}>{t("etf.presets")}</div>
             {(inSearch ? presetResults : PREDEFINED_ETFS_CLIENT).map(etf => (
               <EtfItem key={etf.ticker} etf={etf} isActive={selectedTicker===etf.ticker}/>
             ))}
@@ -7482,7 +7271,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>{t("etf.saved")}</div>
+                letterSpacing:"0.14em" }}>{t("etf.saved")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{savedEtfs.length}</div>
             </div>
@@ -7499,7 +7288,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>{t("etf.custom")}</div>
+                letterSpacing:"0.14em" }}>{t("etf.custom")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{customEtfs.length}</div>
             </div>
@@ -7538,10 +7327,10 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                   disabled={savingCustom}
                   style={{
                     width:"100%", marginTop:8, padding:"7px 0",
-                    borderRadius:9, border:"1px dashed rgba(59,130,246,0.4)",
-                    background:"rgba(59,130,246,0.06)",
-                    color: savingCustom ? THEME.text3 : THEME.accent,
-                    fontSize:11, fontWeight:600, cursor:"pointer",
+                    borderRadius:0, border:"1px dashed var(--border)",
+                    background:"transparent",
+                    color: savingCustom ? THEME.text3 : THEME.text1,
+                    fontSize:12, fontWeight:500, cursor:"pointer",
                     fontFamily:"inherit", display:"flex",
                     alignItems:"center", justifyContent:"center", gap:6,
                     transition:"all 0.15s",
@@ -7560,7 +7349,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>{t("etf.searchResults")}</div>
+                letterSpacing:"0.14em" }}>{t("etf.searchResults")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{liveResults.length}</div>
             </div>
@@ -7588,7 +7377,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                       flexShrink:0, background:"none", border:"none",
                       cursor: added ? "default" : "pointer",
                       color: added ? THEME.accent : THEME.text3,
-                      padding:"4px 5px", borderRadius:5, display:"flex",
+                      padding:"4px 5px", borderRadius:0, display:"flex",
                       fontSize:15, lineHeight:1,
                       opacity: added ? 1 : 0.5, transition:"all 0.12s",
                     }}
@@ -7611,21 +7400,21 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 title={etf.name}
                 style={{
                   width:"100%", background:selectedTicker===etf.ticker
-                    ?"rgba(59,130,246,0.18)":"none",
+                    ?"var(--surface-2)":"none",
                   border:"none", cursor:"pointer",
                   display:"flex", justifyContent:"center",
                   alignItems:"center", padding:"5px 0",
-                  borderRadius:7, transition:"background 0.1s",
+                  borderRadius:0, transition:"background 0.1s",
                 }}>
                 <div style={{
-                  width:34, height:34, borderRadius:8,
+                  width:34, height:34, borderRadius:2,
                   background:selectedTicker===etf.ticker
-                    ?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.06)",
+                    ?"var(--fg-1)":"var(--hover)",
                   display:"flex", alignItems:"center", justifyContent:"center",
                 }}>
-                  <span style={{ fontFamily:"'JetBrains Mono',monospace",
-                    fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
-                    color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
+                  <span style={{ fontFamily:"var(--font-mono)",
+                    fontSize:6.5, fontWeight:500, textAlign:"center", lineHeight:1.1,
+                    color:selectedTicker===etf.ticker?THEME.surface:THEME.text2 }}>
                     {etf.ticker.replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
                   </span>
                 </div>
@@ -7641,24 +7430,23 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 title={`★ ${etf.name || etf.ticker}`}
                 style={{
                   width:"100%", background:selectedTicker===etf.ticker
-                    ?"rgba(59,130,246,0.18)":"none",
+                    ?"var(--surface-2)":"none",
                   border:"none", cursor:"pointer",
                   display:"flex", justifyContent:"center",
                   alignItems:"center", padding:"5px 0",
-                  borderRadius:7, transition:"background 0.1s",
+                  borderRadius:0, transition:"background 0.1s",
                 }}>
                 <div style={{ position:"relative" }}>
                   <div style={{
-                    width:34, height:34, borderRadius:8,
+                    width:34, height:34, borderRadius:2,
                     background:selectedTicker===etf.ticker
-                      ?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.06)",
+                      ?"var(--fg-1)":"var(--hover)",
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    border:selectedTicker===etf.ticker
-                      ?"1px solid rgba(59,130,246,0.4)":"1px solid rgba(255,255,255,0.08)",
+                    border:"1px solid var(--border)",
                   }}>
-                    <span style={{ fontFamily:"'JetBrains Mono',monospace",
-                      fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
-                      color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
+                    <span style={{ fontFamily:"var(--font-mono)",
+                      fontSize:6.5, fontWeight:500, textAlign:"center", lineHeight:1.1,
+                      color:selectedTicker===etf.ticker?THEME.surface:THEME.text2 }}>
                       {(etf.ticker||"").replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
                     </span>
                   </div>
@@ -7678,9 +7466,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       <div style={{ height:1, background:THEME.border2, margin:"6px 8px", flexShrink:0 }}/>
 
       {/* Currency — same sizing/spacing as Portfolio Rail */}
-      {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-        textTransform:"uppercase", letterSpacing:"0.10em",
-        padding:"6px 6px 4px", opacity:0.7, flexShrink:0 }}>{t("etf.currency")}</div>}
+      {open && <div className="label" style={{ padding:"8px 14px 4px", flexShrink:0 }}>{t("etf.currency")}</div>}
       <div style={{
         padding: open ? "2px 4px" : "2px 0",
         display:"flex", flexDirection:"column",
@@ -7698,8 +7484,9 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 display:"flex", alignItems:"center",
                 gap: open ? 8 : 0,
                 padding: open ? "5px 8px" : "5px 0",
-                border:"none", borderRadius:8,
-                background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
+                border:"none", borderRadius:0,
+                background: isActive ? "var(--surface-2)" : "transparent",
+                boxShadow: isActive ? "inset 2px 0 0 var(--fg-1)" : "none",
                 cursor:"pointer", fontFamily:THEME.font,
                 transition:"background 0.12s",
                 width:"100%",
@@ -7718,11 +7505,11 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               {open && (
                 <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
                   <span className="ccy-label" style={{
-                    fontSize:11, fontWeight: isActive ? 700 : 500,
-                    color: isActive ? THEME.accent : THEME.text3,
+                    fontFamily:THEME.mono, fontSize:11, fontWeight:500,
+                    color: isActive ? THEME.text1 : THEME.text3,
                   }}>{c}</span>
                   <span className="ccy-name" style={{
-                    fontSize:9, color: isActive ? THEME.accent : THEME.text3,
+                    fontSize:10, color: isActive ? THEME.text2 : THEME.text3,
                   }}>{CCY_NAME[c]}</span>
                 </div>
               )}
@@ -7840,11 +7627,11 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
             <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
             {open && (
               <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                <div className="num" style={{ fontSize:12, fontWeight:500, color:"var(--fg-1)",
                   whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                   {user.username}
                 </div>
-                <div style={{ fontSize:10, color:"var(--fg-3)" }}>ETF Screener</div>
+                <div style={{ fontSize:11, color:"var(--fg-3)" }}>ETF Screener</div>
               </div>
             )}
           </div>
@@ -7863,6 +7650,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           onClose={() => setUserModalOpen(false)}
           onSwitch={() => { setUserModalOpen(false); onSwitchToPortfolio && onSwitchToPortfolio(); }}
           onLogout={() => { setUserModalOpen(false); onSignOut && onSignOut(); }}
+          onSettings={onSettings && (() => { setUserModalOpen(false); onSettings(); })}
         />
       )}
     </div>
@@ -7900,60 +7688,30 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
   const errList = Object.entries(fetchErrors||{}).filter(([,v])=>v).map(([k])=>k).slice(0,3);
 
   return (
-    <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
-      background:THEME.surface, display:"flex", alignItems:"center",
-      gap:24, flexShrink:0, flexWrap:"wrap" }}>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.screener").replace(" Screener","").replace("-Screener","")}</div>
-        <div style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
-          {etfMeta?.name ?? "—"}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.avgPerfWeighted")}</div>
-        <div className="mono" style={{ fontSize:13, fontWeight:700,
-          color: avgPerf==null?THEME.text3:avgPerf>=0?THEME.green:THEME.red }}>
-          {avgPerf!=null ? `${avgPerf>=0?"+":""}${avgPerf.toFixed(2)}%` : "—"}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.gainersLosers")}</div>
-        <div className="mono" style={{ fontSize:13, fontWeight:700 }}>
-          <span style={{ color:THEME.green }}>{gainers}↑</span>
-          <span style={{ color:THEME.text3, margin:"0 4px" }}>/</span>
-          <span style={{ color:THEME.red }}>{losers}↓</span>
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.topHoldings")}</div>
-        <div className="mono" style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
-          Top {nodes.length}
-        </div>
-      </div>
+    <div style={{ padding:"0 16px 0 0", borderBottom:`1px solid ${THEME.border}`,
+      background:THEME.surface, display:"flex", alignItems:"stretch",
+      flexShrink:0, flexWrap:"wrap" }}>
+      <KpiTile label={t("etf.screener").replace(" Screener","").replace("-Screener","")}>
+        <span style={{ fontFamily:THEME.font }}>{etfMeta?.name ?? "—"}</span>
+      </KpiTile>
+      <KpiTile label={t("etf.avgPerfWeighted")} color={avgPerf==null?THEME.text3:avgPerf>=0?THEME.green:THEME.red}>
+        {avgPerf!=null ? `${avgPerf>=0?"+":""}${avgPerf.toFixed(2)}%` : "—"}
+      </KpiTile>
+      <KpiTile label={t("etf.gainersLosers")}>
+        <span style={{ color:THEME.green }}>{gainers}↑</span>
+        <span style={{ color:THEME.text3, margin:"0 4px" }}>/</span>
+        <span style={{ color:THEME.red }}>{losers}↓</span>
+      </KpiTile>
+      <KpiTile label={t("etf.topHoldings")}>Top {nodes.length}</KpiTile>
       {errList.length > 0 && (
-        <div style={{ display:"flex", alignItems:"center", gap:5,
-          fontSize:11, color:"#f59e0b" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:5, padding:"0 22px",
+          fontSize:11, color:THEME.yellow }}>
           <AlertCircle size={13}/>
           Failed: {errList.join(", ")}
         </div>
       )}
-      {/* Color legend — right aligned */}
-      <div style={{ marginLeft:"auto", display:"flex", flexDirection:"column",
-        alignItems:"flex-end", gap:3 }}>
-        <div style={{ fontSize:7, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em" }}>Mkt %</div>
-        <div style={{ display:"flex", alignItems:"center", gap:2 }}>
-          <span style={{ fontSize:7, color:THEME.text3 }}>−5%</span>
-          {[-5,-2,-0.5,0,0.5,2,5].map(v => (
-            <div key={v} style={{ width:14, height:14, borderRadius:3,
-              background:getPerfColor(v), border:"1px solid rgba(255,255,255,0.06)" }}/>
-          ))}
-          <span style={{ fontSize:7, color:THEME.text3 }}>+5%</span>
-        </div>
+      <div style={{ marginLeft:"auto", display:"flex", alignItems:"center" }}>
+        <PerfLegend label="Mkt %"/>
       </div>
     </div>
   );
@@ -7992,7 +7750,7 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
   const col = isPos ? "#4ade80" : "#f87171";
 
   return (
-    <div style={{ background:"var(--surface-2)", borderRadius:5, overflow:"hidden", lineHeight:0 }}>
+    <div style={{ background:"var(--surface-2)", borderRadius:2, overflow:"hidden", lineHeight:0 }}>
       <svg width={W} height={H} style={{ display:"block" }}>
         <defs>
           <linearGradient id={`sg-${xs[0]}-${isPos}`} x1="0" y1="0" x2="0" y2="1">
@@ -8088,7 +7846,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
         {/* Refresh Holdings */}
         <button onClick={onRefreshHoldings}
           style={{ display:"flex", alignItems:"center", gap:5,
-            padding:"5px 12px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            padding:"5px 12px", borderRadius:2, border:`1px solid ${THEME.border}`,
             background:"transparent", color:THEME.text2, fontSize:11,
             fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
           <span style={{ display:"flex" }}>
@@ -8118,8 +7876,8 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
               ].map(({key, label, right}) => (
                 <th key={key} style={{ padding:"7px 12px",
                   textAlign:right?"right":"left",
-                  fontSize:9, fontWeight:700, color:THEME.text3,
-                  textTransform:"uppercase", letterSpacing:"0.07em",
+                  fontSize:9, fontWeight:600, color:THEME.text3,
+                  textTransform:"uppercase", letterSpacing:"0.14em",
                   position:"sticky", top:0, background:THEME.bg,
                   whiteSpace:"nowrap" }}>{label}</th>
               ))}
@@ -8133,14 +7891,14 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
               const chartData = globalChartCache.get(h.symbol) ?? null;
               return (
                 <tr key={h.symbol}
-                  style={{ borderBottom:`1px solid rgba(255,255,255,0.03)`, cursor:"default" }}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+                  style={{ borderBottom:`1px solid var(--border-2)`, cursor:"default" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface-2)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
 
                   {/* # */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
                     color:THEME.text3, fontSize:10,
-                    fontFamily:"'JetBrains Mono',monospace" }}>{i+1}</td>
+                    fontFamily:"var(--font-mono)" }}>{i+1}</td>
 
                   {/* Symbol + shortName */}
                   <td style={{ padding:"6px 12px", whiteSpace:"nowrap" }}>
@@ -8149,7 +7907,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
                         background:getPerfColor(h.perf??0) }}/>
                       <div>
                         <div style={{ fontWeight:700, color:THEME.text1,
-                          fontFamily:"'JetBrains Mono',monospace",
+                          fontFamily:"var(--font-mono)",
                           fontSize:11, lineHeight:1.2 }}>{h.symbol}</div>
                         {h.shortName && (
                           <div style={{ fontSize:9, color:THEME.text3, lineHeight:1.2,
@@ -8171,8 +7929,8 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
                       justifyContent:"flex-end", gap:6 }}>
                       <div style={{ height:4, borderRadius:2, flexShrink:0,
                         width:Math.max(4, Math.round(h.weight*8)),
-                        background:`rgba(59,130,246,${0.3+h.weight/20})` }}/>
-                      <span style={{ fontFamily:"'JetBrains Mono',monospace",
+                        background:"var(--fg-2)", opacity:Math.min(1, 0.35+h.weight/20) }}/>
+                      <span style={{ fontFamily:"var(--font-mono)",
                         color:THEME.text1, fontSize:11, minWidth:44, textAlign:"right" }}>
                         {h.weight.toFixed(2)}%
                       </span>
@@ -8190,14 +7948,14 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
                   {/* Price */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace",
+                    fontFamily:"var(--font-mono)",
                     color:h.price?THEME.text1:THEME.text3 }}>
                     {h.price ? `${cSym}${(h.price*rate).toFixed(2)}` : "—"}
                   </td>
 
                   {/* Period perf */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace", color:pColor,
+                    fontFamily:"var(--font-mono)", color:pColor,
                     fontWeight:600 }}>
                     {h.perf!=null
                       ? `${h.perf>=0?"+":""}${h.perf.toFixed(2)}%`
@@ -8206,7 +7964,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
                   {/* Div. Yield */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace" }}>
+                    fontFamily:"var(--font-mono)" }}>
                     {h.div === undefined
                       ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
                       : h.div?.yieldPct != null
@@ -8218,7 +7976,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
                   {/* Ex-Date */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace", fontSize:10,
+                    fontFamily:"var(--font-mono)", fontSize:10,
                     color:THEME.text3 }}>
                     {h.div === undefined ? "" :
                       h.div?.exDate
@@ -8480,7 +8238,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             {selectedTicker && (
               <div style={{ fontSize:11, color:THEME.text3 }}>
                 <span style={{ fontWeight:700, color:THEME.accent,
-                  fontFamily:"'JetBrains Mono',monospace" }}>
+                  fontFamily:"var(--font-mono)" }}>
                   {selectedTicker}
                 </span>
                 {(etfMeta?.name || dynamicName) && (
@@ -8555,7 +8313,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                     {holdingsError}
                   </div>
                   <button onClick={()=>loadHoldings(selectedTicker,true)}
-                    style={{ padding:"7px 18px", borderRadius:8, border:`1px solid ${THEME.border}`,
+                    style={{ padding:"7px 18px", borderRadius:2, border:`1px solid ${THEME.border}`,
                       background:"transparent", color:THEME.text3, fontSize:11,
                       cursor:"pointer", fontFamily:"inherit", display:"flex",
                       alignItems:"center", gap:6 }}>
@@ -8574,7 +8332,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                     {t("etf.noHoldingsHint")}
                   </div>
                   <button onClick={()=>loadHoldings(selectedTicker,true)}
-                    style={{ marginTop:4, padding:"7px 18px", borderRadius:8,
+                    style={{ marginTop:4, padding:"7px 18px", borderRadius:2,
                       border:`1px solid ${THEME.border}`, background:"transparent",
                       color:THEME.text3, fontSize:11, cursor:"pointer",
                       fontFamily:"inherit", display:"flex", alignItems:"center", gap:6 }}>
@@ -8759,7 +8517,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
       </div>
 
       {/* Input card */}
-      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:0, padding:22 }}>
         <div style={{ display:"flex", gap:14, alignItems:"flex-end", flexWrap:"wrap" }}>
           <div style={{ flex:"1 1 160px", minWidth:120 }}>
             <FLabel>Symbol</FLabel>
@@ -8782,7 +8540,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                   padding:"9px 12px", border:"none", cursor:"pointer",
                   background: currency === c ? THEME.accent : THEME.surface2,
                   color: currency === c ? "#fff" : THEME.text3,
-                  borderRadius:8, fontSize:12, fontWeight:600, fontFamily:THEME.font,
+                  borderRadius:2, fontSize:12, fontWeight:600, fontFamily:THEME.font,
                   transition:"background 0.15s",
                 }}>{c}</button>
               ))}
@@ -8793,20 +8551,20 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
             cursor: loading ? "default" : "pointer",
             background: loading ? THEME.surface2 : THEME.accent,
             color: loading ? THEME.text3 : "#fff",
-            borderRadius:10, fontSize:13, fontWeight:700, fontFamily:THEME.font,
+            borderRadius:2, fontSize:13, fontWeight:700, fontFamily:THEME.font,
             transition:"background 0.15s", alignSelf:"flex-end",
           }}>{loading ? "Searching…" : "Search"}</button>
         </div>
         {error && (
           <div style={{ marginTop:14, padding:"10px 14px",
             background:"rgba(248,113,113,0.1)", border:"1px solid rgba(248,113,113,0.3)",
-            borderRadius:8, fontSize:12, color:THEME.red }}>{error}</div>
+            borderRadius:2, fontSize:12, color:THEME.red }}>{error}</div>
         )}
       </div>
 
       {/* Result summary */}
       {result?.found && (
-        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:0, padding:22 }}>
           {/* Company name header */}
           <div style={{ marginBottom:18 }}>
             <div style={{ fontSize:18, fontWeight:700, color:THEME.text1 }}>
@@ -8834,7 +8592,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-                  letterSpacing:"0.08em", marginBottom:4 }}>{label}</div>
+                  letterSpacing:"0.14em", marginBottom:4 }}>{label}</div>
                 <div style={{ fontSize:20, fontWeight:700, color, fontFamily:THEME.mono }}>{value}</div>
               </div>
             ))}
@@ -8843,7 +8601,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
           {/* Splits */}
           <div style={{ height:1, background:THEME.border2, margin:"18px 0 14px" }}/>
           <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:10 }}>
+            letterSpacing:"0.14em", marginBottom:10 }}>
             Stock Splits Since {result.date}
           </div>
           {result.splits.length === 0
@@ -8854,7 +8612,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                   <div key={i} style={{
                     padding:"6px 14px",
                     background:"rgba(251,191,36,0.12)", border:"1px solid rgba(251,191,36,0.3)",
-                    borderRadius:8, fontSize:12, fontWeight:600, color:THEME.yellow, fontFamily:THEME.mono,
+                    borderRadius:2, fontSize:12, fontWeight:600, color:THEME.yellow, fontFamily:THEME.mono,
                   }}>
                     {s.ratio} · {new Date(s.date + "T12:00:00").toLocaleDateString("en-GB",
                       { day:"numeric", month:"short", year:"numeric" })}
@@ -8868,9 +8626,9 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
 
       {/* Performance chart */}
       {chartData && (
-        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:0, padding:22 }}>
           <div style={{ fontSize:11, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:14 }}>
+            letterSpacing:"0.14em", marginBottom:14 }}>
             {result.symbol} · Performance since {result.date} · {result.targetCurrency}
           </div>
           <div ref={containerRef} style={{ width:"100%", position:"relative" }}>
@@ -8896,7 +8654,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                 {yTicks.map((v, i) => (
                   <g key={i}>
                     <line x1={0} y1={yS(v).toFixed(1)} x2={CW} y2={yS(v).toFixed(1)}
-                      stroke="rgba(255,255,255,0.06)" strokeWidth={1}/>
+                      style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
                     <text x={-8} y={yS(v) + 4} textAnchor="end"
                       fontSize={10} fill={THEME.text3} fontFamily={THEME.mono}>{fmtP(v)}</text>
                   </g>
@@ -8951,7 +8709,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                 top:  PAD_T + hoverPt.y - 42,
                 left: hoverPt.x + PAD_L + (hoverPt.x > CW * 0.7 ? -130 : 14),
                 background:THEME.surface2, border:`1px solid ${THEME.border}`,
-                borderRadius:8, padding:"7px 12px",
+                borderRadius:2, padding:"7px 12px",
                 fontSize:12, color:THEME.text1, fontFamily:THEME.mono,
                 pointerEvents:"none", zIndex:10, lineHeight:1.6,
               }}>
@@ -9590,7 +9348,7 @@ export default function App() {
               {/* Status pill */}
               {apiStatus && apiStatus !== "ok" && (
                 <div style={{ display:"flex", alignItems:"center", gap:5,
-                  padding:"2px 8px", borderRadius:12, fontSize:9, fontWeight:700,
+                  padding:"2px 8px", borderRadius:0, fontSize:9, fontWeight:700,
                   border:"1px solid",
                   ...(apiStatus==="stale"
                     ? { background:"rgba(251,191,36,0.1)", borderColor:"rgba(251,191,36,0.3)", color:"#fbbf24" }
@@ -9625,28 +9383,19 @@ export default function App() {
             <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView} ansicht={ansicht} onAnsicht={setAnsicht}
               extraRight={activeTab === "performance" ? (
                 <div style={{ position:"relative" }} ref={vergleichRef}>
-                  <button onClick={() => setShowVergleich(v => !v)}
-                    style={{ padding:"4px 11px", borderRadius:7, cursor:"pointer", fontSize:10,
-                      fontWeight:700, fontFamily:"inherit", letterSpacing:"0.04em",
-                      border: (benchSymbols.length + instrOverlays.length) > 0
-                        ? "1px solid rgba(99,102,241,0.45)" : "1px solid rgba(255,255,255,0.12)",
-                      background: (benchSymbols.length + instrOverlays.length) > 0
-                        ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.04)",
-                      color: (benchSymbols.length + instrOverlays.length) > 0 ? "#818cf8" : THEME.text2,
-                      transition:"all 0.15s" }}>
+                  <button onClick={() => setShowVergleich(v => !v)} className="btn"
+                    style={{ padding:"4px 11px", fontSize:10,
+                      borderColor: (benchSymbols.length + instrOverlays.length) > 0 ? "var(--fg-1)" : undefined }}>
                     + Vergleich{(benchSymbols.length + instrOverlays.length) > 0
                       ? ` (${benchSymbols.length + instrOverlays.length})` : ""}
                   </button>
                   {showVergleich && (
-                    <div style={{ position:"fixed",
+                    <div className="overlay-card" style={{ position:"fixed",
                       top: (vergleichRef.current?.getBoundingClientRect().bottom ?? 46) + 4,
                       left: vergleichRef.current?.getBoundingClientRect().left ?? 0,
-                      zIndex:500, background:THEME.surface, border:`1px solid ${THEME.border}`,
-                      borderRadius:12, padding:"12px 14px", minWidth:280, maxWidth:340,
-                      boxShadow:"0 12px 40px rgba(0,0,0,0.7)" }}
+                      zIndex:500, padding:"12px 14px", minWidth:280, maxWidth:340 }}
                       onMouseDown={e => e.stopPropagation()}>
-                      <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
-                        textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>Benchmarks</div>
+                      <div className="label" style={{ marginBottom:8 }}>Benchmarks</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 }}>
                         {BENCHMARKS.map((b, i) => {
                           const active = benchSymbols.includes(b.sym);
@@ -9654,10 +9403,10 @@ export default function App() {
                           return (
                             <button key={b.sym} onClick={() => setBenchSymbols(prev =>
                               prev.includes(b.sym) ? prev.filter(s => s !== b.sym) : [...prev, b.sym])}
-                              style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer",
+                              style={{ padding:"3px 9px", borderRadius:2, cursor:"pointer",
                                 fontSize:10, fontFamily:"inherit", transition:"all 0.15s",
-                                border: active ? `1px solid ${col}88` : "1px solid rgba(255,255,255,0.08)",
-                                background: active ? `${col}22` : "rgba(255,255,255,0.03)",
+                                border: active ? `1px solid ${col}88` : "1px solid var(--border)",
+                                background: active ? `${col}22` : "var(--surface-2)",
                                 color: active ? col : THEME.text3 }}>
                               {b.label}
                             </button>
@@ -9666,8 +9415,7 @@ export default function App() {
                       </div>
                       {perfSymbols.length > 0 && (
                         <>
-                          <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
-                            textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>{t("chart.viewInstruments")}</div>
+                          <div className="label" style={{ marginBottom:8 }}>{t("chart.viewInstruments")}</div>
                           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                             {perfSymbols.map((sym, i) => {
                               const active = instrOverlays.includes(sym);
@@ -9676,10 +9424,10 @@ export default function App() {
                               return (
                                 <button key={sym} onClick={() => setInstrOverlays(prev =>
                                   prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym])}
-                                  style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer",
+                                  style={{ padding:"3px 9px", borderRadius:2, cursor:"pointer",
                                     fontSize:10, fontFamily:"inherit", transition:"all 0.15s",
-                                    border: active ? `1px solid ${col}88` : "1px solid rgba(255,255,255,0.08)",
-                                    background: active ? `${col}22` : "rgba(255,255,255,0.03)",
+                                    border: active ? `1px solid ${col}88` : "1px solid var(--border)",
+                                    background: active ? `${col}22` : "var(--surface-2)",
                                     color: active ? col : THEME.text3 }}>
                                   {sym}
                                 </button>
@@ -9689,11 +9437,8 @@ export default function App() {
                         </>
                       )}
                       {(benchSymbols.length + instrOverlays.length) > 0 && (
-                        <button onClick={() => { setBenchSymbols([]); setInstrOverlays([]); }}
-                          style={{ marginTop:12, padding:"4px 10px", borderRadius:6, cursor:"pointer",
-                            fontSize:10, border:"1px solid rgba(248,113,113,0.3)",
-                            background:"rgba(248,113,113,0.08)", color:THEME.red,
-                            fontFamily:"inherit", width:"100%" }}>
+                        <button className="btn danger" onClick={() => { setBenchSymbols([]); setInstrOverlays([]); }}
+                          style={{ marginTop:12, fontSize:10, width:"100%" }}>
                           Alle entfernen
                         </button>
                       )}

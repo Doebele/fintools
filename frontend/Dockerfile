@@ -5,6 +5,7 @@ COPY package.json ./
 RUN npm install
 COPY vite.config.js index.html ./
 COPY src/ ./src/
+COPY public/ ./public/
 RUN npm run build
 
 # Stage 2: Serve with nginx
