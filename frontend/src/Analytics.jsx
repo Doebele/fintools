@@ -50,8 +50,8 @@ const InfoTip = ({ text, title, width=220, side="top" }) => {
           position:"absolute", left:"50%", ...posStyle,
           transform:"translateX(-50%)", width, zIndex:200,
           background:"var(--surface)", border:`1px solid var(--border)`,
-          borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-          boxShadow:"0 4px 20px rgba(0,0,0,0.18)",
+          borderRadius:"var(--radius-12)", padding:"8px 10px", pointerEvents:"none",
+          boxShadow:"var(--shadow-modal)",
         }}>
           {title && <div style={{ fontSize:10, color:C.text1, fontWeight:700, marginBottom:4 }}>{title}</div>}
           <div style={{ fontSize:10, color:C.text2, lineHeight:1.55 }}>{text}</div>
@@ -80,7 +80,7 @@ function SectionHeader({ title, subtitle, action }) {
 
 function Pill({ label, color=C.accent }) {
   return (
-    <span style={{ padding:"2px 8px", borderRadius:20, fontSize:9, fontWeight:700,
+    <span style={{ padding:"2px 8px", borderRadius:2, fontSize:9, fontWeight:700,
       background:`${color}18`, color, border:`1px solid ${color}30`,
       textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</span>
   );
@@ -290,7 +290,7 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
             {/* Range toggle */}
             {["1y","2y"].map(r => (
               <button key={r} onClick={()=>setRange(r)} style={{
-                padding:"4px 12px", borderRadius:7, border:`1px solid ${range===r?C.accent:C.border}`,
+                padding:"4px 12px", borderRadius:2, border:`1px solid ${range===r?C.accent:C.border}`,
                 background:range===r?"rgba(59,130,246,0.15)":"transparent",
                 color:range===r?C.accent:C.text3, fontSize:11, fontWeight:700,
                 cursor:"pointer", fontFamily:"inherit", transition:"all 0.12s",
@@ -298,7 +298,7 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
             ))}
             <button onClick={loadHistory} disabled={loading} style={{
               display:"flex", alignItems:"center", gap:5, padding:"4px 12px",
-              borderRadius:7, border:`1px solid ${C.border}`, background:"transparent",
+              borderRadius:2, border:`1px solid ${C.border}`, background:"transparent",
               color:C.text2, fontSize:11, cursor:"pointer", fontFamily:"inherit",
             }}>
               {loading ? "⟳" : "↻"} Refresh
@@ -316,7 +316,7 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
           { color:"rgba(100,149,237,0.5)", label:"Negative — inverse" },
         ].map(({color,label}) => (
           <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
-            <div style={{ width:12, height:12, borderRadius:3, background:color }}/>
+            <div style={{ width:12, height:12, borderRadius:2, background:color }}/>
             <span style={{ fontSize:10, color:C.text3 }}>{label}</span>
           </div>
         ))}
@@ -407,7 +407,7 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
 
           {/* Hover detail */}
           {hovered && hovered[0] !== hovered[1] && (
-            <div style={{ marginTop:16, padding:"10px 14px", borderRadius:10,
+            <div style={{ marginTop:16, padding:"10px 14px", borderRadius:2,
               background:C.surface2, border:`1px solid ${C.border}`,
               display:"inline-flex", alignItems:"center", gap:12 }}>
               <span style={{ fontFamily:C.mono, fontWeight:700, color:C.accent }}>
@@ -447,13 +447,13 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
             </div>
             <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
               {clusters.map((cluster, i) => (
-                <div key={i} style={{ padding:"7px 12px", borderRadius:9,
+                <div key={i} style={{ padding:"7px 12px", borderRadius:2,
                   background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.25)" }}>
                   <div style={{ fontSize:9, color:C.text3, marginBottom:5 }}>Cluster {i+1}</div>
                   <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                     {cluster.map(sym => (
                       <span key={sym} style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
-                        color:"#f87171", padding:"2px 7px", borderRadius:4,
+                        color:"#f87171", padding:"2px 7px", borderRadius:2,
                         background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)" }}>
                         {sym}
                       </span>
@@ -884,7 +884,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
 
   const inp = {
     background:"var(--surface-2)", border:`1px solid var(--border)`,
-    borderRadius:7, color:"var(--fg-1)", padding:"5px 10px", fontSize:12,
+    borderRadius:2, color:"var(--fg-1)", padding:"5px 10px", fontSize:12,
     fontFamily:"var(--font-mono)", outline:"none", width:"100%",
   };
   const lbl = { fontSize:10, color:C.text3, marginBottom:4, display:"block" };
@@ -904,7 +904,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
           <div style={{ marginBottom:12 }}>
             <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:"uppercase",
               letterSpacing:"0.08em", marginBottom:10 }}>Portfolio</div>
-            <div style={{ padding:"10px 12px", borderRadius:9, background:C.surface2,
+            <div style={{ padding:"10px 12px", borderRadius:2, background:C.surface2,
               border:`1px solid ${C.border}` }}>
               <div style={{ fontSize:10, color:C.text3 }}>Starting Value</div>
               <div style={{ fontFamily:C.mono, fontSize:14, fontWeight:700, color:C.text1, marginTop:2 }}>
@@ -960,7 +960,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
                   { key:"custom",      label:"Benutzerdefiniert",        sub:`${taxRate}% auf Gewinne und Dividenden` },
                 ].map(m => (
                   <button key={m.key} onClick={()=>setTaxMode(m.key)} style={{
-                    padding:"5px 8px", borderRadius:6, border:`1px solid ${taxMode===m.key?C.accent:C.border}`,
+                    padding:"5px 8px", borderRadius:2, border:`1px solid ${taxMode===m.key?C.accent:C.border}`,
                     background:taxMode===m.key?"rgba(59,130,246,0.12)":"transparent",
                     color:taxMode===m.key?C.text1:C.text3,
                     fontFamily:"inherit", cursor:"pointer", textAlign:"left",
@@ -979,7 +979,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
                 </div>
               )}
               {taxMode === "ch_private" && (
-                <div style={{ marginTop:6, padding:"6px 8px", borderRadius:6,
+                <div style={{ marginTop:6, padding:"6px 8px", borderRadius:2,
                   background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.2)" }}>
                   <div style={{ fontSize:8, color:C.green, lineHeight:1.5 }}>
                     ✓ Keine Kapitalgewinnsteuer (Privatanleger)<br/>
@@ -1006,7 +1006,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
           </div>
 
           <button onClick={run} disabled={running || !totalValueUSD} style={{
-            width:"100%", marginTop:16, padding:"9px 0", borderRadius:9,
+            width:"100%", marginTop:16, padding:"9px 0", borderRadius:2,
             border:"none", background:running?"rgba(59,130,246,0.3)":"rgba(59,130,246,0.85)",
             color:"#fff", fontSize:12, fontWeight:700, cursor:running?"wait":"pointer",
             fontFamily:"inherit", transition:"all 0.15s",
@@ -1034,11 +1034,11 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
                     position:"fixed",
                     left: hoverData.svgLeft + 12,
                     top: hoverData.svgTop + 8,
-                    background:"rgba(18,20,32,0.97)",
+                    background:C.surface,
                     border:`1px solid ${C.border}`,
-                    borderRadius:10, padding:"10px 14px",
+                    borderRadius:"var(--radius-12)", padding:"10px 14px",
                     pointerEvents:"none", zIndex:300,
-                    boxShadow:"0 8px 32px rgba(0,0,0,0.6)",
+                    boxShadow:"var(--shadow-modal)",
                     minWidth:160,
                   }}>
                     <div style={{ fontSize:10, color:C.text3, fontWeight:700, marginBottom:7,
@@ -1086,7 +1086,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
                     const v = result.percentileValues[p];
                     const mult = totalValueUSD > 0 ? v/totalValueUSD : 0;
                     return (
-                      <div key={p} style={{ padding:"8px 12px", borderRadius:9,
+                      <div key={p} style={{ padding:"8px 12px", borderRadius:2,
                         background:`${color}0f`, border:`1px solid ${color}30`,
                         flex:"1 1 0", minWidth:80, textAlign:"center" }}>
                         <div style={{ fontSize:9, color, fontWeight:700, textTransform:"uppercase",
@@ -1235,9 +1235,9 @@ function DriftBar({ curPct, tgtPct, threshold, aColor }) {
     <div style={{position:'relative',height:14,width:'100%',display:'flex',alignItems:'center'}}>
       {/* Background track */}
       <div style={{position:'absolute',left:0,top:5,right:0,height:4,
-        background:'var(--surface-2)',borderRadius:3}}/>
+        background:'var(--surface-2)',borderRadius:2}}/>
       {/* Current position bar */}
-      <div style={{position:'absolute',left:0,top:5,height:4,borderRadius:3,
+      <div style={{position:'absolute',left:0,top:5,height:4,borderRadius:2,
         width:`${curX}%`,background:tgtPct>0?C.accent:'var(--border)',
         transition:'width 0.4s'}}/>
       {/* Drift zone highlight — only the gap, not the whole bar */}
@@ -1518,14 +1518,14 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             {!user && <Pill label="Sign in to save targets" color={C.yellow}/>}
             {/* View tab buttons */}
             <div style={{ display:"flex", background:"var(--surface-2)",
-              borderRadius:8, padding:2, border:`1px solid var(--border)` }}>
+              borderRadius:2, padding:2, border:`1px solid var(--border)` }}>
               {[
                 { key:"allocations", icon:<PieChart size={12}/>,        label:"Allocations" },
                 { key:"plan",        icon:<ArrowLeftRight size={12}/>,   label:"Plan" },
               ].map(({key,icon,label}) => (
                 <button key={key} onClick={()=>setActiveView(key)} style={{
                   display:"flex", alignItems:"center", gap:5,
-                  padding:"4px 12px", borderRadius:6,
+                  padding:"4px 12px", borderRadius:2,
                   border:"none",
                   background:activeView===key ? "rgba(59,130,246,0.18)" : "transparent",
                   color:activeView===key ? C.accent : C.text3,
@@ -1536,7 +1536,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             </div>
             {user && (
               <button onClick={saveTargets} disabled={saving} style={{
-                padding:"5px 14px", borderRadius:8, border:`1px solid ${C.accent}`,
+                padding:"5px 14px", borderRadius:2, border:`1px solid ${C.accent}`,
                 background:saved?"rgba(74,222,128,0.15)":"rgba(59,130,246,0.15)",
                 color:saved?C.green:C.accent, fontSize:11, fontWeight:700,
                 cursor:"pointer", fontFamily:"inherit",
@@ -1576,7 +1576,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                     const sc      = sectorColorMap[sg.sector] || C.accent;
                     const driftColor = drift > 0 ? C.red : C.green;
                     return (
-                      <div key={sg.sector} style={{ padding:"5px 8px", borderRadius:7,
+                      <div key={sg.sector} style={{ padding:"5px 8px", borderRadius:2,
                         background:C.surface2,
                         border:`1px solid ${isOver?"rgba(248,113,113,0.3)":C.border}` }}>
                         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -1620,7 +1620,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   { key:"risk",   label:"Risk-Based" + (histLoading?" ⟳":"") },
                 ].map(({key,label}) => (
                   <button key={key} onClick={()=>setRebalMode(key)} style={{
-                    padding:"3px 8px", borderRadius:6,
+                    padding:"3px 8px", borderRadius:2,
                     border:`1px solid ${rebalMode===key?C.accent:C.border}`,
                     background:rebalMode===key?"rgba(59,130,246,0.15)":"transparent",
                     color:rebalMode===key?C.accent:C.text3,
@@ -1638,7 +1638,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               <div style={{ display:"flex", gap:3 }}>
                 {["buy","both","sell"].map(m => (
                   <button key={m} onClick={()=>setMode(m)} style={{
-                    padding:"3px 7px", borderRadius:5,
+                    padding:"3px 7px", borderRadius:2,
                     border:`1px solid ${mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.border}`,
                     background:mode===m?"var(--surface-2)":"transparent",
                     color:mode===m?(m==="buy"?C.green:m==="sell"?C.red:C.accent):C.text3,
@@ -1666,8 +1666,8 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                     display:"none", position:"absolute", left:"50%", bottom:"calc(100% + 6px)",
                     transform:"translateX(-50%)", width:220, zIndex:100,
                     background:"var(--surface)", border:`1px solid var(--border)`,
-                    borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-                    boxShadow:"0 4px 20px rgba(0,0,0,0.18)",
+                    borderRadius:"var(--radius-12)", padding:"8px 10px", pointerEvents:"none",
+                    boxShadow:"var(--shadow-modal)",
                   }}>
                     <div style={{ fontSize:10, color:C.text1, fontWeight:700, marginBottom:4 }}>
                       Drift Threshold
@@ -1684,7 +1684,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               <input type="number" value={threshold} min={1} max={30} step={1}
                 onChange={e=>setThreshold(+e.target.value)}
                 style={{ background:"var(--surface-2)", border:`1px solid var(--border)`,
-                  borderRadius:6, color:"var(--fg-1)", padding:"4px 8px", fontSize:12,
+                  borderRadius:2, color:"var(--fg-1)", padding:"4px 8px", fontSize:12,
                   fontFamily:"var(--font-mono)", width:52, outline:"none" }}/>
               <span style={{ fontSize:11, color:C.text3 }}>%</span>
             </div>
@@ -1694,7 +1694,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               <label style={{ fontSize:11, color:C.text2, whiteSpace:"nowrap" }}>Rounding:</label>
               <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
                 style={{ flex:1, background:"var(--surface-2)", border:`1px solid var(--border)`,
-                  borderRadius:6, color:"var(--fg-2)", padding:"4px 7px", fontSize:11,
+                  borderRadius:2, color:"var(--fg-2)", padding:"4px 7px", fontSize:11,
                   fontFamily:"inherit", outline:"none", cursor:"pointer" }}>
                 <option value="precise">Precise</option>
                 <option value="hundreds">± 100</option>
@@ -1711,7 +1711,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               <input type="number" value={cashAdd} min={0} step={100}
                 onChange={e=>{ setCashAdd(+e.target.value); if(+e.target.value>0) setCashExpanded(true); }}
                 style={{ flex:1, background:"var(--surface-2)", border:`1px solid var(--border)`,
-                  borderRadius:6, color:"var(--fg-1)", padding:"4px 8px", fontSize:12,
+                  borderRadius:2, color:"var(--fg-1)", padding:"4px 8px", fontSize:12,
                   fontFamily:"var(--font-mono)", outline:"none" }}/>
             </div>
 
@@ -1735,7 +1735,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                     </button>
                   </div>
                   {cashExpanded && (
-                    <div style={{ borderRadius:8, padding:"6px 10px",
+                    <div style={{ borderRadius:2, padding:"6px 10px",
                       background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.15)" }}>
                       {buyActions.map(a => {
                         const cashShare  = (a.diffUSD / totalBuy) * cashAdd / cashRate;
@@ -1790,7 +1790,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                 Smart Cash:<InfoTip title="Smart Cash" text="When enabled, available cash is first used to fund BUY orders before any SELL orders are executed. This minimises unnecessary selling and transaction costs. Disable for classic rebalancing where buys and sells are independent." width={240}/>
               </span>
               <button onClick={()=>setSmartCash(v=>!v)} style={{
-                padding:"3px 10px", borderRadius:6,
+                padding:"3px 10px", borderRadius:2,
                 border:`1px solid ${smartCash?C.green:C.border}`,
                 background:smartCash?"rgba(74,222,128,0.12)":"transparent",
                 color:smartCash?C.green:C.text3,
@@ -1862,7 +1862,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               {/* 1. Action badge */}
               <div style={{ width:40, flexShrink:0, textAlign:"center" }}>
                 <span style={{ fontSize:9, fontWeight:800, color:aColor,
-                  padding:"2px 5px", borderRadius:4,
+                  padding:"2px 5px", borderRadius:2,
                   background:`${aColor}15`, border:`1px solid ${aColor}25`,
                   textTransform:"uppercase" }}>{type}</span>
               </div>
@@ -1903,9 +1903,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               </div>
               {/* 4. Bar graph */}
               <div style={{ flex:1, minWidth:0, paddingRight:4 }}>
-                <div style={{ height:5, borderRadius:3,
+                <div style={{ height:5, borderRadius:2,
                   background:"var(--surface-2)", overflow:"hidden" }}>
-                  <div style={{ height:"100%", borderRadius:3, background:aColor, opacity:0.75,
+                  <div style={{ height:"100%", borderRadius:2, background:aColor, opacity:0.75,
                     width:`${type==="BUY"
                       ? (totalBuy>0?Math.abs(a.diffUSD)/totalBuy*100:0)
                       : (totalSell>0?Math.abs(a.diffUSD)/totalSell*100:0)}%`,
@@ -1933,20 +1933,20 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
               {/* Summary pills */}
               <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
                 {totalBuy > 0 && (
-                  <div style={{ padding:"3px 10px", borderRadius:6,
+                  <div style={{ padding:"3px 10px", borderRadius:2,
                     background:"rgba(74,222,128,0.12)", border:"1px solid rgba(74,222,128,0.25)",
                     fontSize:10, fontWeight:700, color:C.green, fontFamily:C.mono }}>
                     ↑ BUY {fmtSym(totalBuy*cashRate,0)}
                   </div>
                 )}
                 {totalSell > 0 && (
-                  <div style={{ padding:"3px 10px", borderRadius:6,
+                  <div style={{ padding:"3px 10px", borderRadius:2,
                     background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.25)",
                     fontSize:10, fontWeight:700, color:C.red, fontFamily:C.mono }}>
                     ↓ SELL {fmtSym(totalSell*cashRate,0)}
                   </div>
                 )}
-                <div style={{ padding:"3px 10px", borderRadius:6,
+                <div style={{ padding:"3px 10px", borderRadius:2,
                   background:"var(--surface-2)", border:`1px solid var(--border)`,
                   fontSize:10, color:C.text3, fontFamily:C.mono }}>
                   Net {fmtSym((totalBuy-totalSell)*cashRate,0)}
@@ -1958,7 +1958,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
             {/* Smart cash info */}
             {smartCash && smartAlloc && smartAlloc.buys.some(a => a.coveredByCash > 0) && (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8,
-                padding:"5px 10px", borderRadius:7, fontSize:10,
+                padding:"5px 10px", borderRadius:2, fontSize:10,
                 background:"rgba(74,222,128,0.07)", border:"1px solid rgba(74,222,128,0.2)" }}>
                 <span style={{ color:C.green, fontWeight:700 }}>💰 Smart Cash</span>
                 <span style={{ color:C.text3 }}>
@@ -1984,12 +1984,12 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   }, 0);
                   return (
                     <div key={i} style={{ display:"flex", alignItems:"center", gap:6,
-                      padding:"4px 8px", borderRadius:6, marginBottom:4,
+                      padding:"4px 8px", borderRadius:2, marginBottom:4,
                       background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)" }}>
                       <span style={{ fontSize:9, color:C.text3 }}>Cluster {i+1}:</span>
                       {cluster.map(sym => (
                         <span key={sym} style={{ fontFamily:C.mono, fontSize:10, fontWeight:700,
-                          color:"#f87171", padding:"1px 5px", borderRadius:4,
+                          color:"#f87171", padding:"1px 5px", borderRadius:2,
                           background:"rgba(248,113,113,0.12)", border:"1px solid rgba(248,113,113,0.2)" }}>
                           {sym}
                         </span>
@@ -2086,7 +2086,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                     <div style={{ display:"flex", alignItems:"center", gap:5, width:90, flexShrink:0 }}>
                       <span style={{ fontFamily:C.mono, fontSize:11, fontWeight:700,
                         color:C.accent }}>{pos.symbol}</span>
-                      <span style={{ fontSize:7, padding:"1px 4px", borderRadius:4,
+                      <span style={{ fontSize:7, padding:"1px 4px", borderRadius:2,
                         background:`${sc}18`, color:sc, border:`1px solid ${sc}30`,
                         fontWeight:700, whiteSpace:"nowrap", overflow:"hidden",
                         maxWidth:48, textOverflow:"ellipsis" }}>
@@ -2104,7 +2104,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                       placeholder="0"
                       onChange={e=>setTarget(pos.symbol, +e.target.value)}
                       style={{ width:56, background:"var(--surface-2)",
-                        border:`1px solid var(--border)`, borderRadius:5, color:"var(--fg-1)",
+                        border:`1px solid var(--border)`, borderRadius:2, color:"var(--fg-1)",
                         padding:"3px 6px", fontSize:12, fontFamily:"var(--font-mono)", outline:"none",
                         textAlign:"right" }}/>
                     <span style={{ fontSize:10, color:C.text3, width:14 }}>%</span>
@@ -2115,13 +2115,13 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                       {fmtSym(pos.valueUSD*(rates[currency]??1))}
                     </span>
                     {rebalMode==="risk" && a?.volatility != null && (
-                      <span style={{ fontSize:8, color:"#fbbf24", padding:"1px 5px", borderRadius:3,
+                      <span style={{ fontSize:8, color:"#fbbf24", padding:"1px 5px", borderRadius:2,
                         background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.2)" }}>
                         σ {(a.volatility*100).toFixed(0)}%
                       </span>
                     )}
                     {rebalMode==="risk" && a?.riskContrib != null && totalRiskContrib > 0 && (
-                      <span style={{ fontSize:8, color:"#a78bfa", padding:"1px 5px", borderRadius:3,
+                      <span style={{ fontSize:8, color:"#a78bfa", padding:"1px 5px", borderRadius:2,
                         background:"rgba(167,139,250,0.08)", border:"1px solid rgba(167,139,250,0.2)" }}>
                         risk {(a.riskContrib/totalRiskContrib*100).toFixed(0)}%
                       </span>
@@ -2182,7 +2182,7 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                   <div style={{ textAlign:"right", flexShrink:0, minWidth:140 }}>
                     {a && a.tgtPct > 0 && a.action !== "OK" ? (
                       <>
-                        <div style={{ padding:"3px 8px", borderRadius:6, display:"inline-flex",
+                        <div style={{ padding:"3px 8px", borderRadius:2, display:"inline-flex",
                           alignItems:"center", gap:5,
                           background:`${aColor}15`, border:`1px solid ${aColor}30` }}>
                           <span style={{ fontSize:9, fontWeight:700, color:aColor,
@@ -2314,8 +2314,8 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
           <div style={{ position:"absolute", zIndex:20, pointerEvents:"none",
             left:tipX, top:Math.max(8, tipPos.y - 100),
             background:C.surface, border:`1px solid ${C.border}`,
-            borderRadius:8, padding:"8px 12px",
-            boxShadow:"0 8px 32px rgba(0,0,0,0.6)", width:tipW }}>
+            borderRadius:"var(--radius-12)", padding:"8px 12px",
+            boxShadow:"var(--shadow-modal)", width:tipW }}>
             <div style={{ fontSize:11, fontWeight:700, color:C.text1, marginBottom:6 }}>
               {MONTH_NAMES[hov]} {year}
             </div>
@@ -2325,7 +2325,7 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
                 <div key={ev.symbol+ev.exDate} style={{
                   display:"flex", justifyContent:"space-between", gap:8,
                   fontSize:10, marginBottom:2,
-                  padding:"2px 5px", borderRadius:4, margin:"0 -5px 2px",
+                  padding:"2px 5px", borderRadius:2, margin:"0 -5px 2px",
                   background: isActive ? `${symColors[ev.symbol]||C.accent}22` : "transparent",
                   transition:"background 0.1s",
                 }}>
@@ -2378,7 +2378,7 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
               {/* Stacked bar by symbol */}
               <div ref={el => { if (el) barRefs.current[i] = el; }}
                 style={{ width:"100%", height:`${barH}%`, minHeight:hasDivs?2:0,
-                borderRadius:"4px 4px 0 0", overflow:"hidden", position:"relative",
+                borderRadius:0, overflow:"hidden", position:"relative",
                 display:"flex", flexDirection:"column-reverse",
                 transition:"transform 0.2s, filter 0.2s",
                 transform:isHov?"scaleY(1.04)":"scaleY(1)",
@@ -2576,11 +2576,11 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
         action={
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {/* View toggle */}
-            <div style={{ display:"flex", gap:2, padding:"2px", borderRadius:8,
+            <div style={{ display:"flex", gap:2, padding:"2px", borderRadius:2,
               background:"var(--surface-2)", border:`1px solid var(--border)` }}>
               {[["calendar","📅 Calendar"],["barchart","📊 Bar Chart"]].map(([v,label]) => (
                 <button key={v} onClick={()=>setChartView(v)} style={{
-                  padding:"4px 10px", borderRadius:6, border:"none",
+                  padding:"4px 10px", borderRadius:2, border:"none",
                   background:chartView===v?"rgba(59,130,246,0.25)":"transparent",
                   color:chartView===v?C.accent:C.text3,
                   fontSize:10, fontWeight:chartView===v?700:400,
@@ -2608,7 +2608,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
           <span style={{ fontSize:11, color:C.text3 }}>Simulated portfolio:</span>
           {[10000,20000,50000,100000].map(v => (
             <button key={v} onClick={()=>setFictValue(v)} style={{
-              padding:"4px 10px", borderRadius:7,
+              padding:"4px 10px", borderRadius:2,
               border:`1px solid ${fictValue===v?C.accent:C.border}`,
               background:fictValue===v?"rgba(59,130,246,0.15)":"transparent",
               color:fictValue===v?C.accent:C.text3,
@@ -2676,7 +2676,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
               <div style={{ fontSize:11 }}>Dividend data loads automatically for each position.</div>
               {onRefreshDivs && (
                 <button onClick={onRefreshDivs} style={{
-                  marginTop:8, padding:"6px 14px", borderRadius:8, border:`1px solid ${C.border}`,
+                  marginTop:8, padding:"6px 14px", borderRadius:2, border:`1px solid ${C.border}`,
                   background:"transparent", color:C.text3, fontSize:11,
                   cursor:"pointer", fontFamily:"inherit",
                 }}>↻ Reload dividend data</button>
@@ -2735,7 +2735,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                           onMouseEnter={onCellHover ? e => onCellHover(e, makeCellData(ev.symbol)) : undefined}
                           onMouseLeave={onCellLeave}
                           style={{
-                            padding:"1px 5px", borderRadius:4, fontSize:8, fontWeight:700,
+                            padding:"1px 5px", borderRadius:2, fontSize:8, fontWeight:700,
                             fontFamily:C.mono,
                             background:`${symColors[ev.symbol]||C.accent}22`,
                             color:symColors[ev.symbol]||C.accent,
@@ -2778,7 +2778,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                 {onRefreshDivs && (
                   <div style={{ marginTop:10 }}>
                     <button onClick={onRefreshDivs} style={{
-                      padding:"5px 12px", borderRadius:7, border:`1px solid ${C.border}`,
+                      padding:"5px 12px", borderRadius:2, border:`1px solid ${C.border}`,
                       background:"transparent", color:C.text3, fontSize:10,
                       cursor:"pointer", fontFamily:"inherit",
                     }}>↻ Reload dividend data</button>
@@ -2803,7 +2803,7 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
                         textUnderlineOffset: 2,
                       }}>{ev.symbol}</span>
                     {ev.isEstimate && (
-                      <span style={{ fontSize:8, padding:"1px 5px", borderRadius:4,
+                      <span style={{ fontSize:8, padding:"1px 5px", borderRadius:2,
                         background:"rgba(251,191,36,0.12)", color:C.yellow,
                         border:"1px solid rgba(251,191,36,0.25)" }}>est.</span>
                     )}

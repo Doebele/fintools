@@ -709,9 +709,9 @@ function RefreshIconButton({ onClick, loading }) {
       style={{
         display:"flex", alignItems:"center", gap:5,
         padding: hov ? "4px 10px" : "4px 7px",
-        borderRadius:8, border:`1px solid ${hov ? THEME.accent+"66" : THEME.border}`,
-        background: hov ? "rgba(59,130,246,0.12)" : "transparent",
-        color: loading ? THEME.text3 : hov ? THEME.accent : THEME.text3,
+        borderRadius:0, border:`1px solid ${hov ? THEME.text1 : THEME.border}`,
+        background: hov ? "var(--hover)" : "transparent",
+        color: loading ? THEME.text3 : hov ? THEME.text1 : THEME.text3,
         cursor: loading ? "not-allowed" : "pointer",
         fontSize:11, fontFamily:"inherit", fontWeight:600,
         transition:"all 0.15s", whiteSpace:"nowrap", overflow:"hidden",
@@ -1064,42 +1064,17 @@ function RenamePortfolioModal({ portfolio, onClose, onRename }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000,
-      display:"flex", alignItems:"center", justifyContent:"center" }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`,
-        borderRadius:16, padding:24, width:340, fontFamily:THEME.font }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-          <span style={{ fontSize:15, fontWeight:700, color:THEME.text1 }}>{t("portfolio.rename")}</span>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:THEME.text3, cursor:"pointer" }}>
-            <X size={18}/>
-          </button>
-        </div>
-        <input
-          value={name} onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && handleSave()}
-          autoFocus
-          style={{ width:"100%", padding:"9px 12px", borderRadius:9,
-            border:`1px solid ${THEME.accent}66`, background:THEME.bg,
-            color:THEME.text1, fontSize:13, fontFamily:THEME.font, outline:"none",
-            boxSizing:"border-box" }}/>
-        {err && <div style={{ color:THEME.red, fontSize:12, marginTop:8 }}>{err}</div>}
-        <div style={{ display:"flex", gap:8, marginTop:16 }}>
-          <button onClick={onClose}
-            style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1px solid ${THEME.border}`,
-              background:"transparent", color:THEME.text2, fontSize:13, fontFamily:THEME.font, cursor:"pointer" }}>
-            {t("common.cancel")}
-          </button>
-          <button onClick={handleSave} disabled={!name.trim() || busy}
-            style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
-              background:THEME.accent, color:"#fff", fontSize:13, fontWeight:600,
-              fontFamily:THEME.font, cursor: name.trim() ? "pointer" : "not-allowed",
-              opacity: name.trim() ? 1 : 0.5 }}>
-            {busy ? "…" : t("portfolio.renameBtn")}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modal title={t("portfolio.rename")} onClose={onClose} width={340}
+      footer={<div className="btn-row">
+        <button className="btn" onClick={onClose} style={{ flex:1 }}>{t("common.cancel")}</button>
+        <button className="btn primary" onClick={handleSave} disabled={!name.trim() || busy} style={{ flex:1 }}>
+          {busy ? "…" : t("portfolio.renameBtn")}
+        </button>
+      </div>}>
+      <FInput value={name} onChange={e => setName(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && handleSave()} autoFocus/>
+      {err && <div style={{ color:THEME.red, fontSize:12, marginTop:8 }}>{err}</div>}
+    </Modal>
   );
 }
 
@@ -1257,7 +1232,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     <div style={{ marginBottom:16 }}>
       <label style={{ fontSize:11, color:THEME.text3, display:"block", marginBottom:5 }}>Portfolio</label>
       <select value={selPort} onChange={e => { setSelPort(e.target.value); setPreviewData(null); setResult(null); setNewPortName(""); }}
-        style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+        style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
           background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}>
         {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         <option value="new">{t("portfolio.createNew")}</option>
@@ -1269,10 +1244,10 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
             value={newPortName} onChange={e => setNewPortName(e.target.value)}
             placeholder={t("portfolio.namePlaceholder")}
             onKeyDown={e => e.key === "Enter" && handleCreatePort()}
-            style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1px solid ${THEME.accent}66`,
+            style={{ flex:1, padding:"7px 10px", borderRadius:2, border:`1px solid ${THEME.accent}66`,
               background:THEME.bg, color:THEME.text1, fontSize:12, fontFamily:"inherit", outline:"none" }}/>
           <button onClick={handleCreatePort} disabled={!newPortName.trim() || creatingPort}
-            style={{ padding:"7px 14px", borderRadius:8, border:"none",
+            style={{ padding:"7px 14px", borderRadius:2, border:"none",
               background:THEME.accent, color:"#fff", fontSize:12, fontWeight:600,
               cursor: newPortName.trim() ? "pointer" : "not-allowed", fontFamily:"inherit",
               opacity: newPortName.trim() ? 1 : 0.5 }}>
@@ -1306,7 +1281,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
     <div style={{ display:"flex", gap:3 }}>
       {Object.entries(RESOLUTION_LABELS).map(([key, { label, color }]) => (
         <button key={key} onClick={() => onChange(key)} style={{
-          padding:"2px 7px", borderRadius:5, border:`1px solid ${value===key?color:THEME.border}`,
+          padding:"2px 7px", borderRadius:2, border:`1px solid ${value===key?color:THEME.border}`,
           background:value===key?`${color}22`:"transparent",
           color:value===key?color:THEME.text3,
           fontSize:9, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
@@ -1359,12 +1334,12 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                 Downloads alle Transaktionen des gewählten Portfolios als Excel-Datei. Kann in ein anderes Portfolio re-importiert werden.
               </p>
               {exportErr && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:10,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:10,
                   background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
                   fontSize:11, color:THEME.red }}><AlertCircle size={12}/> {exportErr}</div>
               )}
               <button onClick={handleExport} disabled={!selPort||exporting}
-                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
+                style={{ width:"100%", padding:"11px 0", borderRadius:2, border:"none",
                   background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700,
                   cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center",
                   justifyContent:"center", gap:8, opacity:(!selPort||exporting)?0.4:1 }}>
@@ -1381,12 +1356,12 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <p style={{ fontSize:11, color:THEME.text3, margin:"0 0 10px", lineHeight:1.5 }}>
                 {t("backup.hint")}
               </p>
-              <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:14, fontSize:11, lineHeight:1.5,
+              <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:14, fontSize:11, lineHeight:1.5,
                 background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.3)", color:THEME.yellow }}>
                 ⚠ {t("backup.warn")}
               </div>
               <button onClick={handleSettingsExport}
-                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none", marginBottom:10,
+                style={{ width:"100%", padding:"11px 0", borderRadius:2, border:"none", marginBottom:10,
                   background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
                   fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                 <FileDown size={15}/> {t("backup.exportBtn")}
@@ -1394,14 +1369,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <input ref={settingsFileRef} type="file" accept=".json,application/json" style={{ display:"none" }}
                 onChange={e => { handleSettingsImport(e.target.files?.[0]); e.target.value = ""; }}/>
               <button onClick={() => settingsFileRef.current?.click()}
-                style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1.5px solid ${THEME.border}`,
+                style={{ width:"100%", padding:"10px 0", borderRadius:2, border:`1.5px solid ${THEME.border}`,
                   background:"transparent", color:THEME.text2, fontSize:12, fontWeight:700, cursor:"pointer",
                   fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                 <Upload size={14}/> {t("backup.importBtn")}
               </button>
               <p style={{ fontSize:10, color:THEME.text3, margin:"8px 0 0", lineHeight:1.5 }}>{t("backup.importHint")}</p>
               {settingsMsg && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginTop:10, fontSize:11,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginTop:10, fontSize:11,
                   background: settingsMsg.ok ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
                   border: `1px solid ${settingsMsg.ok ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
                   color: settingsMsg.ok ? THEME.green : THEME.red }}>
@@ -1417,15 +1392,15 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               {portSelectJsx}
               {/* Template */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.08)",
-                border:`1px solid rgba(59,130,246,0.2)`, marginBottom:14 }}>
+                padding:"8px 12px", background:"var(--surface-2)",
+                border:`1px solid ${THEME.border}`, marginBottom:14 }}>
                 <div>
-                  <div style={{ fontSize:11, fontWeight:600, color:THEME.accent }}>Import-Vorlage</div>
+                  <div style={{ fontSize:11, fontWeight:600, color:THEME.text1 }}>Import-Vorlage</div>
                   <div style={{ fontSize:10, color:THEME.text3, marginTop:1 }}>Excel mit Anleitung und Dropdown-Validierung</div>
                 </div>
                 <a href={txApi.importTemplate()} download
                   style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px",
-                    borderRadius:8, border:`1px solid ${THEME.accent}`,
+                    borderRadius:2, border:`1px solid ${THEME.accent}`,
                     color:THEME.accent, fontSize:11, fontWeight:600,
                     textDecoration:"none", background:"transparent", whiteSpace:"nowrap" }}>
                   <FileDown size={12}/> Vorlage
@@ -1435,7 +1410,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               <div onDragOver={e=>e.preventDefault()} onDrop={handleDrop}
                 onClick={()=>fileRef.current?.click()}
                 style={{ border:`2px dashed ${file ? THEME.accent : THEME.border}`,
-                  borderRadius:10, padding:"20px 16px", textAlign:"center",
+                  borderRadius:2, padding:"20px 16px", textAlign:"center",
                   cursor:"pointer", background: file?"rgba(59,130,246,0.06)":"transparent",
                   transition:"all 0.15s", marginBottom:14 }}>
                 <input ref={fileRef} type="file" accept=".xlsx,.csv" style={{ display:"none" }}
@@ -1455,15 +1430,15 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                 )}
               </div>
               {importErr && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:12,
                   background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
                   fontSize:11, color:THEME.red, display:"flex", gap:7 }}>
                   <AlertCircle size={13} style={{flexShrink:0,marginTop:1}}/> {importErr}
                 </div>
               )}
               <button onClick={handlePreview} disabled={!file || !selPort || previewing}
-                style={{ width:"100%", padding:"11px 0", borderRadius:10, border:"none",
-                  background: file&&selPort ? THEME.accent : "rgba(255,255,255,0.05)",
+                style={{ width:"100%", padding:"11px 0", borderRadius:2, border:"none",
+                  background: file&&selPort ? THEME.accent : "var(--surface-2)",
                   color: file&&selPort ? "#fff" : THEME.text3, fontSize:13, fontWeight:700,
                   cursor: file&&selPort ? "pointer" : "default", fontFamily:"inherit",
                   display:"flex", alignItems:"center", justifyContent:"center", gap:8,
@@ -1480,36 +1455,36 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
             <div>
               {/* Summary bar */}
               <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-                <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(59,130,246,0.1)",
-                  border:"1px solid rgba(59,130,246,0.2)", flex:"1 1 0", minWidth:100 }}>
+                <div style={{ padding:"8px 12px", background:"var(--surface-2)",
+                  border:`1px solid ${THEME.border}`, flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                    letterSpacing:"0.07em" }}>Gesamt</div>
+                    letterSpacing:"0.14em" }}>Gesamt</div>
                   <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:THEME.text1 }}>{previewData.preview.length}</div>
                 </div>
-                <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(74,222,128,0.08)",
+                <div style={{ padding:"8px 12px", borderRadius:2, background:"rgba(74,222,128,0.08)",
                   border:"1px solid rgba(74,222,128,0.2)", flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                    letterSpacing:"0.07em" }}>Neu</div>
+                    letterSpacing:"0.14em" }}>Neu</div>
                   <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:THEME.green }}>{previewData.newCount}</div>
                 </div>
-                <div style={{ padding:"8px 12px", borderRadius:8,
-                  background:previewData.conflictCount>0?"rgba(248,113,113,0.08)":"rgba(255,255,255,0.03)",
-                  border:previewData.conflictCount>0?"1px solid rgba(248,113,113,0.25)":"1px solid rgba(255,255,255,0.06)",
+                <div style={{ padding:"8px 12px", borderRadius:2,
+                  background:previewData.conflictCount>0?"rgba(248,113,113,0.08)":"var(--surface-2)",
+                  border:previewData.conflictCount>0?"1px solid rgba(248,113,113,0.25)":"1px solid var(--border)",
                   flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                    letterSpacing:"0.07em" }}>Konflikte</div>
+                    letterSpacing:"0.14em" }}>Konflikte</div>
                   <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:previewData.conflictCount>0?THEME.red:THEME.text3 }}>
                     {previewData.conflictCount}
                   </div>
                 </div>
                 {previewData.skipped.length > 0 && (
-                  <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(251,191,36,0.08)",
+                  <div style={{ padding:"8px 12px", borderRadius:2, background:"rgba(251,191,36,0.08)",
                     border:"1px solid rgba(251,191,36,0.2)", flex:"1 1 0", minWidth:100 }}>
                     <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                      letterSpacing:"0.07em" }}>Übersprungen</div>
+                      letterSpacing:"0.14em" }}>Übersprungen</div>
                     <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                       fontWeight:700, color:THEME.yellow }}>{previewData.skipped.length}</div>
                   </div>
@@ -1518,7 +1493,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
 
               {/* Conflict bulk actions */}
               {previewData.conflictCount > 0 && (
-                <div style={{ padding:"10px 12px", borderRadius:9, background:"rgba(248,113,113,0.06)",
+                <div style={{ padding:"10px 12px", borderRadius:2, background:"rgba(248,113,113,0.06)",
                   border:"1px solid rgba(248,113,113,0.2)", marginBottom:12 }}>
                   <div style={{ fontSize:11, color:THEME.text2, marginBottom:8 }}>
                     ⚠ <strong>{previewData.conflictCount} Zeilen</strong> haben dieselbe Symbol+Datum+Typ Kombination wie bestehende Transaktionen.
@@ -1529,7 +1504,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     {Object.entries(RESOLUTION_LABELS).map(([key, { label, color, desc }]) => (
                       <button key={key} onClick={() => setAllConflicts(key)} style={{
-                        padding:"5px 12px", borderRadius:7, border:`1px solid ${color}40`,
+                        padding:"5px 12px", borderRadius:2, border:`1px solid ${color}40`,
                         background:`${color}12`, color, fontSize:10, fontWeight:700,
                         cursor:"pointer", fontFamily:"inherit", display:"flex",
                         flexDirection:"column", alignItems:"flex-start", gap:1,
@@ -1550,17 +1525,17 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   { key:"new",       label:`Neu (${previewData.newCount})` },
                 ].map(f => (
                   <button key={f.key} onClick={()=>setFilterMode(f.key)} style={{
-                    padding:"4px 10px", borderRadius:6,
-                    border:`1px solid ${filterMode===f.key?THEME.accent:THEME.border}`,
-                    background:filterMode===f.key?"rgba(59,130,246,0.15)":"transparent",
-                    color:filterMode===f.key?THEME.accent:THEME.text3,
+                    padding:"4px 10px", borderRadius:2,
+                    border:`1px solid ${filterMode===f.key?THEME.text1:THEME.border}`,
+                    background:filterMode===f.key?THEME.text1:"transparent",
+                    color:filterMode===f.key?THEME.surface:THEME.text3,
                     fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
                   }}>{f.label}</button>
                 ))}
               </div>
 
               {/* Row table */}
-              <div style={{ border:`1px solid ${THEME.border}`, borderRadius:10, overflow:"hidden", marginBottom:14 }}>
+              <div style={{ border:`1px solid ${THEME.border}`, borderRadius:2, overflow:"hidden", marginBottom:14 }}>
                 <div style={{ maxHeight:360, overflowY:"auto" }}>
                   {/* Header */}
                   <div style={{ display:"grid", gridTemplateColumns:"80px 80px 60px 70px 70px 1fr",
@@ -1568,7 +1543,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                     position:"sticky", top:0, zIndex:1 }}>
                     {["Symbol","Datum","Typ","Menge","Preis","Aktion"].map(h => (
                       <div key={h} style={{ fontSize:9, color:THEME.text3, fontWeight:700,
-                        textTransform:"uppercase", letterSpacing:"0.07em" }}>{h}</div>
+                        textTransform:"uppercase", letterSpacing:"0.14em" }}>{h}</div>
                     ))}
                   </div>
                   {filteredRows.length === 0 && (
@@ -1632,7 +1607,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               </div>
 
               {/* Action summary + buttons */}
-              <div style={{ padding:"10px 12px", borderRadius:9, background:THEME.surface2,
+              <div style={{ padding:"10px 12px", borderRadius:2, background:THEME.surface2,
                 border:`1px solid ${THEME.border}`, marginBottom:12,
                 display:"flex", gap:16, alignItems:"center" }}>
                 <span style={{ fontSize:11, color:THEME.green }}>✓ {willImport} importieren</span>
@@ -1641,21 +1616,21 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
               </div>
 
               {importErr && (
-                <div style={{ padding:"8px 10px", borderRadius:8, marginBottom:12,
+                <div style={{ padding:"8px 10px", borderRadius:2, marginBottom:12,
                   background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
                   fontSize:11, color:THEME.red }}><AlertCircle size={13}/> {importErr}</div>
               )}
 
               <div style={{ display:"flex", gap:8 }}>
                 <button onClick={() => { setPreviewData(null); setImportErr(null); }}
-                  style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
+                  style={{ flex:1, padding:"10px 0", borderRadius:2, border:`1px solid ${THEME.border}`,
                     background:"transparent", color:THEME.text2, fontSize:12, fontWeight:600,
                     cursor:"pointer", fontFamily:"inherit" }}>
                   ← Zurück
                 </button>
                 <button onClick={handleConfirmImport} disabled={importing || willImport === 0}
-                  style={{ flex:2, padding:"10px 0", borderRadius:10, border:"none",
-                    background: willImport > 0 ? THEME.accent : "rgba(255,255,255,0.05)",
+                  style={{ flex:2, padding:"10px 0", borderRadius:2, border:"none",
+                    background: willImport > 0 ? THEME.accent : "var(--surface-2)",
                     color: willImport > 0 ? "#fff" : THEME.text3, fontSize:13, fontWeight:700,
                     cursor: willImport > 0 ? "pointer" : "default", fontFamily:"inherit",
                     display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
@@ -1670,7 +1645,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
           {/* ── RESULT ─────────────────────────────────────────────────────── */}
           {tab === "import" && result && (
             <div>
-              <div style={{ padding:"16px", borderRadius:12, marginBottom:16,
+              <div style={{ padding:"16px", borderRadius:0, marginBottom:16,
                 background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)",
                 textAlign:"center" }}>
                 <div style={{ fontSize:32, marginBottom:8 }}>✓</div>
@@ -1687,7 +1662,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                 </div>
               </div>
               <button onClick={() => { setResult(null); setFile(null); setPreviewData(null); }}
-                style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1px solid ${THEME.border}`,
+                style={{ width:"100%", padding:"10px 0", borderRadius:2, border:`1px solid ${THEME.border}`,
                   background:"transparent", color:THEME.text2, fontSize:12, fontWeight:600,
                   cursor:"pointer", fontFamily:"inherit" }}>
                 Weiteren Import
@@ -2602,7 +2577,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
 
   return (
     <div ref={ref} style={{width:"100%",height:"100%",background:THEME.bg,
-      borderRadius:12,position:"relative",overflow:"hidden",userSelect:"none"}}>
+      borderRadius:0,position:"relative",overflow:"hidden",userSelect:"none"}}>
 
       {w>0&&h>0&&(
         <svg width={w} height={h} style={{position:"absolute",inset:0}}>
@@ -2611,7 +2586,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
             if (y<0||y>CHART_H) return null;
             return (
               <g key={tick}>
-                <line x1={AXIS_W} y1={y} x2={w} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} strokeDasharray="4,6"/>
+                <line x1={AXIS_W} y1={y} x2={w} y2={y} style={{ stroke:"var(--border-2)" }} strokeWidth={1} strokeDasharray="4,6"/>
                 <text x={AXIS_W-6} y={y+4} textAnchor="end"
                   fill={tick>0?"rgba(74,222,128,0.55)":"rgba(248,113,113,0.55)"}
                   fontSize={9} fontFamily="var(--font-mono)">
@@ -2620,7 +2595,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
               </g>
             );
           })}
-          <line x1={AXIS_W} y1={MID_Y} x2={w} y2={MID_Y} stroke="rgba(255,255,255,0.20)" strokeWidth={1.5}/>
+          <line x1={AXIS_W} y1={MID_Y} x2={w} y2={MID_Y} style={{ stroke:"var(--fg-3)" }} strokeWidth={1.5}/>
           <text x={AXIS_W-6} y={MID_Y+4} textAnchor="end" fill={THEME.text3} fontSize={9} fontFamily="var(--font-mono)">0 %</text>
           {renderOrder.map(node=>{
             const key=node.symbol+node.portfolioId;
@@ -2657,7 +2632,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
               </g>
             );
           })}
-          <text x={w-8} y={16} textAnchor="end" fill="rgba(255,255,255,0.12)" fontSize={10} fontWeight="700" fontFamily="'Fira Sans',sans-serif" letterSpacing="0.08em">
+          <text x={w-8} y={16} textAnchor="end" style={{ fill:"var(--border)" }} fontSize={10} fontWeight="700" fontFamily="'Fira Sans',sans-serif" letterSpacing="0.08em">
             {colorMode==="gainloss"?"G&L vs. Cost":period==="Intraday"?"1D vs Prev Close":`${period} Performance`}
             {subView==="size"?"  ·  sorted by size":""}
           </text>
@@ -2699,7 +2674,7 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
             flexShrink:0 }}>
             <div style={{ width:8, height:8, borderRadius:"50%", background:portfolio.color, flexShrink:0 }}/>
             <span style={{ fontSize:11, fontWeight:700, color:portfolio.color,
-              textTransform:"uppercase", letterSpacing:"0.07em" }}>{portfolio.name}</span>
+              textTransform:"uppercase", letterSpacing:"0.14em" }}>{portfolio.name}</span>
             <span style={{ fontSize:10, color:THEME.text3, marginLeft:4 }}>
               · {nodes.length} position{nodes.length!==1?"s":""}
             </span>
@@ -2978,7 +2953,7 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
             background:`${p.color}09`, position:"sticky", top:0, zIndex:5 }}>
             <div style={{ width:10, height:10, borderRadius:"50%", background:p.color }}/>
             <span style={{ fontSize:12, fontWeight:700, color:p.color,
-              textTransform:"uppercase", letterSpacing:"0.07em" }}>{p.name}</span>
+              textTransform:"uppercase", letterSpacing:"0.14em" }}>{p.name}</span>
             <span style={{ fontSize:10, color:THEME.text3 }}>
               · {(allTransactions[p.id]?.length ?? 0)} transaction{(allTransactions[p.id]?.length??0)!==1?"s":""}
             </span>
@@ -3803,7 +3778,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
               ...(stats.worstDay ? [{ label:t("perf.worstDay"), val:`${fmtPct(stats.worstDay.pct)} · ${fmtDate(stats.worstDay.date)}`, color:THEME.red   }] : []),
             ].map(s => (
               <div key={s.label}>
-                <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.05em", textTransform:"uppercase" }}>{s.label}</div>
+                <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.14em", textTransform:"uppercase" }}>{s.label}</div>
                 <div style={{ fontSize:13, fontWeight:700, color:s.color, fontFamily:THEME.mono, marginTop:1 }}>{s.val}</div>
               </div>
             ))}
@@ -3856,7 +3831,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
               return (
                 <g key={v}>
                   <line x1={PAD.left} y1={y} x2={PAD.left + CW} y2={y}
-                    stroke="rgba(255,255,255,0.05)" strokeWidth={1}/>
+                    style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
                   <text x={PAD.left - 6} y={y + 4} textAnchor="end"
                     fill={THEME.text3} fontSize={9} fontFamily={THEME.mono}>{fmtDisplay(v)}</text>
                 </g>
@@ -3902,7 +3877,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
               {hoverIdx != null && (
                 <>
                   <line x1={xS(hoverIdx)} y1={0} x2={xS(hoverIdx)} y2={CH}
-                    stroke="rgba(255,255,255,0.18)" strokeWidth={1} strokeDasharray="3 3"/>
+                    style={{ stroke:"var(--fg-3)" }} strokeWidth={1} strokeDasharray="3 3"/>
                   {displaySeries.map(s => {
                     const pt = s.vs.find(p => p.date === chartDates[hoverIdx]);
                     if (!pt) return null;
@@ -3979,9 +3954,9 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
             {/* Axes border */}
             <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + CH}
-              stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>
+              style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
             <line x1={PAD.left} y1={PAD.top + CH} x2={PAD.left + CW} y2={PAD.top + CH}
-              stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>
+              style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
           </svg>
         )}
 
@@ -3991,7 +3966,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             left: Math.min(xS(hoverIdx) + PAD.left + 14, w - 200),
             top:  Math.max(4, PAD.top + 4),
             background:THEME.surface, border:`1px solid ${THEME.border}`,
-            borderRadius:10, padding:"8px 12px", minWidth:170 }}>
+            borderRadius:"var(--radius-12)", boxShadow:"var(--shadow-modal)", padding:"8px 12px", minWidth:170 }}>
             <div style={{ fontSize:9, color:THEME.text3, marginBottom:6 }}>{fmtDate(hoverDate)}</div>
             {displaySeries.map(s => {
               const pt   = s.vs.find(p => p.date === hoverDate);
@@ -4035,8 +4010,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           return (
             <div style={{ position:"absolute", left, top:Math.max(8, py - 20), width:popW,
               pointerEvents:"none", background:THEME.surface, border:`1px solid ${THEME.border}`,
-              borderRadius:12, padding:"10px 12px", zIndex:200,
-              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              borderRadius:"var(--radius-12)", padding:"10px 12px", zIndex:200,
+              boxShadow:"var(--shadow-modal)" }}>
               <div style={{ fontSize:10, color:THEME.text3, marginBottom:8, fontWeight:700,
                 letterSpacing:"0.05em" }}>
                 {marker.txs.length} TRANSAKTION{marker.txs.length > 1 ? "EN" : ""} · {fmtDate(marker.date)}
@@ -4047,7 +4022,7 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
                 return (
                   <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 0",
                     borderBottom: i < marker.txs.length - 1 ? `1px solid ${THEME.border2}` : "none" }}>
-                    <span style={{ padding:"2px 5px", borderRadius:4, fontSize:9, fontWeight:700,
+                    <span style={{ padding:"2px 5px", borderRadius:2, fontSize:9, fontWeight:700,
                       background: isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
                       color: isBuy ? THEME.green : THEME.red,
                       border:`1px solid ${isBuy ? "rgba(74,222,128,0.2)" : "rgba(248,113,113,0.2)"}`,
@@ -4094,12 +4069,12 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           return (
             <div style={{ position:"absolute", left, top:Math.max(8, py - 20), width:popW,
               pointerEvents:"none", background:THEME.surface, border:`1px solid ${m.color}44`,
-              borderRadius:12, padding:"10px 12px", zIndex:201,
-              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              borderRadius:"var(--radius-12)", padding:"10px 12px", zIndex:201,
+              boxShadow:"var(--shadow-modal)" }}>
               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
                 <span style={{ width:8, height:8, borderRadius:2, background:m.color, flexShrink:0 }}/>
                 <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:11, color:m.color }}>{m.sym}</span>
-                <span style={{ padding:"1px 6px", borderRadius:4, fontSize:9, fontWeight:700, marginLeft:"auto",
+                <span style={{ padding:"1px 6px", borderRadius:2, fontSize:9, fontWeight:700, marginLeft:"auto",
                   background: isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
                   color: isBuy ? THEME.green : THEME.red,
                   border:`1px solid ${isBuy?"rgba(74,222,128,0.25)":"rgba(248,113,113,0.25)"}` }}>{tx.type}</span>
@@ -4134,8 +4109,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           return (
             <div style={{ position:"absolute", left, top:Math.max(8, py - 20), width:popW,
               pointerEvents:"none", background:THEME.surface, border:`1px solid ${THEME.border}`,
-              borderRadius:12, padding:"10px 12px", zIndex:200,
-              boxShadow:"0 12px 40px rgba(0,0,0,0.55)" }}>
+              borderRadius:"var(--radius-12)", padding:"10px 12px", zIndex:200,
+              boxShadow:"var(--shadow-modal)" }}>
               <div style={{ fontSize:10, color:"#facc15", marginBottom:8, fontWeight:700,
                 letterSpacing:"0.05em" }}>💰 DIVIDENDEN</div>
               {dm.items.map((item, i) => (
@@ -4163,18 +4138,17 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           borderTop:`1px solid ${THEME.border2}` }}>
 
           {/* Y-axis mode toggle */}
-          {[["abs","Abs"],["rel","±$"],["pct","±%"]].map(([m, label]) => (
-            <button key={m} onClick={() => setYMode(m)}
-              style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer", fontSize:10,
-                fontFamily:THEME.mono, transition:"all 0.15s",
-                border: `1px solid ${yMode === m ? "rgba(99,179,237,0.5)" : "rgba(255,255,255,0.08)"}`,
-                background: yMode === m ? "rgba(99,179,237,0.12)" : "rgba(255,255,255,0.04)",
-                color: yMode === m ? "#93c5fd" : THEME.text3 }}>
-              {label}
-            </button>
-          ))}
+          <div className="rail-density-row">
+            {[["abs","Abs"],["rel","±$"],["pct","±%"]].map(([m, label]) => (
+              <button key={m} onClick={() => setYMode(m)}
+                className={"rail-density-btn" + (yMode === m ? " active" : "")}
+                style={{ padding:"3px 9px", fontFamily:THEME.mono }}>
+                {label}
+              </button>
+            ))}
+          </div>
 
-          <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 4px" }}/>
+          <div style={{ width:1, height:16, background:"var(--border)", margin:"0 4px" }}/>
 
           {/* Series toggle chips */}
           {allSeries.map(s => {
@@ -4182,19 +4156,18 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
             return (
               <button key={s.key} onClick={() => toggleKey(s.key)} title={s.label}
                 style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
-                  borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-                  border: `1px solid ${hidden ? "rgba(255,255,255,0.08)" : s.color + "88"}`,
-                  background: hidden ? "rgba(255,255,255,0.04)" : s.color + "18",
+                  borderRadius:2, cursor:"pointer", transition:"all 0.15s",
+                  border:"1px solid var(--border)", background:"transparent",
                   opacity: hidden ? 0.35 : 1 }}>
                 {s.isBenchmark ? (
                   <svg width={14} height={8} style={{ flexShrink:0 }}>
                     <line x1={0} y1={4} x2={14} y2={4}
-                      stroke={hidden ? "rgba(255,255,255,0.2)" : s.color}
+                      stroke={hidden ? "var(--fg-3)" : s.color}
                       strokeWidth={1.5} strokeDasharray="3 2"/>
                   </svg>
                 ) : (
                   <span style={{ width:8, height:8, borderRadius:2, flexShrink:0,
-                    background: hidden ? "rgba(255,255,255,0.2)" : s.color }}/>
+                    background: hidden ? "var(--fg-3)" : s.color }}/>
                 )}
                 <span style={{ fontSize:10, color: hidden ? THEME.text3 : THEME.text2,
                   fontFamily:THEME.font, maxWidth:160,
@@ -4207,18 +4180,17 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
 
           {/* Separator */}
           {allSeries.length > 0 && (
-            <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)", margin:"0 4px" }}/>
+            <div style={{ width:1, height:16, background:"var(--border)", margin:"0 4px" }}/>
           )}
 
           {/* Einstand toggle */}
           <button onClick={() => setShowCost(v => !v)}
             style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
-              borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-              border: `1px solid ${showCost ? "rgba(148,163,184,0.4)" : "rgba(255,255,255,0.08)"}`,
-              background: showCost ? "rgba(148,163,184,0.1)" : "rgba(255,255,255,0.04)",
+              borderRadius:2, cursor:"pointer", transition:"all 0.15s",
+              border:"1px solid var(--border)", background:"transparent",
               opacity: showCost ? 1 : 0.35 }}>
             <svg width={14} height={8} style={{ flexShrink:0 }}>
-              <line x1={0} y1={4} x2={14} y2={4} stroke="rgba(148,163,184,0.8)"
+              <line x1={0} y1={4} x2={14} y2={4} style={{ stroke:"var(--fg-2)" }}
                 strokeWidth={1.5} strokeDasharray="3 2"/>
             </svg>
             <span style={{ fontSize:10, color:THEME.text3 }}>Einstand</span>
@@ -4227,9 +4199,8 @@ function PerformanceView({ portfolios, allTransactions, currency, rates, quotes,
           {/* Dividenden toggle */}
           <button onClick={() => setShowDivs(v => !v)}
             style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 9px",
-              borderRadius:20, cursor:"pointer", transition:"all 0.15s",
-              border: `1px solid ${showDivs ? "rgba(250,204,21,0.4)" : "rgba(255,255,255,0.08)"}`,
-              background: showDivs ? "rgba(250,204,21,0.08)" : "rgba(255,255,255,0.04)",
+              borderRadius:2, cursor:"pointer", transition:"all 0.15s",
+              border:"1px solid var(--border)", background:"transparent",
               opacity: showDivs ? 1 : 0.35 }}>
             <span style={{ fontSize:11, lineHeight:1 }}>◇</span>
             <span style={{ fontSize:10, color:THEME.text3 }}>Dividenden</span>
@@ -4330,9 +4301,9 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
     <Modal title={t("savingsPlan.edit")} onClose={onClose}>
       {/* Plan summary */}
       <div style={{ display:"flex", gap:8, marginBottom:16, padding:"10px 12px",
-        background:"rgba(59,130,246,0.07)", borderRadius:10, border:"1px solid rgba(59,130,246,0.18)",
+        background:"var(--surface-2)", border:`1px solid ${THEME.border}`,
         alignItems:"center", flexWrap:"wrap" }}>
-        <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:13, color:THEME.accent }}>{plan.symbol}</span>
+        <span style={{ fontFamily:THEME.mono, fontWeight:600, fontSize:13, color:THEME.text1 }}>{plan.symbol}</span>
         <span style={{ fontSize:11, color:THEME.text2 }}>{plan.name}</span>
         {portfolio && (
           <span style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:5, fontSize:11, color:THEME.text3 }}>
@@ -4358,13 +4329,13 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
         <div>
           <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>ENDDATUM</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
         </div>
         <div>
           <label style={{ fontSize:10, color:THEME.text3, display:"block", marginBottom:4 }}>RHYTHMUS</label>
           <select value={periodicity} onChange={e => setPeriodicity(e.target.value)}
-            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
             {PERIODICITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.labelKey)} — {t(o.descKey)}</option>)}
           </select>
@@ -4377,7 +4348,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
           </label>
           <input type="number" min="0.01" step="0.01" value={budget}
             onChange={e => setBudget(e.target.value)}
-            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            style={{ width:"100%", padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
         </div>
         <div>
@@ -4388,10 +4359,10 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
             <input type="number" min="0" step="0.01" value={price}
               onChange={e => { priceEditedRef.current = true; setPrice(e.target.value); }}
               placeholder="aktueller Kurs"
-              style={{ flex:1, padding:"8px 10px", borderRadius:8, border:`1px solid ${THEME.border}`,
+              style={{ flex:1, padding:"8px 10px", borderRadius:2, border:`1px solid ${THEME.border}`,
                 background:THEME.surface, color:THEME.text1, fontSize:12, fontFamily:THEME.mono, boxSizing:"border-box" }}/>
             <select value={currency} onChange={e => setCurrency(e.target.value)}
-              style={{ width:70, padding:"8px 6px", borderRadius:8, border:`1px solid ${THEME.border}`,
+              style={{ width:70, padding:"8px 6px", borderRadius:2, border:`1px solid ${THEME.border}`,
                 background:THEME.surface, color:THEME.text1, fontSize:11, boxSizing:"border-box" }}>
               {["USD","EUR","GBP","CHF","JPY","CAD","AUD","HKD","CNY","SGD","SEK","NOK","DKK"].map(c =>
                 <option key={c} value={c}>{c}</option>
@@ -4408,8 +4379,8 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
 
       {/* Preview card */}
       {(newPastDates.length > 0 || futureDates.length > 0) && (
-        <div style={{ borderRadius:10, border:`1px solid ${THEME.border}`, overflow:"hidden", marginBottom:12 }}>
-          <div style={{ padding:"8px 12px", background:"rgba(255,255,255,0.04)",
+        <div style={{ borderRadius:2, border:`1px solid ${THEME.border}`, overflow:"hidden", marginBottom:12 }}>
+          <div style={{ padding:"8px 12px", background:"var(--surface-2)",
             borderBottom:`1px solid ${THEME.border}`, display:"flex", alignItems:"center", gap:6 }}>
             <span style={{ fontSize:11, color:THEME.text2, fontWeight:700 }}>{t("savingsPlan.preview")}</span>
             <span style={{ marginLeft:"auto", fontSize:10, fontFamily:THEME.mono, color:THEME.text3 }}>
@@ -4434,7 +4405,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
                 {newPastDates.slice(0,8).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, padding:"2px 6px",
                     background:"rgba(74,222,128,0.1)", color:THEME.green,
-                    borderRadius:4, border:"1px solid rgba(74,222,128,0.2)" }}>{d}</span>
+                    borderRadius:2, border:"1px solid rgba(74,222,128,0.2)" }}>{d}</span>
                 ))}
                 {newPastDates.length > 8 && (
                   <span style={{ fontSize:9, color:THEME.text3 }}>+{newPastDates.length-8} weitere</span>
@@ -4455,7 +4426,7 @@ function EditPlanModal({ plan, portfolios, rates, onClose, onAdd, onUpdatePlan }
                 {futureDates.slice(0,5).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, padding:"2px 6px",
                     background:"rgba(148,163,184,0.08)", color:THEME.text3,
-                    borderRadius:4, border:`1px solid ${THEME.border}` }}>{d}</span>
+                    borderRadius:2, border:`1px solid ${THEME.border}` }}>{d}</span>
                 ))}
                 {futureDates.length > 5 && (
                   <span style={{ fontSize:9, color:THEME.text3 }}>+{futureDates.length-5} weitere</span>
@@ -4510,8 +4481,8 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
   const CCY_SYM = { USD:"$", EUR:"€", GBP:"£", CHF:"Fr", JPY:"¥" };
 
   return (
-    <div style={{ borderRadius:12, border:`1px solid ${THEME.border}`, overflow:"hidden",
-      background:"rgba(255,255,255,0.02)", marginBottom:12 }}>
+    <div style={{ borderRadius:0, border:`1px solid ${THEME.border}`, overflow:"hidden",
+      background:"var(--surface-2)", marginBottom:12 }}>
       {/* Header */}
       <div style={{ padding:"8px 14px", borderBottom: collapsed ? "none" : `1px solid ${THEME.border2}`,
         display:"flex", alignItems:"center", gap:8, cursor:"pointer", userSelect:"none" }}
@@ -4574,7 +4545,7 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
                     </td>
                     <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>
                       {pending > 0 ? (
-                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:5,
+                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:2,
                           background:"rgba(251,191,36,0.15)", color:"#f59e0b",
                           border:"1px solid rgba(251,191,36,0.3)" }}>
                           {pending} offen
@@ -4582,7 +4553,7 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
                       ) : expired ? (
                         <span style={{ fontSize:9, color:THEME.text3 }}>—</span>
                       ) : (
-                        <span style={{ fontSize:9, padding:"2px 6px", borderRadius:5,
+                        <span style={{ fontSize:9, padding:"2px 6px", borderRadius:2,
                           background:"rgba(74,222,128,0.1)", color:THEME.green,
                           border:"1px solid rgba(74,222,128,0.2)" }}>aktiv</span>
                       )}
@@ -4590,12 +4561,12 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
                     <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>
                       <div style={{ display:"flex", gap:4 }}>
                         <button onClick={() => onEdit(plan)}
-                          style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${THEME.border}`,
+                          style={{ padding:"3px 8px", borderRadius:2, border:`1px solid ${THEME.border}`,
                             background:"transparent", color:THEME.accent, cursor:"pointer", fontSize:10, fontWeight:700 }}>
                           ✎ Edit
                         </button>
                         <button onClick={() => onDelete(plan.portfolio_id, plan.id)}
-                          style={{ padding:"3px 8px", borderRadius:6, border:"1px solid rgba(248,113,113,0.3)",
+                          style={{ padding:"3px 8px", borderRadius:2, border:"1px solid rgba(248,113,113,0.3)",
                             background:"transparent", color:THEME.red, cursor:"pointer", fontSize:10 }}>
                           ✕
                         </button>
@@ -4885,8 +4856,8 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
   );
 
   const thStyle = (col) => ({
-    padding:"0 10px", textAlign:"left", fontWeight:700, fontSize:10,
-    color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.07em",
+    padding:"0 10px", textAlign:"left", fontWeight:600, fontSize:9,
+    color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.14em",
     whiteSpace:"nowrap", userSelect:"none", cursor:col.sortable?"pointer":"default",
     width:colWidths[col.key], minWidth:colWidths[col.key], maxWidth:colWidths[col.key],
     position: pinnedVisible.includes(col.key) ? "sticky" : "relative",
@@ -4896,7 +4867,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     borderRight:`1px solid ${THEME.border2}`,
     background: pinnedVisible.includes(col.key) ? THEME.surface
       : sortKey===col.key ? "rgba(59,130,246,0.06)" : THEME.surface,
-    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
+    ...(isLastPinned(col.key) && { borderRight:`1px solid ${THEME.border}` }),
   });
 
   const tdStyle = (col, _solidBg = THEME.surface, extra={}) => ({
@@ -4911,7 +4882,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
     //  (b) automatically pick up hover/selected row colour changes on the <tr>
     background: pinnedVisible.includes(col.key) ? "inherit"
       : sortKey===col.key ? "rgba(59,130,246,0.03)" : "transparent",
-    boxShadow: isLastPinned(col.key) ? "2px 0 8px rgba(0,0,0,0.18)" : undefined,
+    ...(isLastPinned(col.key) && { borderRight:`1px solid ${THEME.border}` }),
     ...extra,
   });
 
@@ -4950,10 +4921,10 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
             onClick={() => setGroupingMode(m => !m)}
             style={{
               display:"flex", alignItems:"center", gap:5,
-              padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
-              background: groupingMode ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.05)",
-              border: `1px solid ${groupingMode ? "rgba(59,130,246,0.35)" : THEME.border2}`,
-              color: groupingMode ? THEME.accent : THEME.text3,
+              padding:"3px 8px", borderRadius:2, fontSize:10, fontWeight:600,
+              background: groupingMode ? THEME.text1 : "transparent",
+              border: `1px solid ${groupingMode ? THEME.text1 : THEME.border}`,
+              color: groupingMode ? THEME.surface : THEME.text3,
               cursor:"pointer", fontFamily:THEME.font, transition:"all 0.15s",
             }}
           >{groupingMode ? "⊕ Grouped" : "≡ Flat"}</button>
@@ -4969,7 +4940,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
               }}
               style={{
                 display:"flex", alignItems:"center", gap:5,
-                padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:600,
+                padding:"3px 8px", borderRadius:2, fontSize:10, fontWeight:600,
                 background: colPanelOpen ? "var(--accent-15)" : "var(--surface-2)",
                 color: colPanelOpen ? "var(--accent)" : THEME.text3,
                 border:`1px solid ${colPanelOpen ? "var(--accent-35)" : THEME.border}`,
@@ -4978,7 +4949,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
             >
               <Settings size={11}/> Columns
               {hiddenCols.size > 0 && (
-                <span style={{ background:"var(--accent)", color:"#fff", borderRadius:9, fontSize:8, fontWeight:700, padding:"0 4px", marginLeft:2 }}>
+                <span style={{ background:"var(--accent)", color:"#fff", borderRadius:2, fontSize:8, fontWeight:700, padding:"0 4px", marginLeft:2 }}>
                   {hiddenCols.size}
                 </span>
               )}
@@ -4993,11 +4964,11 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     left: panelAnchor.left,
                     width: 268, maxHeight: 420, overflowY:"auto",
                     background:"var(--surface)", border:`1px solid ${THEME.border}`,
-                    borderRadius:10, padding:8,
+                    borderRadius:"var(--radius-12)", padding:8,
                     boxShadow:"var(--shadow-modal)", zIndex:9999,
                   }}>
                     <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-                      letterSpacing:"0.06em", padding:"0 4px 6px", borderBottom:`1px solid ${THEME.border2}`, marginBottom:6 }}>
+                      letterSpacing:"0.14em", padding:"0 4px 6px", borderBottom:`1px solid ${THEME.border2}`, marginBottom:6 }}>
                       Columns
                     </div>
                     {TX_COLS_DEFAULT.filter(c => c.key !== "actions").map(col => {
@@ -5009,7 +4980,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                                   : col.label || col.key;
                       return (
                         <div key={col.key}
-                          style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 6px", borderRadius:6,
+                          style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 6px", borderRadius:2,
                             opacity: alwaysOn ? 0.5 : 1 }}
                           onMouseEnter={e => !alwaysOn && (e.currentTarget.style.background = "var(--surface-2)")}
                           onMouseLeave={e => (e.currentTarget.style.background = "")}>
@@ -5026,7 +4997,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                             disabled={alwaysOn || hidden}
                             title={pinned && !alwaysOn ? "Unpin column" : "Pin column to left"}
                             style={{ background:"none", border:"none", cursor: (alwaysOn || hidden) ? "default" : "pointer",
-                              padding:"1px 3px", borderRadius:3, display:"flex", alignItems:"center",
+                              padding:"1px 3px", borderRadius:2, display:"flex", alignItems:"center",
                               color: pinned ? "var(--accent)" : "var(--fg-3)", opacity: (alwaysOn || hidden) ? 0.3 : 1 }}>
                             {pinned && !alwaysOn ? <PinOff size={11}/> : <Pin size={11}/>}
                           </button>
@@ -5034,7 +5005,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       );
                     })}
                     <button onClick={resetColSettings}
-                      style={{ width:"100%", marginTop:8, padding:"5px 8px", borderRadius:6,
+                      style={{ width:"100%", marginTop:8, padding:"5px 8px", borderRadius:2,
                         border:`1px solid ${THEME.border}`, background:"none", cursor:"pointer",
                         fontSize:11, color:THEME.text3, fontFamily:"var(--font-sans)" }}>
                       Reset to defaults
@@ -5106,14 +5077,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                         <button onClick={()=>toggleGroup(grp._key)}
                           style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
-                            padding:"1px 3px", display:"flex", borderRadius:3, transition:"color 0.12s",
+                            padding:"1px 3px", display:"flex", borderRadius:2, transition:"color 0.12s",
                             fontSize:9, lineHeight:1 }}
                           onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                           onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                           title={isExpanded ? "Collapse" : "Expand transactions"}
                         >{isExpanded ? "▼" : "▶"}</button>
                         <span style={{
-                          padding:"2px 5px", borderRadius:4, fontSize:9, fontWeight:700,
+                          padding:"2px 5px", borderRadius:2, fontSize:9, fontWeight:700,
                           background: grp.type==="MIX" ? "rgba(148,163,184,0.12)"
                                      : isBuy ? "rgba(74,222,128,0.12)" : "rgba(248,113,113,0.12)",
                           color: grp.type==="MIX" ? THEME.text3 : isBuy ? THEME.green : THEME.red,
@@ -5132,8 +5103,8 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <span style={{ fontSize:11, color:THEME.text2 }}>{grp.name || ""}</span>
                         {grp._txs.length > 1 && (
-                          <span style={{ fontSize:9, color:THEME.text3, background:"rgba(255,255,255,0.06)",
-                            border:`1px solid ${THEME.border2}`, borderRadius:3, padding:"1px 4px", fontFamily:THEME.mono }}>
+                          <span style={{ fontSize:9, color:THEME.text3, background:"var(--surface-2)",
+                            border:`1px solid ${THEME.border2}`, borderRadius:2, padding:"1px 4px", fontFamily:THEME.mono }}>
                             ×{grp._txs.length}
                           </span>
                         )}
@@ -5193,14 +5164,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     case "links": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <a href={`https://finance.yahoo.com/quote/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
-                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                             background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
                             color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                           onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                         >Y!</a>
                         <a href={`https://www.perplexity.ai/finance/${grp.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
-                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                          style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                             background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
                             color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                           onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
@@ -5212,7 +5183,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       <button onClick={()=>onRefreshSymbol && onRefreshSymbol(grp.symbol)}
                         title={`Refresh ${grp.symbol}`}
                         style={{ background:"none",border:"none",cursor:"pointer",color:THEME.text3,
-                          padding:4,display:"flex",borderRadius:5,transition:"color 0.12s" }}
+                          padding:4,display:"flex",borderRadius:2,transition:"color 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><RefreshCw size={12}/></button>
@@ -5249,7 +5220,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                       onClick={() => onRefreshSymbol && onRefreshSymbol(tx.symbol)}
                       title={`Refresh ${tx.symbol} quote`}
                       style={{
-                        padding:"2px 7px", borderRadius:5, fontSize:9, fontWeight:700,
+                        padding:"2px 7px", borderRadius:2, fontSize:9, fontWeight:700,
                         background:txIsBuy?"rgba(74,222,128,0.12)":"rgba(248,113,113,0.12)",
                         color:txIsBuy?THEME.green:THEME.red,
                         border:`1px solid ${txIsBuy?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.2)"}`,
@@ -5344,14 +5315,14 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   case "links": return (
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                       <a href={`https://finance.yahoo.com/quote/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Yahoo Finance"
-                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                           background:"rgba(100,160,255,0.08)",border:"1px solid rgba(100,160,255,0.18)",
                           color:"#6ca0ff",fontSize:9,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(100,160,255,0.22)"}
                         onMouseLeave={e=>e.currentTarget.style.background="rgba(100,160,255,0.08)"}
                       >Y!</a>
                       <a href={`https://www.perplexity.ai/finance/${tx.symbol}`} target="_blank" rel="noopener noreferrer" title="Perplexity Finance"
-                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:5,
+                        style={{ display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:2,
                           background:"rgba(168,120,255,0.08)",border:"1px solid rgba(168,120,255,0.18)",
                           color:"#a878ff",fontSize:8,fontWeight:800,textDecoration:"none",fontFamily:THEME.mono,transition:"background 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(168,120,255,0.22)"}
@@ -5363,7 +5334,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                       <button onClick={()=>onEdit(tx.portfolioId, tx)}
                         style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
-                          padding:4, display:"flex", borderRadius:5, transition:"color 0.12s" }}
+                          padding:4, display:"flex", borderRadius:2, transition:"color 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.accent}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><Edit2 size={12}/></button>
@@ -5372,7 +5343,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                           portfolio: portfolios.find(p=>p.id===tx.portfolioId),
                         })}
                         style={{ background:"none", border:"none", cursor:"pointer", color:THEME.text3,
-                          padding:4, display:"flex", borderRadius:5, transition:"color 0.12s" }}
+                          padding:4, display:"flex", borderRadius:2, transition:"color 0.12s" }}
                         onMouseEnter={e=>e.currentTarget.style.color=THEME.red}
                         onMouseLeave={e=>e.currentTarget.style.color=THEME.text3}
                       ><Trash2 size={12}/></button>
@@ -5720,13 +5691,13 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
         {["buy","sell"].map(t => (
           <button key={t} onClick={() => setType(t)}
             className={"rail-density-btn" + (type===t ? " active" : "")}
-            style={{ padding:"7px 0", fontSize:12, textTransform:"uppercase", letterSpacing:"0.06em" }}>{t==="buy"?"▲ Buy":"▼ Sell"}</button>
+            style={{ padding:"7px 0", fontSize:12, textTransform:"uppercase", letterSpacing:"0.14em" }}>{t==="buy"?"▲ Buy":"▼ Sell"}</button>
         ))}
       </div>
 
       {/* Purchase mode toggle — only in add mode */}
       {!editMode && (
-        <div style={{ display:"flex", marginBottom:16, borderRadius:9, overflow:"hidden",
+        <div style={{ display:"flex", marginBottom:16, borderRadius:2, overflow:"hidden",
           border:`1px solid ${THEME.border}`, background:THEME.surface }}>
           {[["single","☐ Einmaliger Kauf"],["recurring","↻ Wiederkehrend"]].map(([m, label]) => (
             <button key={m} onClick={() => setPurchaseMode(m)}
@@ -5738,7 +5709,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
       {/* PDF-Import Bar */}
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4,
-        padding:"9px 12px", borderRadius:10, background:"rgba(59,130,246,0.06)",
+        padding:"9px 12px", background:"var(--surface-2)",
         border:`1px solid ${THEME.border}` }}>
         <input ref={pdfInputRef} type="file" accept=".pdf" style={{ display:"none" }}
           onChange={e => { const f = e.target.files?.[0]; if(f) handlePdfFile(f); e.target.value=''; }}/>
@@ -5814,7 +5785,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                 color: lookupHistorical ? THEME.green : THEME.yellow,
                 background: lookupHistorical ? "rgba(74,222,128,0.10)" : "rgba(251,191,36,0.10)",
                 border: `1px solid ${lookupHistorical ? "rgba(74,222,128,0.25)" : "rgba(251,191,36,0.25)"}`,
-                borderRadius:4, padding:"1px 5px",
+                borderRadius:2, padding:"1px 5px",
               }}>
                 {lookupHistorical ? "📅 hist." : "⚡ live"} {lookupDate}
               </span>
@@ -5851,7 +5822,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
           {/* Candidates picker */}
           {isinCandidates && isinCandidates.length > 0 && (
-            <div style={{ marginTop:6, borderRadius:10, border:`1px solid ${THEME.border}`,
+            <div style={{ marginTop:6, borderRadius:2, border:`1px solid ${THEME.border}`,
               background:THEME.card, overflow:"hidden", maxHeight:260, overflowY:"auto" }}>
               {isinCandidates.map((c, idx) => (
                 <button key={c.symbol}
@@ -5876,8 +5847,8 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                         {c.price.toFixed(2)}&thinsp;{c.currency}
                       </span>
                     )}
-                    <span style={{ fontSize:9, color:THEME.text3, background:"rgba(255,255,255,0.06)",
-                      borderRadius:4, padding:"2px 5px", letterSpacing:"0.04em" }}>
+                    <span style={{ fontSize:9, color:THEME.text3, background:"var(--surface-2)",
+                      borderRadius:2, padding:"2px 5px", letterSpacing:"0.04em" }}>
                       {c.exchDisp || c.exchange || "—"}
                     </span>
                   </div>
@@ -5968,7 +5939,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
 
       {/* Recurring preview card */}
       {purchaseMode === "recurring" && recurDates.length > 0 && budget && price && (
-        <div style={{ marginTop:14, border:`1px solid ${THEME.border}`, borderRadius:10, overflow:"hidden" }}>
+        <div style={{ marginTop:14, border:`1px solid ${THEME.border}`, borderRadius:2, overflow:"hidden" }}>
           {/* Header */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
             padding:"9px 14px", background:THEME.surface }}>
@@ -5999,7 +5970,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                 {pastRecurDates.slice(0,8).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, color:THEME.green,
                     background:"rgba(74,222,128,0.08)", border:`1px solid rgba(74,222,128,0.2)`,
-                    borderRadius:4, padding:"2px 5px" }}>{d}</span>
+                    borderRadius:2, padding:"2px 5px" }}>{d}</span>
                 ))}
                 {pastRecurDates.length > 8 && (
                   <span style={{ fontSize:9, color:THEME.text3, padding:"2px 4px" }}>
@@ -6012,7 +5983,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
           {/* Future — planned rule, not booked */}
           {futureRecurDates.length > 0 && (
             <div style={{ padding:"8px 14px", borderTop:`1px solid ${THEME.border}`,
-              background:"rgba(255,255,255,0.02)" }}>
+              background:"var(--surface-2)" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                 <span style={{ fontSize:10, fontWeight:700, color:THEME.text3, letterSpacing:"0.05em" }}>
                   ↻ GEPLANT, NOCH NICHT FÄLLIG ({futureRecurDates.length})
@@ -6025,7 +5996,7 @@ function AddTxModal({ onClose, onAdd, rates, portfolios, defaultPortfolioId, ini
                 {futureRecurDates.slice(0,5).map(d => (
                   <span key={d} style={{ fontSize:9, fontFamily:THEME.mono, color:THEME.text3,
                     background:THEME.surface2, border:`1px solid ${THEME.border2}`,
-                    borderRadius:4, padding:"2px 5px", opacity:0.7 }}>{d}</span>
+                    borderRadius:2, padding:"2px 5px", opacity:0.7 }}>{d}</span>
                 ))}
                 {futureRecurDates.length > 5 && (
                   <span style={{ fontSize:9, color:THEME.text3, padding:"2px 4px", opacity:0.6 }}>
@@ -6417,7 +6388,7 @@ function AccountSettings({ focus, onProfileSaved }) {
   };
 
   const section = { borderTop:`1px solid ${THEME.border}`, paddingTop:16, display:"flex", flexDirection:"column", gap:8 };
-  const smallBtn = { padding:"7px 14px", borderRadius:8, border:`1.5px solid ${THEME.border}`, background:"transparent",
+  const smallBtn = { padding:"7px 14px", borderRadius:2, border:`1.5px solid ${THEME.border}`, background:"transparent",
                      color:THEME.text2, fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", alignSelf:"flex-start" };
   const linkBtn  = { background:"none", border:"none", color:THEME.accent, cursor:"pointer", fontSize:11,
                      fontWeight:600, fontFamily:"inherit", padding:0 };
@@ -6464,7 +6435,7 @@ function AccountSettings({ focus, onProfileSaved }) {
       <div style={{ fontSize:11, color:THEME.text3, lineHeight:1.5 }}>{t("passkeys.hint")}</div>
       {passkeys.map(pk => (
         <div key={pk.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 10px",
-          borderRadius:8, background:THEME.surface2, border:`1px solid ${THEME.border}` }}>
+          borderRadius:2, background:THEME.surface2, border:`1px solid ${THEME.border}` }}>
           <KeyRound size={14} style={{ color:THEME.accent, flexShrink:0 }}/>
           <span style={{ fontSize:12, color:THEME.text1 }}>{pk.device_name || t("passkeys.unnamed")}</span>
           <span style={{ flex:1, fontSize:10, color:THEME.text3 }}>
@@ -6494,7 +6465,7 @@ function AccountSettings({ focus, onProfileSaved }) {
       {note("invites")}
       {invites.map(inv => (
         <div key={inv.code} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 10px",
-          borderRadius:8, background:THEME.surface2, border:`1px solid ${THEME.border}`,
+          borderRadius:2, background:THEME.surface2, border:`1px solid ${THEME.border}`,
           opacity: inv.status === "open" ? 1 : 0.6 }}>
           <span style={{ fontFamily:THEME.mono, fontSize:12, letterSpacing:"0.1em", color:THEME.text1 }}>{fmtInvite(inv.code)}</span>
           <span style={{ flex:1, fontSize:10, color:THEME.text3 }}>
@@ -6887,7 +6858,7 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
     display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000,
   };
   const card = {
-    width:340, background:THEME.surface, borderRadius:12,
+    width:340, background:THEME.surface, borderRadius:"var(--radius-12)",
     border:`1px solid ${THEME.border}`, boxShadow:"var(--shadow-modal)",
     padding:16, position:"relative",
   };
@@ -6948,7 +6919,7 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
 
         {/* Error */}
         {error && !loading && (
-          <div style={{ padding:"7px 10px", borderRadius:8, marginBottom:10,
+          <div style={{ padding:"7px 10px", borderRadius:2, marginBottom:10,
             background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
             fontSize:11, color:THEME.red, display:"flex", gap:6 }}>
             <AlertCircle size={12} style={{flexShrink:0,marginTop:1}}/> {error}
@@ -7146,7 +7117,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
             {etf.isPreset && (
               <span style={{ fontSize:8, padding:"0 4px", borderRadius:2,
                 border:"1px solid var(--border)", color:THEME.text2, fontFamily:THEME.mono,
-                fontWeight:400, textTransform:"uppercase", letterSpacing:"0.08em",
+                fontWeight:400, textTransform:"uppercase", letterSpacing:"0.14em",
                 flexShrink:0 }}>preset</span>
             )}
           </div>
@@ -7288,7 +7259,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         {open && (
           <>
             <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.08em", padding:"4px 4px 6px" }}>{t("etf.presets")}</div>
+              letterSpacing:"0.14em", padding:"4px 4px 6px" }}>{t("etf.presets")}</div>
             {(inSearch ? presetResults : PREDEFINED_ETFS_CLIENT).map(etf => (
               <EtfItem key={etf.ticker} etf={etf} isActive={selectedTicker===etf.ticker}/>
             ))}
@@ -7300,7 +7271,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>{t("etf.saved")}</div>
+                letterSpacing:"0.14em" }}>{t("etf.saved")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{savedEtfs.length}</div>
             </div>
@@ -7317,7 +7288,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>{t("etf.custom")}</div>
+                letterSpacing:"0.14em" }}>{t("etf.custom")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{customEtfs.length}</div>
             </div>
@@ -7378,7 +7349,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <>
             <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 4px 4px" }}>
               <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-                letterSpacing:"0.08em" }}>{t("etf.searchResults")}</div>
+                letterSpacing:"0.14em" }}>{t("etf.searchResults")}</div>
               <div style={{ flex:1, height:1, background:THEME.border }}/>
               <div style={{ fontSize:9, color:THEME.text3 }}>{liveResults.length}</div>
             </div>
@@ -7779,7 +7750,7 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
   const col = isPos ? "#4ade80" : "#f87171";
 
   return (
-    <div style={{ background:"var(--surface-2)", borderRadius:5, overflow:"hidden", lineHeight:0 }}>
+    <div style={{ background:"var(--surface-2)", borderRadius:2, overflow:"hidden", lineHeight:0 }}>
       <svg width={W} height={H} style={{ display:"block" }}>
         <defs>
           <linearGradient id={`sg-${xs[0]}-${isPos}`} x1="0" y1="0" x2="0" y2="1">
@@ -7875,7 +7846,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
         {/* Refresh Holdings */}
         <button onClick={onRefreshHoldings}
           style={{ display:"flex", alignItems:"center", gap:5,
-            padding:"5px 12px", borderRadius:8, border:`1px solid ${THEME.border}`,
+            padding:"5px 12px", borderRadius:2, border:`1px solid ${THEME.border}`,
             background:"transparent", color:THEME.text2, fontSize:11,
             fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>
           <span style={{ display:"flex" }}>
@@ -7905,8 +7876,8 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
               ].map(({key, label, right}) => (
                 <th key={key} style={{ padding:"7px 12px",
                   textAlign:right?"right":"left",
-                  fontSize:9, fontWeight:700, color:THEME.text3,
-                  textTransform:"uppercase", letterSpacing:"0.07em",
+                  fontSize:9, fontWeight:600, color:THEME.text3,
+                  textTransform:"uppercase", letterSpacing:"0.14em",
                   position:"sticky", top:0, background:THEME.bg,
                   whiteSpace:"nowrap" }}>{label}</th>
               ))}
@@ -7920,8 +7891,8 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
               const chartData = globalChartCache.get(h.symbol) ?? null;
               return (
                 <tr key={h.symbol}
-                  style={{ borderBottom:`1px solid rgba(255,255,255,0.03)`, cursor:"default" }}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+                  style={{ borderBottom:`1px solid var(--border-2)`, cursor:"default" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface-2)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
 
                   {/* # */}
@@ -7958,7 +7929,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
                       justifyContent:"flex-end", gap:6 }}>
                       <div style={{ height:4, borderRadius:2, flexShrink:0,
                         width:Math.max(4, Math.round(h.weight*8)),
-                        background:`rgba(59,130,246,${0.3+h.weight/20})` }}/>
+                        background:"var(--fg-2)", opacity:Math.min(1, 0.35+h.weight/20) }}/>
                       <span style={{ fontFamily:"var(--font-mono)",
                         color:THEME.text1, fontSize:11, minWidth:44, textAlign:"right" }}>
                         {h.weight.toFixed(2)}%
@@ -8342,7 +8313,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                     {holdingsError}
                   </div>
                   <button onClick={()=>loadHoldings(selectedTicker,true)}
-                    style={{ padding:"7px 18px", borderRadius:8, border:`1px solid ${THEME.border}`,
+                    style={{ padding:"7px 18px", borderRadius:2, border:`1px solid ${THEME.border}`,
                       background:"transparent", color:THEME.text3, fontSize:11,
                       cursor:"pointer", fontFamily:"inherit", display:"flex",
                       alignItems:"center", gap:6 }}>
@@ -8361,7 +8332,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                     {t("etf.noHoldingsHint")}
                   </div>
                   <button onClick={()=>loadHoldings(selectedTicker,true)}
-                    style={{ marginTop:4, padding:"7px 18px", borderRadius:8,
+                    style={{ marginTop:4, padding:"7px 18px", borderRadius:2,
                       border:`1px solid ${THEME.border}`, background:"transparent",
                       color:THEME.text3, fontSize:11, cursor:"pointer",
                       fontFamily:"inherit", display:"flex", alignItems:"center", gap:6 }}>
@@ -8546,7 +8517,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
       </div>
 
       {/* Input card */}
-      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+      <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:0, padding:22 }}>
         <div style={{ display:"flex", gap:14, alignItems:"flex-end", flexWrap:"wrap" }}>
           <div style={{ flex:"1 1 160px", minWidth:120 }}>
             <FLabel>Symbol</FLabel>
@@ -8569,7 +8540,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                   padding:"9px 12px", border:"none", cursor:"pointer",
                   background: currency === c ? THEME.accent : THEME.surface2,
                   color: currency === c ? "#fff" : THEME.text3,
-                  borderRadius:8, fontSize:12, fontWeight:600, fontFamily:THEME.font,
+                  borderRadius:2, fontSize:12, fontWeight:600, fontFamily:THEME.font,
                   transition:"background 0.15s",
                 }}>{c}</button>
               ))}
@@ -8580,20 +8551,20 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
             cursor: loading ? "default" : "pointer",
             background: loading ? THEME.surface2 : THEME.accent,
             color: loading ? THEME.text3 : "#fff",
-            borderRadius:10, fontSize:13, fontWeight:700, fontFamily:THEME.font,
+            borderRadius:2, fontSize:13, fontWeight:700, fontFamily:THEME.font,
             transition:"background 0.15s", alignSelf:"flex-end",
           }}>{loading ? "Searching…" : "Search"}</button>
         </div>
         {error && (
           <div style={{ marginTop:14, padding:"10px 14px",
             background:"rgba(248,113,113,0.1)", border:"1px solid rgba(248,113,113,0.3)",
-            borderRadius:8, fontSize:12, color:THEME.red }}>{error}</div>
+            borderRadius:2, fontSize:12, color:THEME.red }}>{error}</div>
         )}
       </div>
 
       {/* Result summary */}
       {result?.found && (
-        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:0, padding:22 }}>
           {/* Company name header */}
           <div style={{ marginBottom:18 }}>
             <div style={{ fontSize:18, fontWeight:700, color:THEME.text1 }}>
@@ -8621,7 +8592,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
             ].map(({ label, value, color }) => (
               <div key={label}>
                 <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-                  letterSpacing:"0.08em", marginBottom:4 }}>{label}</div>
+                  letterSpacing:"0.14em", marginBottom:4 }}>{label}</div>
                 <div style={{ fontSize:20, fontWeight:700, color, fontFamily:THEME.mono }}>{value}</div>
               </div>
             ))}
@@ -8630,7 +8601,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
           {/* Splits */}
           <div style={{ height:1, background:THEME.border2, margin:"18px 0 14px" }}/>
           <div style={{ fontSize:10, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:10 }}>
+            letterSpacing:"0.14em", marginBottom:10 }}>
             Stock Splits Since {result.date}
           </div>
           {result.splits.length === 0
@@ -8641,7 +8612,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                   <div key={i} style={{
                     padding:"6px 14px",
                     background:"rgba(251,191,36,0.12)", border:"1px solid rgba(251,191,36,0.3)",
-                    borderRadius:8, fontSize:12, fontWeight:600, color:THEME.yellow, fontFamily:THEME.mono,
+                    borderRadius:2, fontSize:12, fontWeight:600, color:THEME.yellow, fontFamily:THEME.mono,
                   }}>
                     {s.ratio} · {new Date(s.date + "T12:00:00").toLocaleDateString("en-GB",
                       { day:"numeric", month:"short", year:"numeric" })}
@@ -8655,9 +8626,9 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
 
       {/* Performance chart */}
       {chartData && (
-        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:14, padding:22 }}>
+        <div style={{ background:THEME.surface, border:`1px solid ${THEME.border}`, borderRadius:0, padding:22 }}>
           <div style={{ fontSize:11, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:14 }}>
+            letterSpacing:"0.14em", marginBottom:14 }}>
             {result.symbol} · Performance since {result.date} · {result.targetCurrency}
           </div>
           <div ref={containerRef} style={{ width:"100%", position:"relative" }}>
@@ -8683,7 +8654,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                 {yTicks.map((v, i) => (
                   <g key={i}>
                     <line x1={0} y1={yS(v).toFixed(1)} x2={CW} y2={yS(v).toFixed(1)}
-                      stroke="rgba(255,255,255,0.06)" strokeWidth={1}/>
+                      style={{ stroke:"var(--border-2)" }} strokeWidth={1}/>
                     <text x={-8} y={yS(v) + 4} textAnchor="end"
                       fontSize={10} fill={THEME.text3} fontFamily={THEME.mono}>{fmtP(v)}</text>
                   </g>
@@ -8738,7 +8709,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
                 top:  PAD_T + hoverPt.y - 42,
                 left: hoverPt.x + PAD_L + (hoverPt.x > CW * 0.7 ? -130 : 14),
                 background:THEME.surface2, border:`1px solid ${THEME.border}`,
-                borderRadius:8, padding:"7px 12px",
+                borderRadius:2, padding:"7px 12px",
                 fontSize:12, color:THEME.text1, fontFamily:THEME.mono,
                 pointerEvents:"none", zIndex:10, lineHeight:1.6,
               }}>
@@ -9377,7 +9348,7 @@ export default function App() {
               {/* Status pill */}
               {apiStatus && apiStatus !== "ok" && (
                 <div style={{ display:"flex", alignItems:"center", gap:5,
-                  padding:"2px 8px", borderRadius:12, fontSize:9, fontWeight:700,
+                  padding:"2px 8px", borderRadius:0, fontSize:9, fontWeight:700,
                   border:"1px solid",
                   ...(apiStatus==="stale"
                     ? { background:"rgba(251,191,36,0.1)", borderColor:"rgba(251,191,36,0.3)", color:"#fbbf24" }
@@ -9412,28 +9383,19 @@ export default function App() {
             <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView} ansicht={ansicht} onAnsicht={setAnsicht}
               extraRight={activeTab === "performance" ? (
                 <div style={{ position:"relative" }} ref={vergleichRef}>
-                  <button onClick={() => setShowVergleich(v => !v)}
-                    style={{ padding:"4px 11px", borderRadius:7, cursor:"pointer", fontSize:10,
-                      fontWeight:700, fontFamily:"inherit", letterSpacing:"0.04em",
-                      border: (benchSymbols.length + instrOverlays.length) > 0
-                        ? "1px solid rgba(99,102,241,0.45)" : "1px solid rgba(255,255,255,0.12)",
-                      background: (benchSymbols.length + instrOverlays.length) > 0
-                        ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.04)",
-                      color: (benchSymbols.length + instrOverlays.length) > 0 ? "#818cf8" : THEME.text2,
-                      transition:"all 0.15s" }}>
+                  <button onClick={() => setShowVergleich(v => !v)} className="btn"
+                    style={{ padding:"4px 11px", fontSize:10,
+                      borderColor: (benchSymbols.length + instrOverlays.length) > 0 ? "var(--fg-1)" : undefined }}>
                     + Vergleich{(benchSymbols.length + instrOverlays.length) > 0
                       ? ` (${benchSymbols.length + instrOverlays.length})` : ""}
                   </button>
                   {showVergleich && (
-                    <div style={{ position:"fixed",
+                    <div className="overlay-card" style={{ position:"fixed",
                       top: (vergleichRef.current?.getBoundingClientRect().bottom ?? 46) + 4,
                       left: vergleichRef.current?.getBoundingClientRect().left ?? 0,
-                      zIndex:500, background:THEME.surface, border:`1px solid ${THEME.border}`,
-                      borderRadius:12, padding:"12px 14px", minWidth:280, maxWidth:340,
-                      boxShadow:"0 12px 40px rgba(0,0,0,0.7)" }}
+                      zIndex:500, padding:"12px 14px", minWidth:280, maxWidth:340 }}
                       onMouseDown={e => e.stopPropagation()}>
-                      <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
-                        textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>Benchmarks</div>
+                      <div className="label" style={{ marginBottom:8 }}>Benchmarks</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 }}>
                         {BENCHMARKS.map((b, i) => {
                           const active = benchSymbols.includes(b.sym);
@@ -9441,10 +9403,10 @@ export default function App() {
                           return (
                             <button key={b.sym} onClick={() => setBenchSymbols(prev =>
                               prev.includes(b.sym) ? prev.filter(s => s !== b.sym) : [...prev, b.sym])}
-                              style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer",
+                              style={{ padding:"3px 9px", borderRadius:2, cursor:"pointer",
                                 fontSize:10, fontFamily:"inherit", transition:"all 0.15s",
-                                border: active ? `1px solid ${col}88` : "1px solid rgba(255,255,255,0.08)",
-                                background: active ? `${col}22` : "rgba(255,255,255,0.03)",
+                                border: active ? `1px solid ${col}88` : "1px solid var(--border)",
+                                background: active ? `${col}22` : "var(--surface-2)",
                                 color: active ? col : THEME.text3 }}>
                               {b.label}
                             </button>
@@ -9453,8 +9415,7 @@ export default function App() {
                       </div>
                       {perfSymbols.length > 0 && (
                         <>
-                          <div style={{ fontSize:9, color:THEME.text3, letterSpacing:"0.08em",
-                            textTransform:"uppercase", marginBottom:8, fontWeight:700 }}>{t("chart.viewInstruments")}</div>
+                          <div className="label" style={{ marginBottom:8 }}>{t("chart.viewInstruments")}</div>
                           <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                             {perfSymbols.map((sym, i) => {
                               const active = instrOverlays.includes(sym);
@@ -9463,10 +9424,10 @@ export default function App() {
                               return (
                                 <button key={sym} onClick={() => setInstrOverlays(prev =>
                                   prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym])}
-                                  style={{ padding:"3px 9px", borderRadius:20, cursor:"pointer",
+                                  style={{ padding:"3px 9px", borderRadius:2, cursor:"pointer",
                                     fontSize:10, fontFamily:"inherit", transition:"all 0.15s",
-                                    border: active ? `1px solid ${col}88` : "1px solid rgba(255,255,255,0.08)",
-                                    background: active ? `${col}22` : "rgba(255,255,255,0.03)",
+                                    border: active ? `1px solid ${col}88` : "1px solid var(--border)",
+                                    background: active ? `${col}22` : "var(--surface-2)",
                                     color: active ? col : THEME.text3 }}>
                                   {sym}
                                 </button>
@@ -9476,11 +9437,8 @@ export default function App() {
                         </>
                       )}
                       {(benchSymbols.length + instrOverlays.length) > 0 && (
-                        <button onClick={() => { setBenchSymbols([]); setInstrOverlays([]); }}
-                          style={{ marginTop:12, padding:"4px 10px", borderRadius:6, cursor:"pointer",
-                            fontSize:10, border:"1px solid rgba(248,113,113,0.3)",
-                            background:"rgba(248,113,113,0.08)", color:THEME.red,
-                            fontFamily:"inherit", width:"100%" }}>
+                        <button className="btn danger" onClick={() => { setBenchSymbols([]); setInstrOverlays([]); }}
+                          style={{ marginTop:12, fontSize:10, width:"100%" }}>
                           Alle entfernen
                         </button>
                       )}
