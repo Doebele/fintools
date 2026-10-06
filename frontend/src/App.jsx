@@ -86,11 +86,11 @@ function useGlobalStyles() {
         --bg:        #141312;
         --surface:   #1c1b18;
         --surface-2: #211f1b;
-        --border:    #32302a;
+        --border:    #3a3831;
         --border-2:  #28261f;
         --fg-1:      #ece9e2;
         --fg-2:      #a8a59c;
-        --fg-3:      #6f6d66;
+        --fg-3:      #85827a;
         --accent:    #2563eb;
         --accent-08: rgba(37,99,235,0.08);
         --accent-15: rgba(37,99,235,0.15);
@@ -126,11 +126,11 @@ function useGlobalStyles() {
         --bg:        #f5f3ee;
         --surface:   #ffffff;
         --surface-2: #faf9f6;
-        --border:    #e5e2d9;
+        --border:    #dcd8cd;
         --border-2:  #efede6;
         --fg-1:      #0b0b0c;
-        --fg-2:      #6f6d66;
-        --fg-3:      #a8a59c;
+        --fg-2:      #57554f;
+        --fg-3:      #75726a;
         --accent:    #2563eb;
         --accent-08: rgba(37,99,235,0.08);
         --accent-15: rgba(37,99,235,0.15);
@@ -2579,7 +2579,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
   const toTargets   = computeTargets(subView);
 
   return (
-    <div ref={ref} style={{width:"100%",height:"100%",background:THEME.bg,
+    <div ref={ref} style={{width:"100%",height:"100%",background:THEME.surface,
       borderRadius:0,position:"relative",overflow:"hidden",userSelect:"none"}}>
 
       {w>0&&h>0&&(
@@ -2589,9 +2589,9 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
             if (y<0||y>CHART_H) return null;
             return (
               <g key={tick}>
-                <line x1={AXIS_W} y1={y} x2={w} y2={y} style={{ stroke:"var(--border-2)" }} strokeWidth={1} strokeDasharray="4,6"/>
+                <line x1={AXIS_W} y1={y} x2={w} y2={y} style={{ stroke:"var(--border)" }} strokeWidth={1} strokeDasharray="4,6"/>
                 <text x={AXIS_W-6} y={y+4} textAnchor="end"
-                  fill={tick>0?"rgba(74,222,128,0.55)":"rgba(248,113,113,0.55)"}
+                  style={{ fill: tick>0 ? "var(--green)" : "var(--red)" }}
                   fontSize={9} fontFamily="var(--font-mono)">
                   {tick>0?`+${tick}`:tick} %
                 </text>
@@ -2608,7 +2608,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
             const perf=colorMode==="gainloss"?node.glPerf:node.perf;
             const isPos=(perf??0)>=0;
             const bg=colorMode==="gainloss"?(isPos?"rgba(20,100,55,0.92)":"rgba(140,10,10,0.92)"):getPerfColor(perf);
-            const GAP=2,rx=Math.min(4,bw*0.15);
+            const GAP=2,rx=0;
             const showPerf=barH>18&&bw>24, showSym=bw>26, showVal=bw>60;
             return (
               <g key={key} onMouseEnter={e=>onCellHover(e,node)} onMouseLeave={onCellLeave} style={{cursor:"pointer"}}>
@@ -2635,7 +2635,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
               </g>
             );
           })}
-          <text x={w-8} y={16} textAnchor="end" style={{ fill:"var(--border)" }} fontSize={10} fontWeight="700" fontFamily="'Fira Sans',sans-serif" letterSpacing="0.08em">
+          <text x={w-8} y={16} textAnchor="end" style={{ fill:"var(--fg-3)" }} fontSize={10} fontWeight="600" fontFamily="'Fira Sans',sans-serif" letterSpacing="0.08em">
             {colorMode==="gainloss"?"G&L vs. Cost":period==="Intraday"?"1D vs Prev Close":`${period} Performance`}
             {subView==="size"?"  ·  sorted by size":""}
           </text>
