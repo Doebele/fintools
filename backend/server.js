@@ -3450,6 +3450,128 @@ app.post('/api/quotes/historic-course', async (req, res) => {
   }
 });
 
+// ── GET /api/instrument/:symbol — everything the instrument detail page shows ──
+// Profile, key stats, short interest, analyst view, dividend calendar + 5y
+// dividend history (quoteSummary + chart events), cached 6 h; news cached 30 min.
+// Public like the other quote routes (the ETF Screener works without login).
+const INSTRUMENT_TTL_MIN = 6 * 60;
+const NEWS_TTL_MIN       = 30;
+const num = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
+const isoDay = v => {
+  const d = v instanceof Date ? v : (v ? new Date(v) : null);
+  return d && !isNaN(d) && d.getFullYear() > 1990 ? d.toISOString().slice(0, 10) : null;
+};
+
+async function fetchInstrumentProfile(symbol) {
+  const d = await yahooFinance.quoteSummary(symbol, { modules: [
+    'price', 'summaryDetail', 'defaultKeyStatistics', 'calendarEvents',
+    'assetProfile', 'financialData', 'recommendationTrend',
+  ] }, { validateResult: false });
+  const pr = d.price ?? {}, sd = d.summaryDetail ?? {}, ks = d.defaultKeyStatistics ?? {};
+  const ce = d.calendarEvents ?? {}, ap = d.assetProfile ?? {}, fd = d.financialData ?? {};
+  const trend = (d.recommendationTrend?.trend ?? []).find(t => t.period === '0m') ?? null;
+
+  // Paid dividends: monthly chart with dividend events, 5 years
+  let dividends = [];
+  try {
+    const raw = await fetchYahoo(symbol, '5y', '1mo', 'div');
+    const ev  = raw.chart?.result?.[0]?.events?.dividends ?? {};
+    dividends = Object.values(ev)
+      .map(x => ({ date: isoDay(new Date(x.date * 1000)), amount: num(x.amount) }))
+      .filter(x => x.date && x.amount != null)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  } catch (e) { log.debug('instrument dividends:', symbol, e.message); }
+
+  const sharesShort = num(ks.sharesShort), prior = num(ks.sharesShortPriorMonth);
+  return {
+    symbol,
+    name:      pr.longName || pr.shortName || symbol,
+    exchange:  pr.exchangeName ?? null,
+    currency:  pr.currency ?? null,
+    quoteType: pr.quoteType ?? null,
+    profile: {
+      sector: ap.sector ?? null, industry: ap.industry ?? null, country: ap.country ?? null,
+      employees: num(ap.fullTimeEmployees), website: ap.website ?? null,
+      summary: ap.longBusinessSummary ?? null,
+    },
+    stats: {
+      marketCap: num(sd.marketCap ?? pr.marketCap), trailingPE: num(sd.trailingPE), forwardPE: num(sd.forwardPE),
+      beta: num(sd.beta), low52: num(sd.fiftyTwoWeekLow), high52: num(sd.fiftyTwoWeekHigh),
+      avgVolume: num(sd.averageVolume), priceToBook: num(ks.priceToBook),
+      profitMargin: num(fd.profitMargins), revenueGrowth: num(fd.revenueGrowth),
+    },
+    short: {
+      sharesShort, priorMonth: prior,
+      changePct: sharesShort != null && prior ? (sharesShort - prior) / prior * 100 : null,
+      pctFloat: num(ks.shortPercentOfFloat), daysToCover: num(ks.shortRatio),
+      date: isoDay(ks.dateShortInterest),
+    },
+    analysts: {
+      targetMean: num(fd.targetMeanPrice), targetLow: num(fd.targetLowPrice), targetHigh: num(fd.targetHighPrice),
+      recommendation: fd.recommendationKey ?? null, count: num(fd.numberOfAnalystOpinions),
+      trend: trend && { strongBuy: trend.strongBuy, buy: trend.buy, hold: trend.hold, sell: trend.sell, strongSell: trend.strongSell },
+    },
+    calendar: {
+      earningsDate: isoDay(ce.earnings?.earningsDate?.[0]), epsEstimate: num(ce.earnings?.earningsAverage),
+      exDividendDate: isoDay(ce.exDividendDate ?? sd.exDividendDate), dividendDate: isoDay(ce.dividendDate),
+      dividendRate: num(sd.dividendRate), dividendYield: num(sd.dividendYield),
+    },
+    dividends,
+  };
+}
+
+async function fetchInstrumentNews(symbol) {
+  const r = await yahooFinance.search(symbol, { quotesCount: 0, newsCount: 12 }, { validateResult: false });
+  return (r.news ?? [])
+    .filter(n => /^https?:\/\//.test(n.link ?? ''))
+    .map(n => ({ title: n.title, publisher: n.publisher ?? null, link: n.link,
+                 time: isoDay(n.providerPublishTime) ? new Date(n.providerPublishTime).toISOString() : null }));
+}
+
+// Reads a JSON blob from quotes_cache if younger than ttlMin, otherwise refetches.
+async function cachedJson(key, ttlMin, fetcher) {
+  const row = db.prepare(`SELECT data FROM quotes_cache WHERE symbol=?
+    AND datetime(updated_at) > datetime('now', '-${ttlMin} minutes')`).get(key);
+  if (row) { cacheHits++; return JSON.parse(row.data); }
+  cacheMisses++;
+  const data = await dedupFetch(key, fetcher);
+  db.prepare("INSERT OR REPLACE INTO quotes_cache (symbol, data, source, updated_at) VALUES (?, ?, 'yahoo_instrument', CURRENT_TIMESTAMP)")
+    .run(key, JSON.stringify(data));
+  return data;
+}
+
+app.get('/api/instrument/:symbol', async (req, res) => {
+  const symbol = req.params.symbol.toUpperCase();
+  if (!/^[A-Z0-9.^=\-]{1,20}$/.test(symbol)) return err(res, 400, 'invalid symbol');
+  try {
+    const [info, news] = await Promise.all([
+      cachedJson(`inst_${symbol}`, INSTRUMENT_TTL_MIN, () => fetchInstrumentProfile(symbol)),
+      cachedJson(`news_${symbol}`, NEWS_TTL_MIN, () => fetchInstrumentNews(symbol)).catch(() => []),
+    ]);
+    res.json({ ...info, news });
+  } catch (e) {
+    log.warn('instrument error:', symbol, e.message);
+    err(res, 502, e.message || 'Instrument lookup failed');
+  }
+});
+
+// GET/PUT /api/users/:id/detail-views — saved layouts of the instrument detail page
+// (one set for all instruments). Shape: { views: { name: layout[] }, active, current }
+app.get('/api/users/:id/detail-views', requireSelf, (req, res) => {
+  const row = db.prepare('SELECT value FROM user_kv WHERE user_id=? AND key=?').get(req.params.id, 'detail_views');
+  res.json(row ? JSON.parse(row.value) : {});
+});
+
+app.put('/api/users/:id/detail-views', requireSelf, (req, res) => {
+  const body = JSON.stringify(req.body ?? {});
+  if (body.length > 50000) return err(res, 413, 'too large');
+  db.prepare(`
+    INSERT INTO user_kv (user_id, key, value, updated_at) VALUES (?, 'detail_views', ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+  `).run(req.params.id, body);
+  res.json({ ok: true });
+});
+
 // GET/PUT /api/users/:id/rebalance-targets  — store per-user rebalance targets
 app.get('/api/users/:id/rebalance-targets', requireSelf, (req, res) => {
   const userId = parseInt(req.params.id);

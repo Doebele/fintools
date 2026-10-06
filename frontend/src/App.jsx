@@ -16,6 +16,7 @@ import {
 } from "./icons.jsx";
 import { CircleFlag } from "react-circle-flags";
 import { CorrelationMatrix, MonteCarlo, RebalancingAssistant, DividendCalendar } from "./Analytics.jsx";
+import InstrumentDetail from "./InstrumentDetail.jsx";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { useTranslation, I18nextProvider } from "react-i18next";
 import i18n from "./i18n/index.js";
@@ -333,6 +334,18 @@ function useGlobalStyles() {
       .menu-row:hover { background: var(--surface-2); }
       .menu-row .menu-icon { color: var(--fg-2); display: flex; flex-shrink: 0; }
       .menu-row.danger, .menu-row.danger .menu-icon { color: var(--red); }
+      /* ── Detailseite: Grid (react-grid-layout) im Pal-Stil ── */
+      .detail-grid { min-height: 1px; }
+      .detail-grid .react-grid-item { box-shadow: 0 0 0 1px var(--border); }
+      .detail-grid .react-grid-item.react-grid-placeholder {
+        background: var(--surface-2); opacity: 1; border: 1px dashed var(--fg-3); }
+      .detail-grid .react-grid-item.react-draggable-dragging { box-shadow: var(--shadow-modal); }
+      .detail-grid .react-grid-item > .react-resizable-handle::after {
+        border-right: 2px solid var(--fg-3); border-bottom: 2px solid var(--fg-3);
+        width: 8px; height: 8px; right: 5px; bottom: 5px; }
+      .detail-news:hover { background: var(--surface-2); }
+      .symbol-link { cursor: pointer; border-bottom: 1px dotted var(--fg-3); }
+      .symbol-link:hover { border-bottom-color: var(--fg-1); }
     `;
     document.head.appendChild(s);
   }, []);
@@ -645,6 +658,7 @@ const PERF_COLORS = [
 ];
 function getPerfColor(perf) {
   if (perf == null) return "#3a3833";
+  perf = Math.max(-5, Math.min(5, perf));   // the scale ends at ±5 %; beyond it the interpolation ran off into wrong hues
   const sorted = [...PERF_COLORS].sort((a,b) => b.t - a.t);
   for (let i = 0; i < sorted.length - 1; i++) {
     const hi = sorted[i], lo = sorted[i+1];
@@ -2271,7 +2285,7 @@ function Rail({
 // ════════════════════════════════════════════════════════════════════════════
 // TREEMAP COMPONENTS  (single portfolio view)
 // ════════════════════════════════════════════════════════════════════════════
-function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMode }) {
+function TreeMapView({ nodes, onCellHover, onCellLeave, onCellClick, highlight, currency, rates, colorMode }) {
   const { t } = useTranslation();
   const ref = useRef(null);
   const { w, h } = useSize(ref);
@@ -2293,6 +2307,8 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
       {cells.map(cell => (
         <TreeMapCell key={cell.symbol+cell.portfolioId} cell={cell}
           currency={currency} rates={rates} colorMode={colorMode}
+          dim={highlight && cell.symbol !== highlight}
+          onClick={onCellClick && (() => onCellClick(cell))}
           onMouseEnter={e => onCellHover(e, cell)}
           onMouseLeave={onCellLeave}/>
       ))}
@@ -2307,7 +2323,7 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
   );
 }
 
-function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLeave }) {
+function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLeave, onClick, dim }) {
   const { cw, ch, perf, glPerf, symbol, currentPriceUSD, valueUSD, shortName, weight, isEtf } = cell;
   const activePerf = colorMode === "gainloss" ? glPerf : perf;
   const bg   = getPerfColor(activePerf);
@@ -2321,8 +2337,9 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
     : null;
 
   return (
-    <div onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
+    <div onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} onClick={onClick}
       style={{
+        opacity: dim ? 0.25 : 1,
         position:"absolute", left:cell.x, top:cell.y, width:cw, height:ch,
         background:bg,
         overflow:"hidden", cursor:"pointer", display:"flex", flexDirection:"column",
@@ -2369,7 +2386,7 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
 // ════════════════════════════════════════════════════════════════════════════
 // CONSOLIDATED TREEMAP  — groups by portfolio (like S&P 500 sectors)
 // ════════════════════════════════════════════════════════════════════════════
-function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLeave, currency, rates, colorMode }) {
+function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLeave, onCellClick, currency, rates, colorMode }) {
   const { t } = useTranslation();
   const ref = useRef(null);
   const { w, h } = useSize(ref);
@@ -2454,6 +2471,7 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
           {group.cells.map((cell, ci) => (
             <TreeMapCell key={cell.symbol + "_" + ci} cell={cell}
               currency={currency} rates={rates} colorMode={colorMode}
+              onClick={onCellClick && (() => onCellClick(cell))}
               onMouseEnter={e => onCellHover(e, cell)}
               onMouseLeave={onCellLeave}/>
           ))}
@@ -2472,7 +2490,7 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
 // ════════════════════════════════════════════════════════════════════════════
 // BAR CHART VIEW  (ported from v2, now multi-portfolio aware)
 // ════════════════════════════════════════════════════════════════════════════
-function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, onCellLeave, subView="perf" }) {
+function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, onCellLeave, onCellClick, subView="perf" }) {
   const { t } = useTranslation();
   const ref   = useRef(null);
   const { w, h } = useSize(ref);
@@ -2611,7 +2629,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
             const GAP=2,rx=0;
             const showPerf=barH>18&&bw>24, showSym=bw>26, showVal=bw>60;
             return (
-              <g key={key} onMouseEnter={e=>onCellHover(e,node)} onMouseLeave={onCellLeave} style={{cursor:"pointer"}}>
+              <g key={key} onMouseEnter={e=>onCellHover(e,node)} onMouseLeave={onCellLeave} onClick={onCellClick && (()=>onCellClick(node))} style={{cursor:"pointer"}}>
                 <rect x={x+GAP/2} y={barY} width={Math.max(0,bw-GAP)} height={Math.max(0,barH)} fill={bg} rx={rx}/>
                 {showPerf&&perf!=null&&(
                   <text x={x+bw/2} y={isPos?barY+13:barY+barH-5} textAnchor="middle"
@@ -2648,7 +2666,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
 // ════════════════════════════════════════════════════════════════════════════
 // SPLIT BAR CHART  — one BarChartView per portfolio stacked vertically
 // ════════════════════════════════════════════════════════════════════════════
-function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, colorMode, period, onCellHover, onCellLeave, subView="perf" }) {
+function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, colorMode, period, onCellHover, onCellLeave, onCellClick, subView="perf" }) {
   const { t } = useTranslation();
   const entries = portfolios
     .map(p => ({ portfolio: p, nodes: treeNodesByPortfolio[p.id] ?? [] }))
@@ -2689,7 +2707,7 @@ function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, 
               nodes={nodes} currency={currency} rates={rates}
               colorMode={colorMode} period={period}
               subView={subView}
-              onCellHover={onCellHover} onCellLeave={onCellLeave}/>
+              onCellHover={onCellHover} onCellLeave={onCellLeave} onCellClick={onCellClick}/>
           </div>
         </div>
       ))}
@@ -2934,7 +2952,7 @@ const TX_COLS_DEFAULT = [
 // ════════════════════════════════════════════════════════════════════════════
 // SPLIT TRANSACTION VIEW  — one table per portfolio, stacked
 // ════════════════════════════════════════════════════════════════════════════
-function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, period="Intraday", divCache={}, currency="USD" }) {
+function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, onOpenSymbol, period="Intraday", divCache={}, currency="USD" }) {
   const { t } = useTranslation();
   const active = portfolios.filter(p => (allTransactions[p.id]?.length ?? 0) > 0);
   if (!active.length) return (
@@ -2968,7 +2986,7 @@ function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDe
             portfolios={[p]}
             allTransactions={{ [p.id]: allTransactions[p.id] ?? [] }}
             rates={rates} quotes={quotes}
-            onDelete={onDelete} onEdit={onEdit} onRefreshSymbol={onRefreshSymbol}
+            onDelete={onDelete} onEdit={onEdit} onRefreshSymbol={onRefreshSymbol} onOpenSymbol={onOpenSymbol}
             period={period} divCache={divCache}
             currency={currency}
             compact/>
@@ -4588,7 +4606,7 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
   );
 }
 
-function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, compact=false, period="Intraday", divCache={}, currency="USD" }) {
+function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, onOpenSymbol, compact=false, period="Intraday", divCache={}, currency="USD" }) {
   const { t } = useTranslation();
   const [sortKey,    setSortKey]    = useState("date");
   const [sortDir,    setSortDir]    = useState("desc");
@@ -5102,7 +5120,9 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                     case "symbol": return (
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <div style={{ width:6, height:6, borderRadius:"50%", background:grp.portfolioColor, flexShrink:0 }}/>
-                        <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{grp.symbol}</span>
+                        <span className={onOpenSymbol ? "symbol-link" : undefined}
+                          onClick={onOpenSymbol && (e => { e.stopPropagation(); onOpenSymbol(grp.symbol); })}
+                          style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{grp.symbol}</span>
                       </div>
                     );
                     case "name": return (
@@ -5250,7 +5270,9 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
                   case "symbol": return (
                     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                       <div style={{ width:6, height:6, borderRadius:"50%", background:tx.portfolioColor, flexShrink:0 }}/>
-                      <span style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
+                      <span className={onOpenSymbol ? "symbol-link" : undefined}
+                          onClick={onOpenSymbol && (e => { e.stopPropagation(); onOpenSymbol(tx.symbol); })}
+                          style={{ fontFamily:THEME.mono, fontWeight:700, fontSize:12, color:THEME.text1 }}>{tx.symbol}</span>
                     </div>
                   );
                   case "name": return (
@@ -7777,7 +7799,7 @@ function HoldingSparkline({ chartData, period, isPos, W=80, H=28 }) {
 // ── ETF Holdings Table ────────────────────────────────────────────────────────
 function EtfHoldingsTable({ holdings, quotes, currency, rates,
                             onRefreshHoldings, refreshing, fetchedAt, period, onPeriod,
-                            divCache, onFetchDiv }) {
+                            divCache, onFetchDiv, onOpenSymbol }) {
   const { t } = useTranslation();
   const rate = rates[currency] ?? 1;
   const cSym = CCY_SYM[currency] ?? "$";
@@ -7896,8 +7918,8 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
                 : isPos ? THEME.green : THEME.red;
               const chartData = globalChartCache.get(h.symbol) ?? null;
               return (
-                <tr key={h.symbol}
-                  style={{ borderBottom:`1px solid var(--border-2)`, cursor:"default" }}
+                <tr key={h.symbol} onClick={onOpenSymbol && (() => onOpenSymbol(h.symbol))}
+                  style={{ borderBottom:`1px solid var(--border-2)`, cursor: onOpenSymbol ? "pointer" : "default" }}
                   onMouseEnter={e=>e.currentTarget.style.background="var(--surface-2)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
 
@@ -8174,6 +8196,12 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
   const handleCellLeave = useCallback(()=>{
     clearTimeout(tooltipTimer.current); setTooltip(null);
   }, []);
+  // Instrument detail page for a holding of the selected ETF
+  const [detailSymbol, setDetailSymbol] = useState(null);
+  const openDetail = useCallback((sym) => {
+    clearTimeout(tooltipTimer.current); setTooltip(null); setDetailSymbol(sym);
+  }, []);
+  useEffect(() => { setDetailSymbol(null); }, [selectedTicker]);
 
   return (
     <div style={{ height:"100%", display:"flex", background:THEME.bg,
@@ -8228,7 +8256,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             { key:"calendar",     icon:<CalendarDays size={14}/>,    label:t("nav.dividends")       },
             { key:"historic",     icon:<Clock size={14}/>,           label:t("nav.historicCourses") },
           ].map(tab => (
-            <button key={tab.key} onClick={()=>setActiveTab(tab.key)}
+            <button key={tab.key} onClick={()=>{ setDetailSymbol(null); setActiveTab(tab.key); }}
               className={"app-nav-tab" + (activeTab===tab.key ? " active" : "")}>
               {tab.icon}{tab.label}
             </button>
@@ -8263,10 +8291,10 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
         </div>
 
         {/* Summary bar */}
-        <EtfSummaryBar etfMeta={etfMeta} nodes={nodes} fetchErrors={fetchErrors}/>
+        {!detailSymbol && <EtfSummaryBar etfMeta={etfMeta} nodes={nodes} fetchErrors={fetchErrors}/>}
 
         {/* Period toolbar — shown for TreeMap and BarChart tabs */}
-        {activeTab !== "transactions" && (
+        {!detailSymbol && activeTab !== "transactions" && (
           <div style={{ padding:"0 16px 0 22px", display:"flex", alignItems:"center", gap:8,
             borderBottom:`1px solid ${THEME.border}`, height:46,
             background:THEME.surface, flexShrink:0 }}>
@@ -8297,7 +8325,25 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
 
         {/* Content */}
         <div style={{ flex:1, overflow:"hidden", minHeight:0 }}>
-          {loadingHoldings ? (
+          {detailSymbol ? (() => {
+            const node = nodes.find(n => n.symbol === detailSymbol);
+            return (
+              <InstrumentDetail
+                symbol={detailSymbol} user={user} quote={quotes[detailSymbol]}
+                currency={currency} rates={rates} perfColor={getPerfColor}
+                treemapTitle={`${t("detail.inEtf")} ${selectedTicker}`}
+                extraKpis={node ? [
+                  { label:`${t("detail.weightIn")} ${selectedTicker}`, value:`${(node.weight ?? 0).toFixed(2)} %` },
+                ] : null}
+                renderTreemap={sym => (
+                  <TreeMapView nodes={nodes} highlight={sym}
+                    onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                    onCellClick={c => openDetail(c.symbol)}
+                    currency={currency} rates={rates} colorMode="market"/>
+                )}
+                onClose={() => setDetailSymbol(null)}/>
+            );
+          })() : loadingHoldings ? (
             <div style={{ display:"flex", alignItems:"center",
               justifyContent:"center", height:"100%",
               flexDirection:"column", gap:12 }}>
@@ -8347,7 +8393,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
                 </div>
               ) : (
                 <TreeMapView nodes={nodes}
-                  onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                  onCellHover={handleCellHover} onCellLeave={handleCellLeave} onCellClick={c => openDetail(c.symbol)}
                   currency={currency} rates={rates} colorMode="market"/>
               )}
             </div>
@@ -8355,7 +8401,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             <div style={{ height:"100%", overflow:"hidden" }}>
               <BarChartView nodes={nodes} currency={currency} rates={rates}
                 colorMode="market" period={period} subView={barSubView}
-                onCellHover={handleCellHover} onCellLeave={handleCellLeave}/>
+                onCellHover={handleCellHover} onCellLeave={handleCellLeave} onCellClick={c => openDetail(c.symbol)}/>
             </div>
           ) : activeTab==="calendar" ? (
             <div style={{ height:"100%", overflow:"hidden" }}>
@@ -8380,7 +8426,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
               period={period} onPeriod={setPeriod}
               onRefreshHoldings={()=>loadHoldings(selectedTicker,true)}
               refreshing={loadingHoldings}
-              divCache={divCache} onFetchDiv={fetchDiv}/>
+              divCache={divCache} onFetchDiv={fetchDiv} onOpenSymbol={openDetail}/>
           )}
         </div>
       </div>
@@ -9190,6 +9236,14 @@ export default function App() {
     setTooltip(null);
   }, []);
 
+  // ── Instrument detail page (opened from treemap, bar chart, holdings) ──
+  const [detailSymbol, setDetailSymbol] = useState(null);
+  const openDetail = useCallback((sym) => {
+    clearTimeout(tooltipTimer.current);
+    setTooltip(null);
+    setDetailSymbol(sym);
+  }, []);
+
   // Close Vergleich picker when clicking outside
   useEffect(() => {
     if (!showVergleich) return;
@@ -9203,6 +9257,7 @@ export default function App() {
   // ── Tab handler — also normalises viewMode when switching tabs ─────────────
   const handleTab = useCallback((tab) => {
     if (tab === "_addtx") { setShowAddTx(true); return; }
+    setDetailSymbol(null);
     setActiveTab(tab);
     // Analytics tabs don't use viewMode
     if (["correlation","montecarlo","rebalance","calendar"].includes(tab)) return;
@@ -9386,7 +9441,7 @@ export default function App() {
           </div>
 
           {/* Period toolbar — hide for analytics + standalone tabs */}
-          {!["correlation","montecarlo","rebalance","calendar","historic"].includes(activeTab) && (
+          {!detailSymbol && !["correlation","montecarlo","rebalance","calendar","historic"].includes(activeTab) && (
             <PeriodToolbar period={period} onPeriod={setPeriod} viewMode={viewMode} onViewMode={setViewMode} activeTab={activeTab} portfolioCount={activePortfolios.length} subView={barSubView} onSubView={setBarSubView} ansicht={ansicht} onAnsicht={setAnsicht}
               extraRight={activeTab === "performance" ? (
                 <div style={{ position:"relative" }} ref={vergleichRef}>
@@ -9456,7 +9511,7 @@ export default function App() {
           )}
 
           {/* Summary bar */}
-          {allNodes.length > 0 && !["correlation","montecarlo","rebalance","calendar","historic"].includes(activeTab) && (
+          {!detailSymbol && allNodes.length > 0 && !["correlation","montecarlo","rebalance","calendar","historic"].includes(activeTab) && (
             <SummaryBar
               nodes={allNodes}
               totalValueUSD={totalValueUSD} totalCostUSD={totalCostUSD}
@@ -9478,13 +9533,30 @@ export default function App() {
           {/* API status bar — inline in flow, right-aligned in the period toolbar row */}
           {/* CONTENT AREA */}
           <div style={{ flex:1, overflow:"hidden", minHeight:0 }}>
+            {detailSymbol && (
+              <InstrumentDetail
+                symbol={detailSymbol} user={user} quote={quotes[detailSymbol]}
+                positions={activePortfolioIds.flatMap(pid => treeNodesByPortfolio[pid] ?? []).filter(n => n.symbol === detailSymbol)}
+                transactions={activePortfolioIds.flatMap(pid => (allTransactions[pid] ?? [])
+                  .filter(tx => tx.symbol === detailSymbol).map(tx => ({ ...tx, portfolioId:pid })))}
+                portfolios={activePortfolios} currency={currency} rates={rates}
+                perfColor={getPerfColor}
+                renderTreemap={sym => (
+                  <TreeMapView nodes={aggregatedNodes} highlight={sym}
+                    onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                    onCellClick={c => openDetail(c.symbol)}
+                    currency={currency} rates={rates} colorMode={colorMode}/>
+                )}
+                onClose={() => setDetailSymbol(null)}/>
+            )}
+            {!detailSymbol && (<>
 
             {activeTab === "holdings" && viewMode === "consolidated" && (
               <div style={{ height:"100%", overflowY:"auto" }}>
                 <ConsolidatedTreeMap
                   portfolioNodes={treeNodesByPortfolio}
                   portfolios={activePortfolios}
-                  onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                  onCellHover={handleCellHover} onCellLeave={handleCellLeave} onCellClick={c => openDetail(c.symbol)}
                   currency={currency} rates={rates} colorMode={colorMode}/>
               </div>
             )}
@@ -9492,7 +9564,7 @@ export default function App() {
               <div style={{ height:"100%", overflowY:"auto" }}>
                 <TreeMapView
                   nodes={aggregatedNodes}
-                  onCellHover={handleCellHover} onCellLeave={handleCellLeave}
+                  onCellHover={handleCellHover} onCellLeave={handleCellLeave} onCellClick={c => openDetail(c.symbol)}
                   currency={currency} rates={rates} colorMode={colorMode}/>
               </div>
             )}
@@ -9503,7 +9575,7 @@ export default function App() {
                   currency={currency} rates={rates}
                   colorMode={colorMode} period={period}
                   subView={barSubView}
-                  onCellHover={handleCellHover} onCellLeave={handleCellLeave}/>
+                  onCellHover={handleCellHover} onCellLeave={handleCellLeave} onCellClick={c => openDetail(c.symbol)}/>
               </div>
             )}
             {activeTab === "chart" && viewMode === "split" && (
@@ -9514,7 +9586,7 @@ export default function App() {
                   currency={currency} rates={rates}
                   colorMode={colorMode} period={period}
                   subView={barSubView}
-                  onCellHover={handleCellHover} onCellLeave={handleCellLeave}/>
+                  onCellHover={handleCellHover} onCellLeave={handleCellLeave} onCellClick={c => openDetail(c.symbol)}/>
               </div>
             )}
             {activeTab === "performance" && (
@@ -9559,6 +9631,7 @@ export default function App() {
                   rates={rates} quotes={quotes}
                   onDelete={handleDeleteTx}
                   onRefreshSymbol={sym => fetchQuotes([sym], true)}
+                  onOpenSymbol={openDetail}
                   onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}
                   period={period} divCache={portfolioDivCache}
                   currency={currency}/>
@@ -9572,6 +9645,7 @@ export default function App() {
                   rates={rates} quotes={quotes}
                   onDelete={handleDeleteTx}
                   onRefreshSymbol={sym => fetchQuotes([sym], true)}
+                  onOpenSymbol={openDetail}
                   onEdit={(pid, tx) => setEditTx({ portfolioId:pid, tx })}
                   period={period} divCache={portfolioDivCache}
                   currency={currency}/>
@@ -9623,6 +9697,7 @@ export default function App() {
                 <HistoricCoursesView currency={currency} rates={rates}/>
               </div>
             )}
+            </>)}
           </div>
 
           {/* Footer */}
