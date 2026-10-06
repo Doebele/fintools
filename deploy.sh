@@ -39,7 +39,7 @@ fi
 echo "  origin/$BRANCH = $(git log -1 --format='%h %s' "origin/$BRANCH")"
 
 # ── 2. Remote: one ssh session does the rest
-echo "▸ Connecting to $SSH_USER@$SSH_HOST…"
+echo "▸ Connecting to $SSH_USER@${SSH_HOST}…"
 ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
   "REMOTE_DIR=$(printf %q "$REMOTE_DIR") BRANCH=$(printf %q "$BRANCH") DRY_RUN=$DRY_RUN bash -s" <<'REMOTE'
 set -euo pipefail
@@ -104,7 +104,7 @@ REMOTE
 
 # ── 3. Check from the outside
 if [ "$DRY_RUN" = 0 ] && [ -n "${PUBLIC_URL:-}" ]; then
-  echo "▸ Checking $PUBLIC_URL…"
+  echo "▸ Checking ${PUBLIC_URL}…"
   code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "$PUBLIC_URL/api/health" || true)
   if [ "$code" = 200 ]; then echo "✓ $PUBLIC_URL is up. Hard-reload the browser (Cmd+Shift+R)."
   else echo "✗ $PUBLIC_URL/api/health returned $code"; exit 1; fi
