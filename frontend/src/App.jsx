@@ -8309,7 +8309,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
               </div>
             </div>
           ) : activeTab==="holdings" ? (
-            <div style={{ padding:16, height:"100%", overflow:"hidden" }}>
+            <div style={{ height:"100%", overflow:"hidden" }}>
               {holdingsError ? (
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
                   height:"100%", flexDirection:"column", gap:12 }}>
@@ -9480,7 +9480,7 @@ export default function App() {
           <div style={{ flex:1, overflow:"hidden", minHeight:0 }}>
 
             {activeTab === "holdings" && viewMode === "consolidated" && (
-              <div style={{ padding:16, height:"100%", overflowY:"auto" }}>
+              <div style={{ height:"100%", overflowY:"auto" }}>
                 <ConsolidatedTreeMap
                   portfolioNodes={treeNodesByPortfolio}
                   portfolios={activePortfolios}
@@ -9489,7 +9489,7 @@ export default function App() {
               </div>
             )}
             {activeTab === "holdings" && viewMode === "aggregated" && (
-              <div style={{ padding:16, height:"100%", overflowY:"auto" }}>
+              <div style={{ height:"100%", overflowY:"auto" }}>
                 <TreeMapView
                   nodes={aggregatedNodes}
                   onCellHover={handleCellHover} onCellLeave={handleCellLeave}
