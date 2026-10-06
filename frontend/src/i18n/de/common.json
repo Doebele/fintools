@@ -308,5 +308,20 @@
     "created": "angelegt {{date}}",
     "lastUsed": "zuletzt {{date}}",
     "unsupported": "Dieser Browser unterstützt hier keine Passkeys (nötig: HTTPS und ein aktueller Browser)."
+  },
+  "empty": {
+    "noPositions": "Keine Positionen",
+    "addTxHint": "Füge Transaktionen hinzu, um dein Portfolio aufzubauen",
+    "noPositionsSelected": "Keine Positionen in den ausgewählten Portfolios",
+    "noTransactions": "Keine Transaktionen",
+    "noTransactionsSelected": "Keine Transaktionen in den ausgewählten Portfolios.",
+    "noSplits": "Keine Aktiensplits in diesem Zeitraum.",
+    "noCorrelation": "Keine Positionen zum Korrelieren.",
+    "noTarget": "Kein Ziel gesetzt",
+    "onTarget": "Im Ziel",
+    "noDivYear": "Keine Dividenden in {{year}}",
+    "noDivPeriod": "Keine Dividenden für {{period}}.",
+    "thisYear": "dieses Jahr",
+    "divAutoLoad": "Dividendendaten werden für jede Position automatisch geladen."
   }
 }

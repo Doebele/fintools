@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { PieChart, ArrowLeftRight, Info } from "./icons.jsx";
 import * as d3 from "d3";
+import { useTranslation } from "react-i18next";
 
 // Persistent UI settings store (survives ETF switches within session)
 const _divCalSettings = { chartView: "calendar", fictValue: 10000, viewYear: new Date().getFullYear() };
@@ -204,6 +205,7 @@ function smartCashAllocation(actions, cashAddUSD) {
 }
 
 export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
+  const { t: tl } = useTranslation();
   const [histData, setHistData]   = useState({});
   const [loading,  setLoading]    = useState(false);
   const [range,    setRange]      = useState("2y");
@@ -276,7 +278,7 @@ export function CorrelationMatrix({ allNodes, quotes, currency, rates }) {
 
   if (!symbols.length) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", color:C.text3 }}>
-      No positions to correlate.
+      {tl("empty.noCorrelation")}
     </div>
   );
 
@@ -1263,6 +1265,7 @@ function DriftBar({ curPct, tgtPct, threshold, aColor }) {
 }
 
 export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }) {
+  const { t: tl } = useTranslation();
   const rate = rates[currency] ?? 1;
   const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
   // fmtSym: format value with correct currency symbol (rate already applied at call site)
@@ -2208,9 +2211,9 @@ export function RebalancingAssistant({ allNodes, quotes, rates, currency, user }
                         )}
                       </>
                     ) : a && a.tgtPct > 0 ? (
-                      <span style={{ fontSize:10, color:C.green }}>✓ On target</span>
+                      <span style={{ fontSize:10, color:C.green }}>✓ {tl("empty.onTarget")}</span>
                     ) : (
-                      <span style={{ fontSize:9, color:C.text3 }}>No target set</span>
+                      <span style={{ fontSize:9, color:C.text3 }}>{tl("empty.noTarget")}</span>
                     )}
                   </div>
                 </div>
@@ -2438,6 +2441,7 @@ function DivBarChart({ monthly, currency, cSym, rate, symColors, year, onSymbolH
 }
 
 export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, currency, rates, onRefreshDivs, onCellHover, onCellLeave }) {
+  const { t: tl } = useTranslation();
   const rate = rates[currency] ?? 1;
   const cSym = { USD:"$", EUR:"€", CHF:"Fr.", GBP:"£" }[currency] ?? "$";
   const now  = new Date();
@@ -2672,8 +2676,8 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
               justifyContent:"center", height:"100%", gap:8, color:C.text3 }}>
               <span style={{ fontSize:32, opacity:0.5 }}>📊</span>
-              <div style={{ fontSize:13, color:C.text2, fontWeight:600 }}>No dividend events in {viewYear}</div>
-              <div style={{ fontSize:11 }}>Dividend data loads automatically for each position.</div>
+              <div style={{ fontSize:13, color:C.text2, fontWeight:600 }}>{tl("empty.noDivYear", { year: viewYear })}</div>
+              <div style={{ fontSize:11 }}>{tl("empty.divAutoLoad")}</div>
               {onRefreshDivs && (
                 <button onClick={onRefreshDivs} style={{
                   marginTop:8, padding:"6px 14px", borderRadius:2, border:`1px solid ${C.border}`,
@@ -2773,8 +2777,8 @@ export function DividendCalendar({ allNodes, divCache, etfHoldings, isEtfMode, c
             {selEvents.length === 0 ? (
               <div style={{ padding:"20px 14px", textAlign:"center", color:C.text3, fontSize:11,
                 lineHeight:1.6 }}>
-                No dividend events for {selected !== null ? MONTH_NAMES[selected] : "this year"}.
-                <br/>Dividend data loads per position automatically.
+                {tl("empty.noDivPeriod", { period: selected !== null ? MONTH_NAMES[selected] : tl("empty.thisYear") })}
+                <br/>{tl("empty.divAutoLoad")}
                 {onRefreshDivs && (
                   <div style={{ marginTop:10 }}>
                     <button onClick={onRefreshDivs} style={{

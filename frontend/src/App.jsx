@@ -2272,6 +2272,7 @@ function Rail({
 // TREEMAP COMPONENTS  (single portfolio view)
 // ════════════════════════════════════════════════════════════════════════════
 function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMode }) {
+  const { t } = useTranslation();
   const ref = useRef(null);
   const { w, h } = useSize(ref);
   const [cells, setCells] = useState([]);
@@ -2298,8 +2299,8 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
       {!nodes.length && (
         <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
           alignItems:"center", justifyContent:"center", gap:12 }}>
-          <div style={{ fontSize:22, fontWeight:200, textTransform:"lowercase", color:THEME.text2 }}>No positions</div>
-          <div style={{ fontSize:12, color:THEME.text3 }}>Add transactions to build your portfolio</div>
+          <div style={{ fontSize:22, fontWeight:200, textTransform:"lowercase", color:THEME.text2 }}>{t("empty.noPositions")}</div>
+          <div style={{ fontSize:12, color:THEME.text3 }}>{t("empty.addTxHint")}</div>
         </div>
       )}
     </div>
@@ -2369,6 +2370,7 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
 // CONSOLIDATED TREEMAP  — groups by portfolio (like S&P 500 sectors)
 // ════════════════════════════════════════════════════════════════════════════
 function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLeave, currency, rates, colorMode }) {
+  const { t } = useTranslation();
   const ref = useRef(null);
   const { w, h } = useSize(ref);
   const [groups, setGroups] = useState([]);
@@ -2460,7 +2462,7 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
       {!groups.length && (
         <div style={{ position:"absolute", inset:0, display:"flex",
           alignItems:"center", justifyContent:"center", color:THEME.text3, fontSize:13 }}>
-          No positions in selected portfolios
+          {t("empty.noPositionsSelected")}
         </div>
       )}
     </div>
@@ -2471,6 +2473,7 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
 // BAR CHART VIEW  (ported from v2, now multi-portfolio aware)
 // ════════════════════════════════════════════════════════════════════════════
 function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, onCellLeave, subView="perf" }) {
+  const { t } = useTranslation();
   const ref   = useRef(null);
   const { w, h } = useSize(ref);
   const cSym  = CCY_SYM[currency] ?? "$";
@@ -2569,7 +2572,7 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
 
   if (!valid.length) return (
     <div ref={ref} style={{width:"100%",height:"100%",display:"flex",alignItems:"center",
-      justifyContent:"center",color:THEME.text3}}>No positions</div>
+      justifyContent:"center",color:THEME.text3}}>{t("empty.noPositions")}</div>
   );
 
   const renderOrder = subView==="size" ? sortedSize : sortedPerf;
@@ -2646,13 +2649,14 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
 // SPLIT BAR CHART  — one BarChartView per portfolio stacked vertically
 // ════════════════════════════════════════════════════════════════════════════
 function SplitBarChartView({ portfolios, treeNodesByPortfolio, currency, rates, colorMode, period, onCellHover, onCellLeave, subView="perf" }) {
+  const { t } = useTranslation();
   const entries = portfolios
     .map(p => ({ portfolio: p, nodes: treeNodesByPortfolio[p.id] ?? [] }))
     .filter(e => e.nodes.length > 0);
 
   if (!entries.length) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
-      height:"100%", color:THEME.text3, fontSize:13 }}>No positions</div>
+      height:"100%", color:THEME.text3, fontSize:13 }}>{t("empty.noPositions")}</div>
   );
 
   // ── Dividend prefetch — uses globalDivCache (shared, sessionStorage-backed) ──
@@ -2931,10 +2935,11 @@ const TX_COLS_DEFAULT = [
 // SPLIT TRANSACTION VIEW  — one table per portfolio, stacked
 // ════════════════════════════════════════════════════════════════════════════
 function SplitTransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, period="Intraday", divCache={}, currency="USD" }) {
+  const { t } = useTranslation();
   const active = portfolios.filter(p => (allTransactions[p.id]?.length ?? 0) > 0);
   if (!active.length) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
-      height:"100%", color:THEME.text3, fontSize:13 }}>No transactions</div>
+      height:"100%", color:THEME.text3, fontSize:13 }}>{t("empty.noTransactions")}</div>
   );
   // ── Dividend prefetch — uses globalDivCache (shared, sessionStorage-backed) ──
   useEffect(() => {
@@ -4584,6 +4589,7 @@ function SavingsPlansSection({ plans, portfolios, rates, onEdit, onDelete }) {
 }
 
 function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete, onEdit, onRefreshSymbol, compact=false, period="Intraday", divCache={}, currency="USD" }) {
+  const { t } = useTranslation();
   const [sortKey,    setSortKey]    = useState("date");
   const [sortDir,    setSortDir]    = useState("desc");
   const [colWidths,  setColWidths]  = useState(() => Object.fromEntries(TX_COLS_DEFAULT.map(c=>[c.key,c.width])));
@@ -4851,7 +4857,7 @@ function TransactionList({ portfolios, allTransactions, rates, quotes, onDelete,
 
   if (!allTxFlat.length) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:200, color:THEME.text3, fontSize:13 }}>
-      No transactions in the selected portfolios.
+      {t("empty.noTransactionsSelected")}
     </div>
   );
 
@@ -8405,6 +8411,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
 // HISTORIC COURSES VIEW
 // ════════════════════════════════════════════════════════════════════════════
 function HistoricCoursesView({ currency: defaultCurrency }) {
+  const { t } = useTranslation();
   const [symbol,      setSymbol]      = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [currency,    setCurrency]    = useState(defaultCurrency || "USD");
@@ -8605,7 +8612,7 @@ function HistoricCoursesView({ currency: defaultCurrency }) {
             Stock Splits Since {result.date}
           </div>
           {result.splits.length === 0
-            ? <div style={{ fontSize:13, color:THEME.text3 }}>No stock splits in this period.</div>
+            ? <div style={{ fontSize:13, color:THEME.text3 }}>{t("empty.noSplits")}</div>
             : (
               <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                 {result.splits.map((s, i) => (

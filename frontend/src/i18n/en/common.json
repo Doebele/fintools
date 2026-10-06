@@ -308,5 +308,20 @@
     "created": "added {{date}}",
     "lastUsed": "last used {{date}}",
     "unsupported": "This browser can't use passkeys here (needs HTTPS and a current browser)."
+  },
+  "empty": {
+    "noPositions": "No positions",
+    "addTxHint": "Add transactions to build your portfolio",
+    "noPositionsSelected": "No positions in the selected portfolios",
+    "noTransactions": "No transactions",
+    "noTransactionsSelected": "No transactions in the selected portfolios.",
+    "noSplits": "No stock splits in this period.",
+    "noCorrelation": "No positions to correlate.",
+    "noTarget": "No target set",
+    "onTarget": "On target",
+    "noDivYear": "No dividend events in {{year}}",
+    "noDivPeriod": "No dividend events for {{period}}.",
+    "thisYear": "this year",
+    "divAutoLoad": "Dividend data loads automatically for each position."
   }
 }
