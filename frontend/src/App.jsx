@@ -210,6 +210,9 @@ function useGlobalStyles() {
       .btn.primary { background: var(--fg-1); border-color: var(--fg-1); color: var(--surface); }
       .btn.primary:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
       .btn.danger { color: var(--red); }
+      .btn:disabled { opacity: .4; cursor: not-allowed; }
+      .btn:disabled:hover { background: transparent; }
+      .btn.primary:disabled:hover { background: var(--fg-1); border-color: var(--fg-1); color: var(--surface); }
       .btn-row { display: flex; }
       .btn-row > .btn + .btn { margin-left: -1px; }
       /* Hinweis neben der eingeklappten Rail (SidebarTip, RailBtn) */
@@ -641,7 +644,7 @@ const PERF_COLORS = [
   { t: -5.0, c: [140,   8,   8] },
 ];
 function getPerfColor(perf) {
-  if (perf == null) return "rgba(40,42,54,0.95)";
+  if (perf == null) return "#3a3833";
   const sorted = [...PERF_COLORS].sort((a,b) => b.t - a.t);
   for (let i = 0; i < sorted.length - 1; i++) {
     const hi = sorted[i], lo = sorted[i+1];
@@ -867,7 +870,8 @@ function LoginScreen({ onLogin, onEtfMode }) {
 
   const onEnter = e => e.key === "Enter" && handle();
   const linkBtn = { background:"none", border:"none", color:THEME.accent, cursor:"pointer",
-                    fontSize:12, fontFamily:"inherit", fontWeight:600, padding:0 };
+                    fontSize:12, fontFamily:"inherit", fontWeight:500, padding:0 };
+  const blockBtn = { width:"100%", marginTop:8, padding:"10px 0", fontSize:13 };
   const pinField = (value, setValue, label, placeholder) => (
     <div>
       <FLabel>{label}</FLabel>
@@ -893,16 +897,15 @@ function LoginScreen({ onLogin, onEtfMode }) {
       background:THEME.bg, fontFamily:THEME.font,
     }}>
       <div style={{
-        width:380, padding:40, borderRadius:20,
+        width:380, padding:40,
         background:THEME.surface, border:`1px solid ${THEME.border}`,
-        boxShadow:"0 32px 80px rgba(0,0,0,0.6)",
       }}>
-        {/* Brand */}
-        <div style={{ textAlign:"center", marginBottom:32 }}>
-          <div style={{ fontFamily:THEME.serif, fontSize:28, fontWeight:400, letterSpacing:"-0.02em" }}>
-            Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+        {/* Brand: same wordmark as the rail, mode title thin and lowercase */}
+        <div style={{ marginBottom:32 }}>
+          <div style={{ fontSize:14, letterSpacing:"0.16em", lineHeight:1.2, color:THEME.text1 }}>
+            <span style={{ fontWeight:700 }}>PORTFOLIO</span><span style={{ fontWeight:100 }}>-PAL</span>
           </div>
-          <div style={{ fontSize:11, color:THEME.text3, marginTop:4, letterSpacing:"0.06em", textTransform:"uppercase" }}>
+          <div style={{ fontSize:22, fontWeight:200, textTransform:"lowercase", color:THEME.text1, marginTop:20 }}>
             {t(`auth.title_${mode}`)}
           </div>
         </div>
@@ -961,8 +964,8 @@ function LoginScreen({ onLogin, onEtfMode }) {
           </div>
         )}
         {info && (
-          <div style={{ marginTop:12, padding:"8px 10px", borderRadius:8, fontSize:12, lineHeight:1.5,
-            background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.3)", color:THEME.green }}>
+          <div style={{ marginTop:12, padding:"8px 10px", fontSize:12, lineHeight:1.5,
+            borderLeft:`2px solid ${THEME.green}`, background:"var(--green-tint)", color:THEME.text1 }}>
             {info}
           </div>
         )}
@@ -972,21 +975,20 @@ function LoginScreen({ onLogin, onEtfMode }) {
           <div onClick={() => setDisclaimerOk(v => !v)}
             style={{
               marginTop:16, display:"flex", alignItems:"flex-start", gap:10,
-              padding:"10px 12px", borderRadius:10, cursor:"pointer",
-              background: disclaimerOk ? "rgba(74,222,128,0.07)" : "rgba(255,255,255,0.03)",
-              border:`1px solid ${disclaimerOk ? "rgba(74,222,128,0.3)" : THEME.border}`,
-              transition:"background 0.3s ease, border-color 0.3s ease",
+              padding:"10px 12px", cursor:"pointer",
+              border:`1px solid ${disclaimerOk ? THEME.text1 : THEME.border}`,
+              transition:"border-color 0.2s ease",
             }}>
             <div style={{
-              flexShrink:0, width:16, height:16, borderRadius:4, marginTop:1,
-              border:`2px solid ${disclaimerOk ? THEME.green : "rgba(255,255,255,0.25)"}`,
-              background: disclaimerOk ? THEME.green : "transparent",
+              flexShrink:0, width:14, height:14, borderRadius:2, marginTop:1,
+              border:`1px solid ${disclaimerOk ? THEME.text1 : THEME.text3}`,
+              background: disclaimerOk ? THEME.text1 : "transparent",
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"all 0.2s ease",
             }}>
               {disclaimerOk && (
                 <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                  <path d="M1 3.5L3.5 6L8 1" stroke="#0d0e12" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M1 3.5L3.5 6L8 1" stroke="var(--surface)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
             </div>
@@ -997,22 +999,11 @@ function LoginScreen({ onLogin, onEtfMode }) {
         )}
 
         {linkInvalid ? (
-          <button onClick={() => switchMode("forgot")}
-            style={{ width:"100%", marginTop:16, padding:"13px 0", borderRadius:12, border:"none",
-              background:THEME.accent, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          <button className="btn primary" onClick={() => switchMode("forgot")} style={{ ...blockBtn, marginTop:16 }}>
             {t("auth.requestNewLink")}
           </button>
         ) : !(mode === "forgot" && sent) && (
-          <button onClick={handle} disabled={!canSubmit}
-            style={{
-              width:"100%", marginTop:16, padding:"13px 0", borderRadius:12,
-              border:"none", background:THEME.accent, color:"#fff",
-              fontSize:13, fontWeight:700, cursor:canSubmit ? "pointer" : "not-allowed",
-              fontFamily:"inherit",
-              opacity: canSubmit ? 1 : 0.4,
-              boxShadow: canSubmit ? "0 4px 20px rgba(59,130,246,0.35)" : "none",
-              transition:"opacity 0.3s ease, box-shadow 0.3s ease",
-            }}>
+          <button className="btn primary" onClick={handle} disabled={!canSubmit} style={{ ...blockBtn, marginTop:16 }}>
             {busy ? <span className="spin">⟳</span> : t(`auth.submit_${mode}`)}
           </button>
         )}
@@ -1021,32 +1012,17 @@ function LoginScreen({ onLogin, onEtfMode }) {
         {(mode === "login" || mode === "register") && (<>
           <div style={{ margin:"20px 0 4px", display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ flex:1, height:1, background:THEME.border2 }}/>
-            <span style={{ fontSize:10, color:THEME.text3, whiteSpace:"nowrap",
-              textTransform:"uppercase", letterSpacing:"0.08em" }}>{t("auth.or")}</span>
+            <span className="label" style={{ whiteSpace:"nowrap" }}>{t("auth.or")}</span>
             <div style={{ flex:1, height:1, background:THEME.border2 }}/>
           </div>
           {mode === "login" && passkeysSupported() && (
-            <button onClick={passkeyLogin} disabled={busy}
-              style={{
-                width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
-                border:`1px solid ${THEME.border}`, background:THEME.surface2, color:THEME.text1,
-                fontSize:13, fontWeight:600, cursor: busy ? "wait" : "pointer", fontFamily:"inherit",
-                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-              }}>
+            <button className="btn" onClick={passkeyLogin} disabled={busy} style={blockBtn}>
               <KeyRound size={15}/> {t("auth.passkeyLogin")}
             </button>
           )}
-          <button onClick={onEtfMode}
-            style={{
-              width:"100%", marginTop:8, padding:"12px 0", borderRadius:12,
-              border:`1px dashed rgba(59,130,246,0.45)`,
-              background:"rgba(59,130,246,0.07)", color:THEME.accent,
-              fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
-              transition:"all 0.15s",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-            }}>
-            <span style={{ fontSize:16 }}>📊</span>
-            ETF Screener <span style={{ fontSize:10, opacity:0.7 }}>— {t("auth.noLogin")}</span>
+          <button className="btn" onClick={onEtfMode} style={blockBtn}>
+            <Layers size={15}/>
+            ETF Screener <span style={{ fontSize:11, color:THEME.text3 }}>— {t("auth.noLogin")}</span>
           </button>
         </>)}
 
@@ -2331,13 +2307,13 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
     const root = d3.hierarchy({ name:"root", children:valid })
       .sum(d => Math.max(1, d.valueUSD ?? 0))
       .sort((a,b) => b.value - a.value);
-    d3.treemap().size([w,h]).paddingInner(2).paddingOuter(3).round(true)(root);
+    d3.treemap().size([w,h]).paddingInner(1).round(true)(root);
     setCells(root.leaves().map(l => ({ ...l.data, x:l.x0, y:l.y0, cw:l.x1-l.x0, ch:l.y1-l.y0 })));
   }, [nodes, w, h]);
 
   return (
     <div ref={ref} style={{ width:"100%", height:"100%", background:THEME.bg,
-      borderRadius:12, position:"relative", overflow:"hidden" }}>
+      position:"relative", overflow:"hidden" }}>
       {cells.map(cell => (
         <TreeMapCell key={cell.symbol+cell.portfolioId} cell={cell}
           currency={currency} rates={rates} colorMode={colorMode}
@@ -2347,8 +2323,7 @@ function TreeMapView({ nodes, onCellHover, onCellLeave, currency, rates, colorMo
       {!nodes.length && (
         <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
           alignItems:"center", justifyContent:"center", gap:12 }}>
-          <div style={{ fontSize:48, opacity:0.15 }}>⬛</div>
-          <div style={{ fontSize:15, fontWeight:700, color:THEME.text3, letterSpacing:"0.05em" }}>NO POSITIONS</div>
+          <div style={{ fontSize:22, fontWeight:200, textTransform:"lowercase", color:THEME.text2 }}>No positions</div>
           <div style={{ fontSize:12, color:THEME.text3 }}>Add transactions to build your portfolio</div>
         </div>
       )}
@@ -2373,14 +2348,13 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
     <div onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
       style={{
         position:"absolute", left:cell.x, top:cell.y, width:cw, height:ch,
-        background:bg, borderRadius:5,
-        border:"1px solid rgba(0,0,0,0.3)", outline:"1px solid rgba(255,255,255,0.04)",
+        background:bg,
         overflow:"hidden", cursor:"pointer", display:"flex", flexDirection:"column",
         justifyContent:"flex-end", padding: small > 60 ? "8px 10px" : "4px 6px",
         transition:"filter 0.1s",
       }}>
       {small > 28 && (
-        <div style={{ fontFamily:THEME.mono, fontWeight:700, lineHeight:1.05,
+        <div style={{ fontFamily:THEME.mono, fontWeight:600, lineHeight:1.05,
           fontSize: Math.min(Math.max(10, small*0.22), 28),
           color:"rgba(255,255,255,0.95)" }}>{symbol}</div>
       )}
@@ -2390,14 +2364,14 @@ function TreeMapCell({ cell, currency, rates, colorMode, onMouseEnter, onMouseLe
           whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{shortName}</div>
       )}
       {small > 55 && (
-        <div style={{ fontFamily:THEME.mono, fontWeight:700,
+        <div style={{ fontFamily:THEME.mono, fontWeight:500,
           fontSize: Math.max(9, Math.min(11, small*0.12)),
           color:"rgba(255,255,255,0.88)", marginTop:3 }}>
           {cSym}{price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
         </div>
       )}
       {small > 55 && changePct != null && (
-        <div style={{ fontFamily:THEME.mono, fontWeight:600,
+        <div style={{ fontFamily:THEME.mono, fontWeight:500,
           fontSize: Math.max(9, Math.min(11, small*0.11)),
           color: changePct >= 0 ? "rgba(144,255,180,0.9)" : "rgba(255,140,140,0.9)", marginTop:1 }}>
           {fmtPct(changePct)}
@@ -2425,8 +2399,8 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
   const [groups, setGroups] = useState([]);
 
   const LABEL_H = 20;
-  const PAD_OUTER = 4;
-  const PAD_INNER = 2;
+  const PAD_OUTER = 1;
+  const PAD_INNER = 1;
 
   useEffect(() => {
     if (w < 20 || h < 20) return;
@@ -2477,15 +2451,13 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
 
   return (
     <div ref={ref} style={{ width:"100%", height:"100%", background:THEME.bg,
-      borderRadius:12, position:"relative", overflow:"hidden" }}>
+      position:"relative", overflow:"hidden" }}>
       {groups.map(group => (
         <div key={group.portfolioId} style={{
           position:"absolute",
           left: group.x, top: group.y,
           width: group.gw, height: group.gh,
-          borderRadius:6,
-          border:`1px solid ${group.color}55`,
-          background:`${group.color}09`,
+          borderTop:`2px solid ${group.color}`,
           overflow:"hidden",
         }}>
           {/* Portfolio label */}
@@ -2493,13 +2465,11 @@ function ConsolidatedTreeMap({ portfolioNodes, portfolios, onCellHover, onCellLe
             position:"absolute", top:3, left:6, zIndex:10,
             height: LABEL_H - 4,
             display:"flex", alignItems:"center",
-            fontSize:9, fontWeight:700, color:group.color,
-            textTransform:"uppercase", letterSpacing:"0.09em",
+            fontSize:9, fontWeight:600, color:THEME.text2,
+            textTransform:"uppercase", letterSpacing:"0.14em",
             whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
             maxWidth: group.gw - 12,
-            textShadow:"0 1px 4px rgba(0,0,0,0.9)",
           }}>
-            <span style={{ marginRight:5, fontSize:8, opacity:0.7 }}>■</span>
             {group.name}
           </div>
 
@@ -2775,7 +2745,6 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const glPerf = data.glPerf;
   const isPos = (perf ?? 0) >= 0;
   const perfColor = isPos ? THEME.green : THEME.red;
-  const bg    = getPerfColor(perf);
 
   // Smart tooltip positioning — constrain to viewport
   // In Comfort Mode the body has CSS zoom:1.18, which shrinks the effective
@@ -2821,7 +2790,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
     const pts = chartPoints.map(p => `${scaleX(p.t).toFixed(1)},${scaleY(p.v).toFixed(1)}`).join(" ");
     const lastX = scaleX(xs[xs.length-1]);
     const lastY = scaleY(ys[ys.length-1]);
-    const lineColor = isPos ? "#4ade80" : "#f87171";
+    const lineColor = isPos ? "var(--green)" : "var(--red)";
     return { pts, lastX, lastY, lineColor, W, H };
   }, [chartPoints, isPos]);
 
@@ -2831,32 +2800,29 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
   const gainLoss = (data.gainLossUSD ?? 0) * rate;
 
   return (
-    <div style={{
+    <div className="overlay-card" style={{
       position:"fixed", left, top, width:TW, zIndex:500,
-      background:THEME.surface, borderRadius:16,
-      border:`1px solid ${THEME.border}`,
-      boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
       maxHeight:`calc(${viewH - MARGIN * 2}px)`, overflowY:"auto", overflowX:"hidden",
       pointerEvents:"none",
     }}>
-      <div style={{ background:bg, padding:"10px 14px 12px" }}>
+      <div style={{ padding:"12px 14px", borderBottom:`1px solid ${THEME.border2}` }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
           <div>
-            <div style={{ fontFamily:THEME.mono, fontSize:20, fontWeight:700, color:"#fff" }}>{data.symbol}</div>
+            <div style={{ fontFamily:THEME.mono, fontSize:20, fontWeight:500, color:THEME.text1 }}>{data.symbol}</div>
             {(data.longName || data.name) && (
-              <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginTop:2, maxWidth:190,
+              <div style={{ fontSize:11, color:THEME.text2, marginTop:2, maxWidth:190,
                 whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                 {data.longName || data.name}
               </div>
             )}
             {data.isin && (
-              <div style={{ fontSize:9, color:"rgba(255,255,255,0.38)", marginTop:2,
+              <div style={{ fontSize:9, color:THEME.text3, marginTop:2,
                 fontFamily:"var(--font-mono)", letterSpacing:"0.04em" }}>
                 {data.isin}
               </div>
             )}
           </div>
-          <div style={{ fontSize:15, fontWeight:700, color:perfColor }}>{fmtPct(perf)}</div>
+          <div className="num" style={{ fontSize:15, color:perfColor }}>{fmtPct(perf)}</div>
         </div>
       </div>
 
@@ -2898,18 +2864,18 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
               ["Portfolio Weight", data.weight ? `${data.weight.toFixed(1)}%` : "—"],
               ...(data.trailingPE != null || data.forwardPE != null ? [
                 [null],
-                ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1), THEME.accent]] : []),
-                ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1),  THEME.accent]] : []),
+                ...(data.trailingPE != null ? [["P/E (trailing)", data.trailingPE.toFixed(1)]] : []),
+                ...(data.forwardPE  != null ? [["P/E (forward)",  data.forwardPE.toFixed(1)]] : []),
               ] : []),
             ] : []),
           ]),
           // Dividend data rows (only if available)
           ...(divData && divData.yieldPct != null ? [
             [null],
-            ["Div. Yield",   `${divData.yieldPct.toFixed(2)}%`, "#fbbf24"],
+            ["Div. Yield",   `${divData.yieldPct.toFixed(2)}%`, THEME.yellow],
             ["Annual Rate",  divData.annualRate != null ? `${cSym}${(divData.annualRate * rate).toFixed(3)}` : "—"],
             ["Last Ex-Date", divData.exDate ?? "—"],
-            ...(divData.nextExDate ? [["Est. Next Ex-Date", divData.nextExDate, "#60a5fa"]] : []),
+            ...(divData.nextExDate ? [["Est. Next Ex-Date", divData.nextExDate]] : []),
           ] : divData && divData.annualRate == null ? [] : [
             [null],
             ["Dividends", divData ? "Loading…" : "…"],
@@ -2920,7 +2886,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
             <div key={i} style={{ display:"flex", justifyContent:"space-between",
               alignItems:"baseline", gap:8, padding:"2px 0" }}>
               <span style={{ fontSize:11, color:THEME.text3, flexShrink:0 }}>{row[0]}</span>
-              <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:600,
+              <span style={{ fontFamily:THEME.mono, fontSize:11, fontWeight:500,
                 color:row[2]||THEME.text1, textAlign:"right", wordBreak:"break-all" }}>{row[1]}</span>
             </div>
           );
@@ -6614,12 +6580,30 @@ function ViewModeToggle({ viewMode, onViewMode, activeTab, portfolioCount=1 }) {
 // ════════════════════════════════════════════════════════════════════════════
 // SUMMARY BAR
 // ════════════════════════════════════════════════════════════════════════════
+// KPI tile: caps label over a mono value; tiles meet with hairlines
+const KpiTile = ({ label, children, color }) => (
+  <div style={{ padding:"12px 22px", borderRight:`1px solid ${THEME.border}` }}>
+    <div className="label" style={{ marginBottom:6, display:"flex", alignItems:"center", gap:2 }}>{label}</div>
+    <div className="num" style={{ fontSize:16, fontWeight:400, color:color ?? THEME.text1 }}>{children}</div>
+  </div>
+);
+const PerfLegend = ({ label }) => (
+  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
+    <div className="label">{label}</div>
+    <div style={{ display:"flex", alignItems:"center", gap:1 }}>
+      <span className="num" style={{ fontSize:9, color:THEME.text3, marginRight:4 }}>−5%</span>
+      {[-5,-2,-0.5,0,0.5,2,5].map(v => <div key={v} style={{ width:14, height:10, background:getPerfColor(v) }}/>)}
+      <span className="num" style={{ fontSize:9, color:THEME.text3, marginLeft:4 }}>+5%</span>
+    </div>
+  </div>
+);
+
 function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period, currency, rates, colorMode, onColorMode }) {
   const { t } = useTranslation();
   const totalNetGain = totalValueUSD - totalCostUSD;
   return (
-    <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
-      background:THEME.surface, display:"flex", alignItems:"center", gap:24, flexShrink:0 }}>
+    <div style={{ padding:"0 16px 0 0", borderBottom:`1px solid ${THEME.border}`,
+      background:THEME.surface, display:"flex", alignItems:"stretch", flexShrink:0 }}>
       {[
         [t("summary.totalValue"), fmtVal(totalValueUSD, currency, rates), null, "Current market value of all positions across all portfolios."],
         [t("summary.totalCost"),  fmtVal(totalCostUSD,  currency, rates), null, "Total cost basis: sum of all purchases at their original prices converted to USD."],
@@ -6628,13 +6612,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
         [`${period==="Intraday"?"1D":period} ${t("summary.return")}`, fmtPct(portfolioPerf),
                           portfolioPerf!=null?(portfolioPerf>=0?THEME.green:THEME.red):THEME.text3, `Weighted price change over the selected period (${period}).`],
       ].map(([lbl,val,color,tip]) => (
-        <div key={lbl}>
-          <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:2, display:"flex", alignItems:"center", gap:2 }}>
-            {tip ? <LabelTip text={tip} width={210}>{lbl}</LabelTip> : lbl}
-          </div>
-          <div className="mono" style={{ fontSize:13, fontWeight:700, color:color??THEME.text1 }}>{val}</div>
-        </div>
+        <KpiTile key={lbl} color={color} label={tip ? <LabelTip text={tip} width={210}>{lbl}</LabelTip> : lbl}>{val}</KpiTile>
       ))}
 
       <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
@@ -6651,20 +6629,7 @@ function SummaryBar({ nodes, totalValueUSD, totalCostUSD, portfolioPerf, period,
               </button>
             ))}
           </div>
-        {/* Legend */}
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
-          <div style={{ fontSize:7, color:THEME.text3, textTransform:"uppercase", letterSpacing:"0.08em" }}>
-            {colorMode==="gainloss"?`${t("summary.gl")} %`:t("summary.mktPct")}
-          </div>
-          <div style={{ display:"flex", alignItems:"center", gap:2 }}>
-            <span style={{ fontSize:7, color:THEME.text3 }}>−5%</span>
-            {[-5,-2,-0.5,0,0.5,2,5].map(v => (
-              <div key={v} style={{ width:14, height:14, borderRadius:3, background:getPerfColor(v),
-                border:"1px solid rgba(255,255,255,0.06)" }}/>
-            ))}
-            <span style={{ fontSize:7, color:THEME.text3 }}>+5%</span>
-          </div>
-        </div>
+        <PerfLegend label={colorMode==="gainloss"?`${t("summary.gl")} %`:t("summary.mktPct")}/>
         </div>{/* end color mode wrapper */}
       </div>
     </div>
@@ -7752,60 +7717,30 @@ function EtfSummaryBar({ etfMeta, nodes, fetchErrors }) {
   const errList = Object.entries(fetchErrors||{}).filter(([,v])=>v).map(([k])=>k).slice(0,3);
 
   return (
-    <div style={{ padding:"10px 22px", borderBottom:`1px solid ${THEME.border2}`,
-      background:THEME.surface, display:"flex", alignItems:"center",
-      gap:24, flexShrink:0, flexWrap:"wrap" }}>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.screener").replace(" Screener","").replace("-Screener","")}</div>
-        <div style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
-          {etfMeta?.name ?? "—"}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.avgPerfWeighted")}</div>
-        <div className="mono" style={{ fontSize:13, fontWeight:700,
-          color: avgPerf==null?THEME.text3:avgPerf>=0?THEME.green:THEME.red }}>
-          {avgPerf!=null ? `${avgPerf>=0?"+":""}${avgPerf.toFixed(2)}%` : "—"}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.gainersLosers")}</div>
-        <div className="mono" style={{ fontSize:13, fontWeight:700 }}>
-          <span style={{ color:THEME.green }}>{gainers}↑</span>
-          <span style={{ color:THEME.text3, margin:"0 4px" }}>/</span>
-          <span style={{ color:THEME.red }}>{losers}↓</span>
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em", marginBottom:2 }}>{t("etf.topHoldings")}</div>
-        <div className="mono" style={{ fontSize:13, fontWeight:700, color:THEME.text1 }}>
-          Top {nodes.length}
-        </div>
-      </div>
+    <div style={{ padding:"0 16px 0 0", borderBottom:`1px solid ${THEME.border}`,
+      background:THEME.surface, display:"flex", alignItems:"stretch",
+      flexShrink:0, flexWrap:"wrap" }}>
+      <KpiTile label={t("etf.screener").replace(" Screener","").replace("-Screener","")}>
+        <span style={{ fontFamily:THEME.font }}>{etfMeta?.name ?? "—"}</span>
+      </KpiTile>
+      <KpiTile label={t("etf.avgPerfWeighted")} color={avgPerf==null?THEME.text3:avgPerf>=0?THEME.green:THEME.red}>
+        {avgPerf!=null ? `${avgPerf>=0?"+":""}${avgPerf.toFixed(2)}%` : "—"}
+      </KpiTile>
+      <KpiTile label={t("etf.gainersLosers")}>
+        <span style={{ color:THEME.green }}>{gainers}↑</span>
+        <span style={{ color:THEME.text3, margin:"0 4px" }}>/</span>
+        <span style={{ color:THEME.red }}>{losers}↓</span>
+      </KpiTile>
+      <KpiTile label={t("etf.topHoldings")}>Top {nodes.length}</KpiTile>
       {errList.length > 0 && (
-        <div style={{ display:"flex", alignItems:"center", gap:5,
-          fontSize:11, color:"#f59e0b" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:5, padding:"0 22px",
+          fontSize:11, color:THEME.yellow }}>
           <AlertCircle size={13}/>
           Failed: {errList.join(", ")}
         </div>
       )}
-      {/* Color legend — right aligned */}
-      <div style={{ marginLeft:"auto", display:"flex", flexDirection:"column",
-        alignItems:"flex-end", gap:3 }}>
-        <div style={{ fontSize:7, color:THEME.text3, textTransform:"uppercase",
-          letterSpacing:"0.08em" }}>Mkt %</div>
-        <div style={{ display:"flex", alignItems:"center", gap:2 }}>
-          <span style={{ fontSize:7, color:THEME.text3 }}>−5%</span>
-          {[-5,-2,-0.5,0,0.5,2,5].map(v => (
-            <div key={v} style={{ width:14, height:14, borderRadius:3,
-              background:getPerfColor(v), border:"1px solid rgba(255,255,255,0.06)" }}/>
-          ))}
-          <span style={{ fontSize:7, color:THEME.text3 }}>+5%</span>
-        </div>
+      <div style={{ marginLeft:"auto", display:"flex", alignItems:"center" }}>
+        <PerfLegend label="Mkt %"/>
       </div>
     </div>
   );
