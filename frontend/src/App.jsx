@@ -101,6 +101,9 @@ function useGlobalStyles() {
         --green-tint: rgba(74,222,128,0.16);
         --red-tint:   rgba(248,113,113,0.16);
         --dot:       #262420;
+        --hover:     #2a2823;
+        --brand:     #ff5b2e;
+        --overlay:   rgba(0,0,0,0.65);
         --font-sans:  'Fira Sans', sans-serif;
         --font-mono:  'Fira Code', monospace;
         --font-serif: 'Instrument Serif', Georgia, serif;
@@ -138,6 +141,9 @@ function useGlobalStyles() {
         --green-tint: rgba(22,163,74,0.10);
         --red-tint:   rgba(220,38,38,0.09);
         --dot:       #e8e5db;
+        --hover:     #efede6;
+        --brand:     #ff5b2e;
+        --overlay:   rgba(11,11,12,0.35);
         --font-sans:  'Fira Sans', sans-serif;
         --font-mono:  'Fira Code', monospace;
         --font-serif: 'Instrument Serif', Georgia, serif;
@@ -184,67 +190,91 @@ function useGlobalStyles() {
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
       input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
+      /* ══ Pal-Designsystem: Bausteine (Figma „Fintools“ › Design System) ══
+         Regeln: kein Radius auf Flächen, Radius 12 + Schatten nur für Overlays,
+         aktiv = --fg-1 (Fläche oder Linie), Blau nur für Auswahl/Links/Fokus. */
+      .label { font-size: 9px; font-weight: 600; letter-spacing: .14em;
+        text-transform: uppercase; color: var(--fg-3); }
+      .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+      .overlay-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-12); box-shadow: var(--shadow-modal); overflow: hidden;
+      }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        padding: 6px 12px; border: 1px solid var(--border); border-radius: 0;
+        background: transparent; color: var(--fg-1); cursor: pointer;
+        font-family: var(--font-sans); font-size: 12px; font-weight: 500;
+      }
+      .btn:hover { background: var(--hover); }
+      .btn.primary { background: var(--fg-1); border-color: var(--fg-1); color: var(--surface); }
+      .btn.primary:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+      .btn.danger { color: var(--red); }
+      .btn-row { display: flex; }
+      .btn-row > .btn + .btn { margin-left: -1px; }
+      /* Hinweis neben der eingeklappten Rail (SidebarTip, RailBtn) */
+      .rail-hint {
+        position: fixed; transform: translateY(-50%); z-index: 9999; pointer-events: none;
+        background: var(--fg-1); color: var(--surface); border-radius: var(--radius-2);
+        padding: 5px 10px; font-size: 12px; font-weight: 500; white-space: nowrap;
+      }
       /* ── Rail nav button ── */
       .rail-btn {
         display: flex; align-items: center; gap: 9px;
-        width: 100%; padding: 5px 10px; border-radius: 6px;
+        width: 100%; padding: 6px 10px; border-radius: 0;
         border: none; background: transparent; color: var(--fg-2);
         font-size: 12.5px; font-weight: 500; cursor: pointer;
         transition: background 0.12s ease, color 0.12s ease;
         text-align: left; font-family: var(--font-sans);
         white-space: nowrap; min-width: 0;
       }
-      .rail-btn:hover { background: var(--accent-08) !important; color: var(--accent) !important; }
-      .rail-btn:hover .rail-icon { color: var(--accent) !important; }
-      .rail-btn.active { background: var(--accent-15) !important; color: var(--accent) !important; font-weight: 600 !important; }
-      .rail-btn.active .rail-icon { color: var(--accent) !important; }
+      .rail-btn:hover { background: var(--surface-2) !important; color: var(--fg-1) !important; }
+      .rail-btn:hover .rail-icon { color: var(--fg-1) !important; }
+      .rail-btn.active { background: var(--surface-2) !important; color: var(--fg-1) !important;
+        box-shadow: inset 2px 0 0 var(--fg-1); }
+      .rail-btn.active .rail-icon { color: var(--fg-1) !important; }
       /* ── Currency button hover ── */
-      .ccy-btn:hover { background: var(--accent-08) !important; }
+      .ccy-btn:hover { background: var(--surface-2) !important; }
       .ccy-btn:hover .ccy-flag { opacity: 1 !important; }
-      .ccy-btn:hover .ccy-label { color: var(--accent) !important; }
-      .ccy-btn:hover .ccy-name  { color: var(--accent) !important; }
+      .ccy-btn:hover .ccy-label { color: var(--fg-1) !important; }
+      .ccy-btn:hover .ccy-name  { color: var(--fg-2) !important; }
       /* Global smooth transitions */
       button { transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease, transform 0.3s ease; }
       .tab-pill { transition: background 0.3s ease, color 0.3s ease, font-weight 0.15s; }
       /* ── Rail footer section ── */
       .rail-footer-section {
         flex-shrink: 0; border-top: 1px solid var(--border);
-        padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 3px;
+        padding: 8px 8px 8px; display: flex; flex-direction: column; gap: 6px;
       }
-      /* ── Density / theme / language segmented rows (App-Pal design system) ── */
-      .rail-density-row, .rail-theme-row {
-        display: flex; gap: 3px; padding: 2px;
-        background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border);
-      }
+      /* ── Segment-Schalter (Dichte, Sprache, Theme, App-Wechsel) ── */
+      .rail-density-row, .rail-theme-row { display: flex; gap: 0; padding: 0; background: transparent; }
       .rail-density-btn {
         flex: 1; display: flex; align-items: center; justify-content: center;
-        gap: 5px; padding: 5px 8px; border-radius: 6px; border: none;
-        background: transparent; color: var(--fg-3); font-size: 11px; font-weight: 600;
-        cursor: pointer; transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+        gap: 5px; padding: 5px 8px; border-radius: 0; border: 1px solid var(--border);
+        background: transparent; color: var(--fg-2); font-size: 11px; font-weight: 500;
+        cursor: pointer; transition: background 0.12s ease, color 0.12s ease;
         font-family: inherit; white-space: nowrap;
       }
-      .rail-density-btn:hover { color: var(--fg-1); }
-      .rail-density-btn.active {
-        background: var(--surface); color: var(--fg-1);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+      .rail-density-btn + .rail-density-btn { margin-left: -1px; }
+      .rail-density-btn:hover { color: var(--fg-1); background: var(--surface-2); }
+      .rail-density-btn.active, .rail-density-btn.active:hover {
+        background: var(--fg-1); border-color: var(--fg-1); color: var(--surface);
       }
       /* ── Navigation tabs (top nav bar + ETF inner nav) ── */
       .app-nav-tab {
         display: flex; align-items: center; gap: 7px;
-        padding: 7px 14px; border: none; cursor: pointer;
-        background: transparent; color: var(--fg-3);
-        border-radius: 9px; font-size: 12px; font-weight: 500;
+        padding: 9px 14px; border: none; cursor: pointer;
+        background: transparent; color: var(--fg-2);
+        border-radius: 0; font-size: 12px; font-weight: 500;
         font-family: inherit;
-        transition: background 0.2s ease, color 0.2s ease, font-weight 0.12s;
+        transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
       }
       .app-nav-tab:hover { background: var(--surface-2); color: var(--fg-1); }
-      .app-nav-tab.active {
-        background: rgba(59,130,246,0.15); color: var(--accent); font-weight: 700;
-      }
+      .app-nav-tab.active { background: transparent; color: var(--fg-1); box-shadow: inset 0 -2px 0 var(--fg-1); }
       /* ── User account row ── */
       .rail-user {
         display: flex; align-items: center; gap: 9px;
-        padding: 6px 8px; border-radius: 8px; cursor: pointer;
+        padding: 6px 8px; border-radius: 0; cursor: pointer;
         border: 1px solid transparent;
         transition: background 0.12s ease, border-color 0.12s ease;
       }
@@ -252,20 +282,21 @@ function useGlobalStyles() {
       .rail-user-collapsed { justify-content: center; padding: 6px 4px; }
       /* ── Avatar ── */
       .avatar {
-        width: 28px; height: 28px; border-radius: 8px;
+        width: 28px; height: 28px; border-radius: var(--radius-2);
         display: flex; align-items: center; justify-content: center;
-        font-weight: 700; font-size: 11px; color: #fff;
-        background: var(--accent); flex-shrink: 0;
+        font-family: var(--font-mono); font-weight: 500; font-size: 11px; color: var(--surface);
+        background: var(--fg-1); flex-shrink: 0;
       }
-      /* ── Rail collapsed tooltip ── */
-      .rail-tip {
-        position: fixed; background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600;
-        color: var(--fg-1); white-space: nowrap; pointer-events: none; z-index: 9999;
-        box-shadow: var(--shadow-card);
-        opacity: 0; transition: opacity 0.12s ease;
+      /* ── Popup-Zeilen (Nutzer-Popup) ── */
+      .menu-row {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        padding: 8px 10px; border: none; border-radius: 0; background: transparent;
+        color: var(--fg-1); cursor: pointer; text-align: left;
+        font-family: var(--font-sans); font-size: 12px; font-weight: 500;
       }
-      .rail-tip.visible { opacity: 1; }
+      .menu-row:hover { background: var(--surface-2); }
+      .menu-row .menu-icon { color: var(--fg-2); display: flex; flex-shrink: 0; }
+      .menu-row.danger, .menu-row.danger .menu-icon { color: var(--red); }
     `;
     document.head.appendChild(s);
   }, []);
@@ -1736,12 +1767,10 @@ function _tipBubble(pos, width, title, body, side) {
     <div style={{
       position:"fixed", left:clampedX, ...style,
       transform:"translateX(-50%)", width, zIndex:9999,
-      background:"var(--surface-2)", border:`1px solid var(--border)`,
-      borderRadius:8, padding:"8px 10px", pointerEvents:"none",
-      boxShadow:"var(--shadow-modal)",
-    }}>
-      {title && <div style={{ fontSize:10, color:"var(--fg-1)", fontWeight:700, marginBottom:4 }}>{title}</div>}
-      <div style={{ fontSize:10, color:"var(--fg-2)", lineHeight:1.55 }}>{body}</div>
+      padding:"12px 14px", pointerEvents:"none",
+    }} className="overlay-card">
+      {title && <div style={{ fontSize:12, color:"var(--fg-1)", fontWeight:600, marginBottom:6 }}>{title}</div>}
+      <div style={{ fontSize:12, color:"var(--fg-2)", lineHeight:1.55 }}>{body}</div>
     </div>,
     document.body
   );
@@ -1820,14 +1849,7 @@ const SidebarTip = ({ children, label, open }) => {
       onMouseLeave={() => { clearTimeout(timerRef.current); setTip(false); }}>
       {children}
       {tip && createPortal(
-        <div style={{
-          position:"fixed", left:pos.x, top:pos.y,
-          transform:"translateY(-50%)",
-          background:"var(--surface-2)", border:"1px solid var(--border)",
-          borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600,
-          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"var(--shadow-card)", pointerEvents:"none",
-        }}>{label}</div>,
+        <div className="rail-hint" style={{ left:pos.x, top:pos.y }}>{label}</div>,
         document.body
       )}
     </div>
@@ -1860,7 +1882,7 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
         style={{
           justifyContent: open ? "flex-start" : "center",
           padding: open ? "5px 10px" : "7px 0",
-          color: active ? "var(--accent)" : (color || "var(--fg-2)"),
+          color: active ? "var(--fg-1)" : (color || "var(--fg-2)"),
         }}>
         <span className="rail-icon" style={{ flexShrink:0, display:"flex" }}>{icon}</span>
         {open && <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>}
@@ -1868,19 +1890,12 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
           <span style={{
             marginLeft:"auto", flexShrink:0,
             fontFamily:"var(--font-mono)",
-            color:"var(--fg-3)", fontSize:10, fontWeight:600,
+            color:"var(--fg-3)", fontSize:10, fontWeight:500,
           }}>{badge}</span>
         )}
       </button>
       {tip && !open && createPortal(
-        <div style={{
-          position:"fixed", left:tipPos.x, top:tipPos.y,
-          transform:"translateY(-50%)",
-          background:"var(--surface-2)", border:"1px solid var(--border)",
-          borderRadius:6, padding:"5px 10px", fontSize:12, fontWeight:600,
-          color:"var(--fg-1)", whiteSpace:"nowrap", zIndex:9999,
-          boxShadow:"var(--shadow-card)", pointerEvents:"none",
-        }}>{label}</div>,
+        <div className="rail-hint" style={{ left:tipPos.x, top:tipPos.y }}>{label}</div>,
         document.body
       )}
     </>
@@ -1888,8 +1903,7 @@ const RailBtn = ({ icon, label, active, onClick, color, badge, open=true }) => {
 };
 
 const RailSection = ({ label, open=true }) => open && (
-  <div style={{ fontSize:9, fontWeight:700, color:THEME.text3, textTransform:"uppercase",
-    letterSpacing:"0.10em", padding:"12px 12px 4px", opacity:0.7 }}>{label}</div>
+  <div className="label" style={{ padding:"12px 10px 4px" }}>{label}</div>
 );
 
 const Divider = () => (
@@ -1897,7 +1911,7 @@ const Divider = () => (
 );
 
 // ── User account popover (portal — anchored above the rail-user row) ──────────
-function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch, subtitle, switchLabel, switchIcon }) {
+function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onSwitch, onSettings, subtitle, switchLabel, switchIcon }) {
   const { t } = useTranslation();
   const ref = useRef(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -1925,81 +1939,48 @@ function UserModal({ username, portfolioCount, anchorRef, onClose, onLogout, onS
   const initials = (username || "U").slice(0, 2).toUpperCase();
 
   return createPortal(
-    <div ref={ref} style={{
+    <div ref={ref} className="overlay-card" style={{
       position:"fixed", left, bottom, top:"auto",
-      width:240, background:"var(--surface)", border:"1px solid var(--border)",
-      borderRadius:12, boxShadow:"var(--shadow-modal)", zIndex:9999, overflow:"hidden",
-      maxHeight:"calc(100vh - 24px)",
+      width:240, zIndex:9999, maxHeight:"calc(100vh - 24px)",
     }} onClick={e => e.stopPropagation()}>
-      {/* Header */}
-      <div style={{ padding:"14px 16px 12px", borderBottom:"1px solid var(--border)",
+      {/* Kopf */}
+      <div style={{ padding:12, background:"var(--surface-2)", borderBottom:"1px solid var(--border-2)",
         display:"flex", alignItems:"center", gap:10 }}>
-        <div className="avatar" style={{ width:34, height:34, borderRadius:9, fontSize:13, fontWeight:700 }}>
-          {initials}
-        </div>
+        <div className="avatar" style={{ width:34, height:34, fontSize:12 }}>{initials}</div>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+          <div className="num" style={{ fontSize:12, fontWeight:500, color:"var(--fg-1)",
             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
             {username}
           </div>
-          <div style={{ fontSize:10, color:"var(--fg-3)", marginTop:1 }}>
+          <div style={{ fontSize:11, color:"var(--fg-3)", marginTop:1 }}>
             {subtitle ?? `${portfolioCount} ${t("user.portfolios", { count: portfolioCount })}`}
           </div>
         </div>
       </div>
 
-      {/* Actions */}
-      <div style={{ padding:"6px 6px" }}>
-        {/* Switch user */}
-        <button onClick={onSwitch} style={{
-          display:"flex", alignItems:"center", gap:10, width:"100%",
-          padding:"8px 10px", borderRadius:7, border:"none",
-          background:"transparent", cursor:"pointer",
-          fontFamily:"var(--font-sans)", textAlign:"left",
-          color:"var(--fg-2)", transition:"background 0.1s",
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
-        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-          {switchIcon ?? <ArrowLeftRight size={14} style={{ flexShrink:0 }}/>}
-          <span style={{ fontSize:12, fontWeight:500 }}>{switchLabel ?? t("user.switchUser")}</span>
+      {/* Aktionen */}
+      <div style={{ padding:6 }}>
+        {onSettings && (
+          <button className="menu-row" onClick={onSettings}>
+            <span className="menu-icon"><Settings size={14}/></span>{t("rail.settings")}
+          </button>
+        )}
+        <button className="menu-row" onClick={onSwitch}>
+          <span className="menu-icon">{switchIcon ?? <ArrowLeftRight size={14}/>}</span>
+          {switchLabel ?? t("user.switchUser")}
         </button>
 
-        {/* Logout — two-step */}
+        {/* Abmelden — zweistufig */}
         {!confirmLogout ? (
-          <button onClick={() => setConfirmLogout(true)} style={{
-            display:"flex", alignItems:"center", gap:10, width:"100%",
-            padding:"8px 10px", borderRadius:7, border:"none",
-            background:"transparent", cursor:"pointer",
-            fontFamily:"var(--font-sans)", textAlign:"left",
-            color:"var(--fg-2)", transition:"background 0.1s",
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
-          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            <LogOut size={14} style={{ flexShrink:0 }}/>
-            <span style={{ fontSize:12, fontWeight:500 }}>{t("user.logout")}</span>
+          <button className="menu-row danger" onClick={() => setConfirmLogout(true)}>
+            <span className="menu-icon"><LogOut size={14}/></span>{t("user.logout")}
           </button>
         ) : (
-          <div style={{ padding:"10px 10px 8px", borderRadius:8,
-            background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)",
-            margin:"2px 0" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-              <AlertTriangle size={13} style={{ color:"#f87171", flexShrink:0 }}/>
-              <span style={{ fontSize:11, color:"var(--fg-2)", lineHeight:1.4 }}>
-                {t("user.confirmLogout")}
-              </span>
-            </div>
-            <div style={{ display:"flex", gap:6 }}>
-              <button onClick={onLogout} style={{
-                flex:1, padding:"5px 0", borderRadius:6, border:"none",
-                background:"#ef4444", color:"#fff", cursor:"pointer",
-                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:600,
-              }}>{t("user.logout")}</button>
-              <button onClick={() => setConfirmLogout(false)} style={{
-                flex:1, padding:"5px 0", borderRadius:6,
-                border:"1px solid var(--border)", background:"transparent",
-                color:"var(--fg-2)", cursor:"pointer",
-                fontFamily:"var(--font-sans)", fontSize:11, fontWeight:500,
-              }}>{t("common.cancel")}</button>
+          <div style={{ padding:"10px 10px 4px", borderTop:"1px solid var(--border-2)", marginTop:4 }}>
+            <div style={{ fontSize:12, color:"var(--fg-1)", marginBottom:8 }}>{t("user.confirmLogout")}</div>
+            <div className="btn-row">
+              <button className="btn danger" style={{ flex:1 }} onClick={onLogout}>{t("user.logout")}</button>
+              <button className="btn" style={{ flex:1 }} onClick={() => setConfirmLogout(false)}>{t("common.cancel")}</button>
             </div>
           </div>
         )}
@@ -2053,17 +2034,16 @@ function Rail({
         gap:6, flexShrink:0,
       }}>
         {open && (
-          <div style={{ flex:1, fontFamily:THEME.serif, userSelect:"none" }}>
-            <div style={{ fontSize:18, fontWeight:400, letterSpacing:"-0.01em", lineHeight:1.1 }}>
-              Portfolio<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+          <div style={{ flex:1, userSelect:"none" }}>
+            <div style={{ fontSize:14, letterSpacing:"0.16em", lineHeight:1.2, color:THEME.text1 }}>
+              <span style={{ fontWeight:700 }}>PORTFOLIO</span><span style={{ fontWeight:100 }}>-PAL</span>
             </div>
-            <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.10em", marginTop:1 }}>Explorer</div>
+            <div className="label" style={{ marginTop:3 }}>Explorer</div>
           </div>
         )}
         <button onClick={onToggle}
           style={{ background:"transparent", border:"none", cursor:"pointer",
-            color:THEME.text3, display:"flex", padding:6, borderRadius:7,
+            color:THEME.text3, display:"flex", padding:6, borderRadius:0,
             transition:"color 0.15s", flexShrink:0,
             marginLeft: open ? 0 : "auto", marginRight: open ? 0 : "auto" }}
           title={open ? "Collapse sidebar" : "Expand sidebar"}>
@@ -2083,38 +2063,39 @@ function Rail({
             <button onClick={() => onTogglePortfolio(p.id)}
               style={{
                 display:"flex", alignItems:"center", gap:8,
-                width:"100%", padding: open ? "7px 12px" : "7px 0",
+                width:"100%", padding: open ? "7px 10px" : "7px 0",
                 justifyContent: open ? "flex-start" : "center",
-                borderRadius:9, border:"none", cursor:"pointer",
-                background: isActive ? "rgba(255,255,255,0.05)" : "transparent",
-                color: isActive ? THEME.text1 : THEME.text3,
-                fontSize:12, fontFamily:THEME.font,
+                borderRadius:0, border:"none", cursor:"pointer",
+                background: isActive ? "var(--surface-2)" : "transparent",
+                boxShadow: isActive ? "inset 2px 0 0 var(--fg-1)" : "none",
+                color: isActive ? THEME.text1 : THEME.text2,
+                fontSize:12.5, fontWeight:500, fontFamily:THEME.font,
                 transition:"background 0.12s",
               }}>
               {/* Color dot */}
               <span style={{
                 width:10, height:10, borderRadius:"50%", flexShrink:0,
-                background: isActive ? p.color : "rgba(255,255,255,0.2)",
-                border: isActive ? "none" : "1.5px solid rgba(255,255,255,0.2)",
+                background: isActive ? p.color : "transparent",
+                border: isActive ? "none" : "1.5px solid var(--border)",
                 transition:"background 0.15s",
               }}/>
               {open && (
                 <>
                   <span style={{ flex:1, textAlign:"left", whiteSpace:"nowrap",
-                    overflow:"hidden", textOverflow:"ellipsis", fontWeight: isActive?600:400 }}>
+                    overflow:"hidden", textOverflow:"ellipsis" }}>
                     {p.name}
                   </span>
                   <span
                     title="Umbenennen"
                     onClick={e => { e.stopPropagation(); onRenamePortfolio(p); }}
                     style={{ color:THEME.text3, flexShrink:0, display:"flex", opacity:0.5,
-                      padding:"2px 3px", borderRadius:4,
+                      padding:"2px 3px", borderRadius:0,
                       cursor:"pointer", transition:"opacity 0.15s" }}
                     onMouseEnter={e=>e.currentTarget.style.opacity=1}
                     onMouseLeave={e=>e.currentTarget.style.opacity=0.5}>
                     <Pencil size={11}/>
                   </span>
-                  <span style={{ color: isActive ? THEME.accent : THEME.text3, flexShrink:0, display:"flex" }}>
+                  <span style={{ color: isActive ? THEME.text1 : THEME.text3, flexShrink:0, display:"flex" }}>
                     {isActive ? <CheckSquare size={13}/> : <Square size={13}/>}
                   </span>
                 </>
@@ -2127,8 +2108,8 @@ function Rail({
           <button onClick={onAddPortfolio}
             style={{
               display:"flex", alignItems:"center", gap:8, width:"100%",
-              padding:"7px 12px", borderRadius:9, border:`1px dashed ${THEME.border}`,
-              background:"transparent", color:THEME.text3, fontSize:12,
+              padding:"7px 10px", borderRadius:0, border:`1px dashed ${THEME.border}`,
+              background:"transparent", color:THEME.text2, fontSize:12, fontWeight:500,
               fontFamily:THEME.font, cursor:"pointer", marginTop:4,
             }}>
             <Plus size={13}/> New Portfolio
@@ -2140,23 +2121,8 @@ function Rail({
         {/* Actions */}
         <RailSection open={open} label="Actions"/>
         {/* Add Transaction — dashed pill, same style as New Portfolio but blue */}
-        {open ? (
-          <button onClick={() => onTab("_addtx")}
-            style={{
-              display:"flex", alignItems:"center", gap:8, width:"100%",
-              padding:"7px 12px", borderRadius:9,
-              border:`1px dashed ${THEME.accent}`,
-              background:"rgba(59,130,246,0.06)", color:THEME.accent,
-              fontSize:12, fontWeight:600,
-              fontFamily:THEME.font, cursor:"pointer", marginBottom:2,
-              transition:"background 0.12s",
-            }}>
-            <Plus size={13}/> {t("rail.addTransaction")}
-          </button>
-        ) : (
-          <RailBtn open={open} icon={<Plus size={16}/>} label={t("rail.addTransaction")}
-            color={THEME.accent} onClick={() => onTab("_addtx")}/>
-        )}
+        <RailBtn open={open} icon={<Plus size={16}/>} label={t("rail.addTransaction")}
+          color={THEME.text1} onClick={() => onTab("_addtx")}/>
         {onRecalcFX && (
           <RailBtn open={open} icon={<span style={{fontSize:12}}>⟳$</span>} label="Recalc FX Costs"
             onClick={onRecalcFX}
@@ -2172,9 +2138,7 @@ function Rail({
       {/* ─── Bottom: Currency + Account (pinned) ──────────────── */}
       <div style={{ borderTop:`1px solid ${THEME.border}`, padding:"4px 0 8px", flexShrink:0 }}>
           {/* Currency */}
-          {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-            textTransform:"uppercase", letterSpacing:"0.10em",
-            padding:"6px 6px 4px", opacity:0.7 }}>Currency</div>}
+          {open && <div className="label" style={{ padding:"8px 14px 4px" }}>Currency</div>}
           <div style={{
             padding: open ? "2px 4px" : "2px 0",
             display:"flex", flexDirection:"column",
@@ -2192,8 +2156,9 @@ function Rail({
                     display:"flex", alignItems:"center",
                     gap: open ? 8 : 0,
                     padding: open ? "5px 8px" : "5px 0",
-                    border:"none", borderRadius:8,
-                    background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
+                    border:"none", borderRadius:0,
+                    background: isActive ? "var(--surface-2)" : "transparent",
+                    boxShadow: isActive ? "inset 2px 0 0 var(--fg-1)" : "none",
                     cursor:"pointer", fontFamily:THEME.font,
                     transition:"background 0.12s",
                     width:"100%",
@@ -2212,11 +2177,11 @@ function Rail({
                   {open && (
                     <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
                       <span className="ccy-label" style={{
-                        fontSize:11, fontWeight: isActive ? 700 : 500,
-                        color: isActive ? THEME.accent : THEME.text3,
+                        fontFamily:THEME.mono, fontSize:11, fontWeight:500,
+                        color: isActive ? THEME.text1 : THEME.text3,
                       }}>{c}</span>
                       <span className="ccy-name" style={{
-                        fontSize:9, color: isActive ? THEME.accent : THEME.text3,
+                        fontSize:10, color: isActive ? THEME.text2 : THEME.text3,
                       }}>{CCY_NAME[c]}</span>
                     </div>
                   )}
@@ -2325,11 +2290,11 @@ function Rail({
             <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
             {open && (
               <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                <div className="num" style={{ fontSize:12, fontWeight:500, color:"var(--fg-1)",
                   whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                   {user.username}
                 </div>
-                <div style={{ fontSize:10, color:"var(--fg-3)" }}>
+                <div style={{ fontSize:11, color:"var(--fg-3)" }}>
                   {portfolios.length} {t("user.portfolios", { count: portfolios.length })}
                 </div>
               </div>
@@ -2347,6 +2312,7 @@ function Rail({
           onClose={() => setUserModalOpen(false)}
           onLogout={handleLogoutFromModal}
           onSwitch={handleSwitchFromModal}
+          onSettings={onSettings && (() => { setUserModalOpen(false); onSettings(); })}
         />
       )}
     </div>
@@ -7305,22 +7271,23 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         width:"100%", display:"flex", alignItems:"center",
         gap: open?9:0, padding: open?"7px 10px":"8px 0",
         justifyContent: open?"flex-start":"center",
-        borderRadius:9, border:"none", cursor:"pointer",
-        background: isActive?"rgba(59,130,246,0.15)":"transparent",
-        color: isActive?THEME.accent:THEME.text3,
+        borderRadius:0, border:"none", cursor:"pointer",
+        background: isActive?"var(--surface-2)":"transparent",
+        boxShadow: isActive?"inset 2px 0 0 var(--fg-1)":"none",
+        color: isActive?THEME.text1:THEME.text2,
         fontFamily:THEME.font, transition:"background 0.12s",
-        fontWeight: isActive?700:500, textAlign:"left",
+        fontWeight:500, textAlign:"left",
       }}>
       {/* Ticker badge */}
       <div style={{
         flexShrink:0, width:36, height:36,
-        background: isActive?"rgba(59,130,246,0.2)":"rgba(255,255,255,0.06)",
-        borderRadius:8, display:"flex", alignItems:"center",
+        background: isActive?"var(--fg-1)":"var(--hover)",
+        borderRadius:2, display:"flex", alignItems:"center",
         justifyContent:"center", padding:"0 2px",
       }}>
         <span style={{ fontFamily:"var(--font-mono)", fontSize:7,
-          lineHeight:1.1, textAlign:"center", fontWeight:800,
-          color: isActive?THEME.accent:THEME.text2 }}>
+          lineHeight:1.1, textAlign:"center", fontWeight:500,
+          color: isActive?THEME.surface:THEME.text2 }}>
           {etf.ticker.length <= 5
             ? etf.ticker.replace('.DE','').replace('.SW','').replace('.LON','')
             : etf.ticker.slice(0,5)}
@@ -7328,22 +7295,22 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       </div>
       {open && (
         <div style={{ overflow:"hidden", flex:1 }}>
-          <div style={{ fontSize:11, fontWeight:700,
-            color: isActive?THEME.accent:THEME.text1,
+          <div style={{ fontSize:12, fontWeight:500,
+            color: THEME.text1,
             whiteSpace:"nowrap", overflow:"hidden",
             textOverflow:"ellipsis" }}>
             {etf.name}
           </div>
-          <div style={{ fontSize:9, color: isActive?THEME.accent:THEME.text3, marginTop:1,
+          <div style={{ fontSize:10, color:THEME.text3, marginTop:1,
             display:"flex", alignItems:"center", gap:4 }}>
             <span style={{ whiteSpace:"nowrap", overflow:"hidden",
               textOverflow:"ellipsis", maxWidth:120 }}>
               {etf.provider || etf.ticker}
             </span>
             {etf.isPreset && (
-              <span style={{ fontSize:7, padding:"1px 4px", borderRadius:3,
-                background:"rgba(59,130,246,0.15)", color:THEME.accent,
-                fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em",
+              <span style={{ fontSize:8, padding:"0 4px", borderRadius:2,
+                border:"1px solid var(--border)", color:THEME.text2, fontFamily:THEME.mono,
+                fontWeight:400, textTransform:"uppercase", letterSpacing:"0.08em",
                 flexShrink:0 }}>preset</span>
             )}
           </div>
@@ -7368,7 +7335,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           style={{
             flexShrink:0, background:"none", border:"none",
             cursor:"pointer", color: THEME.red ?? "#ef4444",
-            padding:"5px 4px", borderRadius:5, display:"flex",
+            padding:"5px 4px", borderRadius:0, display:"flex",
             opacity: hovered ? 1 : 0,
             transform: hovered ? "scale(1)" : "scale(0.7)",
             transition:"opacity 0.15s, transform 0.15s",
@@ -7394,18 +7361,16 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         gap:6, borderBottom:`1px solid ${THEME.border}`, flexShrink:0 }}>
         {open && (
           <div style={{ flex:1 }}>
-            <div style={{ fontFamily:THEME.serif, fontSize:20, fontWeight:400,
-              letterSpacing:"-0.02em" }}>
-              ETF<span style={{ color:THEME.accent, fontStyle:"italic" }}>.</span>
+            <div style={{ fontSize:14, letterSpacing:"0.16em", lineHeight:1.2, color:THEME.text1 }}>
+              <span style={{ fontWeight:700 }}>PORTFOLIO</span><span style={{ fontWeight:100 }}>-PAL</span>
             </div>
-            <div style={{ fontSize:8, color:THEME.text3, textTransform:"uppercase",
-              letterSpacing:"0.10em", marginTop:-2 }}>{t("etf.screener").replace("ETF ","").replace("ETF-","")}</div>
+            <div className="label" style={{ marginTop:3 }}>{t("etf.screener")}</div>
           </div>
         )}
         {/* Mode switcher — removed, navigation via sidebar bottom */}
         <button onClick={onToggle} style={{
           background:"none", border:"none", cursor:"pointer",
-          color:THEME.text3, display:"flex", padding:4, borderRadius:7,
+          color:THEME.text3, display:"flex", padding:4, borderRadius:0,
           marginLeft: open ? 0 : "auto", marginRight: open ? 0 : "auto",
         }}><PanelLeft size={16}/></button>
       </div>
@@ -7430,8 +7395,8 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               placeholder={t("etf.searchPlaceholder")}
               style={{
                 width:"100%", padding:"7px 28px 7px 28px",
-                background:"rgba(255,255,255,0.05)", border:`1px solid ${inSearch ? THEME.accent+"44" : THEME.border}`,
-                borderRadius:8, color:THEME.text1, fontSize:11,
+                background:"var(--surface)", border:`1px solid ${inSearch ? "var(--fg-3)" : THEME.border}`,
+                borderRadius:2, color:THEME.text1, fontSize:12,
                 fontFamily:"inherit", outline:"none", boxSizing:"border-box",
                 transition:"border-color 0.15s",
               }}/>
@@ -7555,10 +7520,10 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                   disabled={savingCustom}
                   style={{
                     width:"100%", marginTop:8, padding:"7px 0",
-                    borderRadius:9, border:"1px dashed rgba(59,130,246,0.4)",
-                    background:"rgba(59,130,246,0.06)",
-                    color: savingCustom ? THEME.text3 : THEME.accent,
-                    fontSize:11, fontWeight:600, cursor:"pointer",
+                    borderRadius:0, border:"1px dashed var(--border)",
+                    background:"transparent",
+                    color: savingCustom ? THEME.text3 : THEME.text1,
+                    fontSize:12, fontWeight:500, cursor:"pointer",
                     fontFamily:"inherit", display:"flex",
                     alignItems:"center", justifyContent:"center", gap:6,
                     transition:"all 0.15s",
@@ -7605,7 +7570,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                       flexShrink:0, background:"none", border:"none",
                       cursor: added ? "default" : "pointer",
                       color: added ? THEME.accent : THEME.text3,
-                      padding:"4px 5px", borderRadius:5, display:"flex",
+                      padding:"4px 5px", borderRadius:0, display:"flex",
                       fontSize:15, lineHeight:1,
                       opacity: added ? 1 : 0.5, transition:"all 0.12s",
                     }}
@@ -7628,21 +7593,21 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 title={etf.name}
                 style={{
                   width:"100%", background:selectedTicker===etf.ticker
-                    ?"rgba(59,130,246,0.18)":"none",
+                    ?"var(--surface-2)":"none",
                   border:"none", cursor:"pointer",
                   display:"flex", justifyContent:"center",
                   alignItems:"center", padding:"5px 0",
-                  borderRadius:7, transition:"background 0.1s",
+                  borderRadius:0, transition:"background 0.1s",
                 }}>
                 <div style={{
-                  width:34, height:34, borderRadius:8,
+                  width:34, height:34, borderRadius:2,
                   background:selectedTicker===etf.ticker
-                    ?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.06)",
+                    ?"var(--fg-1)":"var(--hover)",
                   display:"flex", alignItems:"center", justifyContent:"center",
                 }}>
                   <span style={{ fontFamily:"var(--font-mono)",
-                    fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
-                    color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
+                    fontSize:6.5, fontWeight:500, textAlign:"center", lineHeight:1.1,
+                    color:selectedTicker===etf.ticker?THEME.surface:THEME.text2 }}>
                     {etf.ticker.replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
                   </span>
                 </div>
@@ -7658,24 +7623,23 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 title={`★ ${etf.name || etf.ticker}`}
                 style={{
                   width:"100%", background:selectedTicker===etf.ticker
-                    ?"rgba(59,130,246,0.18)":"none",
+                    ?"var(--surface-2)":"none",
                   border:"none", cursor:"pointer",
                   display:"flex", justifyContent:"center",
                   alignItems:"center", padding:"5px 0",
-                  borderRadius:7, transition:"background 0.1s",
+                  borderRadius:0, transition:"background 0.1s",
                 }}>
                 <div style={{ position:"relative" }}>
                   <div style={{
-                    width:34, height:34, borderRadius:8,
+                    width:34, height:34, borderRadius:2,
                     background:selectedTicker===etf.ticker
-                      ?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.06)",
+                      ?"var(--fg-1)":"var(--hover)",
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    border:selectedTicker===etf.ticker
-                      ?"1px solid rgba(59,130,246,0.4)":"1px solid rgba(255,255,255,0.08)",
+                    border:"1px solid var(--border)",
                   }}>
                     <span style={{ fontFamily:"var(--font-mono)",
-                      fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
-                      color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
+                      fontSize:6.5, fontWeight:500, textAlign:"center", lineHeight:1.1,
+                      color:selectedTicker===etf.ticker?THEME.surface:THEME.text2 }}>
                       {(etf.ticker||"").replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
                     </span>
                   </div>
@@ -7695,9 +7659,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
       <div style={{ height:1, background:THEME.border2, margin:"6px 8px", flexShrink:0 }}/>
 
       {/* Currency — same sizing/spacing as Portfolio Rail */}
-      {open && <div style={{ fontSize:9, fontWeight:700, color:THEME.text3,
-        textTransform:"uppercase", letterSpacing:"0.10em",
-        padding:"6px 6px 4px", opacity:0.7, flexShrink:0 }}>{t("etf.currency")}</div>}
+      {open && <div className="label" style={{ padding:"8px 14px 4px", flexShrink:0 }}>{t("etf.currency")}</div>}
       <div style={{
         padding: open ? "2px 4px" : "2px 0",
         display:"flex", flexDirection:"column",
@@ -7715,8 +7677,9 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                 display:"flex", alignItems:"center",
                 gap: open ? 8 : 0,
                 padding: open ? "5px 8px" : "5px 0",
-                border:"none", borderRadius:8,
-                background: isActive ? "rgba(59,130,246,0.15)" : "transparent",
+                border:"none", borderRadius:0,
+                background: isActive ? "var(--surface-2)" : "transparent",
+                boxShadow: isActive ? "inset 2px 0 0 var(--fg-1)" : "none",
                 cursor:"pointer", fontFamily:THEME.font,
                 transition:"background 0.12s",
                 width:"100%",
@@ -7735,11 +7698,11 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
               {open && (
                 <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
                   <span className="ccy-label" style={{
-                    fontSize:11, fontWeight: isActive ? 700 : 500,
-                    color: isActive ? THEME.accent : THEME.text3,
+                    fontFamily:THEME.mono, fontSize:11, fontWeight:500,
+                    color: isActive ? THEME.text1 : THEME.text3,
                   }}>{c}</span>
                   <span className="ccy-name" style={{
-                    fontSize:9, color: isActive ? THEME.accent : THEME.text3,
+                    fontSize:10, color: isActive ? THEME.text2 : THEME.text3,
                   }}>{CCY_NAME[c]}</span>
                 </div>
               )}
@@ -7857,11 +7820,11 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
             <div className="avatar">{(user.username||"U").slice(0,2).toUpperCase()}</div>
             {open && (
               <div style={{ flex:1, minWidth:0, overflow:"hidden" }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"var(--fg-1)",
+                <div className="num" style={{ fontSize:12, fontWeight:500, color:"var(--fg-1)",
                   whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                   {user.username}
                 </div>
-                <div style={{ fontSize:10, color:"var(--fg-3)" }}>ETF Screener</div>
+                <div style={{ fontSize:11, color:"var(--fg-3)" }}>ETF Screener</div>
               </div>
             )}
           </div>
@@ -7880,6 +7843,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           onClose={() => setUserModalOpen(false)}
           onSwitch={() => { setUserModalOpen(false); onSwitchToPortfolio && onSwitchToPortfolio(); }}
           onLogout={() => { setUserModalOpen(false); onSignOut && onSignOut(); }}
+          onSettings={onSettings && (() => { setUserModalOpen(false); onSettings(); })}
         />
       )}
     </div>

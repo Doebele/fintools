@@ -155,7 +155,7 @@ Legende: **übernehmen** = Pal-Komponente existiert und passt direkt ·
   Komponenten inkl. aller 10 Lücken: Rail, Rail-Button, Avatar, Tab,
   Segment/Segment-Schalter, Dialog, Icon-Button, Rail-Hinweis, Login-Karte,
   Wert-Zelle, Leerzustand, Ladeanzeige; dazu Nutzer-Popup und Instrument-Popover)
-- [ ] Schritt 2: globale Klassen; neue Variablen `--hover`, `--brand`, `--overlay` im Code ergänzen
-- [ ] Schritt 3: Rail, Nutzer-Popup, Tooltips
+- [x] Schritt 2: globale Klassen (`label`, `num`, `btn`, `btn-row`, `overlay-card`, `menu-row`, `rail-hint`), Rail-/Segment-/Tab-/Avatar-Klassen auf Pal-Regeln, Variablen `--hover`, `--brand`, `--overlay`
+- [x] Schritt 3: Rail und ETF-Rail, Nutzer-Popup (mit „Einstellungen“), Tooltip-Blase, Rail-Hinweise
 - [ ] Schritt 4: Dialog
 - [ ] Schritt 5: Ansichten
