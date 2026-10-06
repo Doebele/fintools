@@ -60,41 +60,54 @@ const CCY_NAME  = { USD:"US Dollar", EUR:"Euro", CHF:"Swiss Franc", GBP:"Pound S
 function useGlobalStyles() {
   useEffect(() => {
     if (document.getElementById("ptv3-global")) return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=DM+Serif+Display:ital@0;1&family=Fira+Sans:wght@400;500;600;700&display=swap";
-    document.head.appendChild(link);
     const s = document.createElement("style");
     s.id = "ptv3-global";
     s.textContent = `
+      /* ── Schriften (Pal-Designsystem, selbst ausgeliefert, keine externen Anfragen) ── */
+      @font-face { font-family: "Fira Sans"; font-weight: 100; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-100.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 200 300; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-300.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-400.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-500.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 600; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-600.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Sans"; font-weight: 700 800; font-style: normal; font-display: swap; src: url(/fonts/fira-sans-700.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 300; font-style: normal; font-display: swap; src: url(/fonts/fira-code-300.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/fira-code-400.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 500 600; font-style: normal; font-display: swap; src: url(/fonts/fira-code-500.woff2) format("woff2"); }
+      @font-face { font-family: "Fira Code"; font-weight: 700; font-style: normal; font-display: swap; src: url(/fonts/fira-code-700.woff2) format("woff2"); }
+      @font-face { font-family: "Instrument Serif"; font-weight: 400; font-style: normal; font-display: swap; src: url(/fonts/instrument-serif-400.woff2) format("woff2"); }
+      @font-face { font-family: "Instrument Serif"; font-weight: 400; font-style: italic; font-display: swap; src: url(/fonts/instrument-serif-400-italic.woff2) format("woff2"); }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html { height: 100%; }
       body { height: 100%; overflow: hidden; }
 
       /* ── CSS Custom Properties — Dark theme (default) ── */
       :root, [data-theme="dark"] {
-        --bg:        #0d0e12;
-        --surface:   #13141a;
-        --surface-2: #1a1b23;
-        --border:    rgba(255,255,255,0.10);
-        --border-2:  rgba(255,255,255,0.06);
-        --fg-1:      #f0f1f5;
-        --fg-2:      #b4bfcc;
-        --fg-3:      #8896a8;
-        --accent:    #3b82f6;
-        --accent-08: rgba(59,130,246,0.08);
-        --accent-15: rgba(59,130,246,0.15);
-        --accent-35: rgba(59,130,246,0.35);
+        /* Pal-Designsystem (Trade-Pal), Modus Dunkel */
+        --bg:        #141312;
+        --surface:   #1c1b18;
+        --surface-2: #211f1b;
+        --border:    #32302a;
+        --border-2:  #28261f;
+        --fg-1:      #ece9e2;
+        --fg-2:      #a8a59c;
+        --fg-3:      #6f6d66;
+        --accent:    #2563eb;
+        --accent-08: rgba(37,99,235,0.08);
+        --accent-15: rgba(37,99,235,0.15);
+        --accent-35: rgba(37,99,235,0.35);
         --green:     #4ade80;
         --red:       #f87171;
         --yellow:    #fbbf24;
-        --font-sans:  'Syne', sans-serif;
-        --font-mono:  'JetBrains Mono', monospace;
-        --font-serif: 'DM Serif Display', Georgia, serif;
-        --row-accent-bg: #131928;  /* opaque equiv of rgba(59,130,246,0.08) over --surface */
-        --scrollbar-thumb: rgba(255,255,255,0.12);
-        --shadow-modal: 0 32px 80px rgba(0,0,0,0.60);
-        --shadow-card:  0 4px 24px rgba(0,0,0,0.35);
+        --green-tint: rgba(74,222,128,0.16);
+        --red-tint:   rgba(248,113,113,0.16);
+        --dot:       #262420;
+        --font-sans:  'Fira Sans', sans-serif;
+        --font-mono:  'Fira Code', monospace;
+        --font-serif: 'Instrument Serif', Georgia, serif;
+        --row-accent-bg: #1d2129;  /* opaque equiv of rgba(37,99,235,0.08) over --surface */
+        --scrollbar-thumb: rgba(236,233,226,0.14);
+        --shadow-modal: 0 12px 32px rgba(0,0,0,0.60);
+        --shadow-card:  none;      /* Pal: Haarlinien statt Kartenschatten */
         /* Toggle colours */
         --toggle-pill-bg:     rgba(0,0,0,0.25);
         --toggle-neutral-bg:  rgba(255,255,255,0.12);
@@ -106,28 +119,32 @@ function useGlobalStyles() {
 
       /* ── CSS Custom Properties — Light theme ── */
       [data-theme="light"] {
-        --bg:        #f7f7f5;
+        /* Pal-Designsystem (Trade-Pal), Modus Hell */
+        --bg:        #f5f3ee;
         --surface:   #ffffff;
-        --surface-2: #f0f0ed;
-        --border:    rgba(15,17,22,0.10);
-        --border-2:  rgba(15,17,22,0.06);
-        --fg-1:      #15171c;
-        --fg-2:      #45505d;
-        --fg-3:      #7a8493;
-        --accent:    #3b82f6;
-        --accent-08: rgba(59,130,246,0.08);
-        --accent-15: rgba(59,130,246,0.15);
-        --accent-35: rgba(59,130,246,0.35);
+        --surface-2: #faf9f6;
+        --border:    #e5e2d9;
+        --border-2:  #efede6;
+        --fg-1:      #0b0b0c;
+        --fg-2:      #6f6d66;
+        --fg-3:      #a8a59c;
+        --accent:    #2563eb;
+        --accent-08: rgba(37,99,235,0.08);
+        --accent-15: rgba(37,99,235,0.15);
+        --accent-35: rgba(37,99,235,0.35);
         --green:     #16a34a;
         --red:       #dc2626;
         --yellow:    #d97706;
+        --green-tint: rgba(22,163,74,0.10);
+        --red-tint:   rgba(220,38,38,0.09);
+        --dot:       #e8e5db;
         --font-sans:  'Fira Sans', sans-serif;
-        --font-mono:  'JetBrains Mono', monospace;
-        --font-serif: 'DM Serif Display', Georgia, serif;
-        --row-accent-bg: #edf2fe;  /* opaque equiv of rgba(59,130,246,0.08) over --surface */
-        --scrollbar-thumb: rgba(15,17,22,0.15);
-        --shadow-modal: 0 24px 64px rgba(15,17,22,0.16);
-        --shadow-card:  0 1px 2px rgba(15,17,22,0.04), 0 4px 12px rgba(15,17,22,0.06);
+        --font-mono:  'Fira Code', monospace;
+        --font-serif: 'Instrument Serif', Georgia, serif;
+        --row-accent-bg: #eef3fd;  /* opaque equiv of rgba(37,99,235,0.08) over --surface */
+        --scrollbar-thumb: rgba(11,11,12,0.15);
+        --shadow-modal: 0 12px 32px rgba(0,0,0,0.18);
+        --shadow-card:  none;      /* Pal: Haarlinien statt Kartenschatten */
         /* Toggle colours — A11Y AA-compliant on light surfaces */
         --toggle-pill-bg:     rgba(15,17,22,0.07);
         --toggle-neutral-bg:  rgba(15,17,22,0.10);
@@ -141,7 +158,7 @@ function useGlobalStyles() {
       body { transition: background-color 0.2s ease, color 0.2s ease; }
 
       /* ── Pro mode (default): compact information density ── */
-      :root { --fs-base: 13px; --fs-scale: 1; }
+      :root { --fs-base: 13px; --fs-scale: 1; --radius-0: 0; --radius-2: 2px; --radius-12: 12px; }
       body {
         background: var(--bg); color: var(--fg-1); font-family: var(--font-sans);
         font-size: var(--fs-base); -webkit-font-smoothing: antialiased;
@@ -1462,14 +1479,14 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   border:"1px solid rgba(59,130,246,0.2)", flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
                     letterSpacing:"0.07em" }}>Gesamt</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:THEME.text1 }}>{previewData.preview.length}</div>
                 </div>
                 <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(74,222,128,0.08)",
                   border:"1px solid rgba(74,222,128,0.2)", flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
                     letterSpacing:"0.07em" }}>Neu</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:THEME.green }}>{previewData.newCount}</div>
                 </div>
                 <div style={{ padding:"8px 12px", borderRadius:8,
@@ -1478,7 +1495,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                   flex:"1 1 0", minWidth:100 }}>
                   <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
                     letterSpacing:"0.07em" }}>Konflikte</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                     fontWeight:700, color:previewData.conflictCount>0?THEME.red:THEME.text3 }}>
                     {previewData.conflictCount}
                   </div>
@@ -1488,7 +1505,7 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                     border:"1px solid rgba(251,191,36,0.2)", flex:"1 1 0", minWidth:100 }}>
                     <div style={{ fontSize:9, color:THEME.text3, textTransform:"uppercase",
                       letterSpacing:"0.07em" }}>Übersprungen</div>
-                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16,
+                    <div style={{ fontFamily:"var(--font-mono)", fontSize:16,
                       fontWeight:700, color:THEME.yellow }}>{previewData.skipped.length}</div>
                   </div>
                 )}
@@ -1566,12 +1583,12 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                         {/* Import row */}
                         <div style={{ display:"grid", gridTemplateColumns:"80px 80px 60px 70px 70px 1fr",
                           padding:"7px 10px", alignItems:"start" }}>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:11,
                             fontWeight:700, color:THEME.accent }}>{row.symbol}</div>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text2 }}>{row.date}</div>
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:10, color:THEME.text2 }}>{row.date}</div>
                           <div style={{ fontSize:10, color:row.type==="BUY"?THEME.green:THEME.red, fontWeight:700 }}>{row.type}</div>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text1 }}>{row.quantity}</div>
-                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:THEME.text2 }}>
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:10, color:THEME.text1 }}>{row.quantity}</div>
+                          <div style={{ fontFamily:"var(--font-mono)", fontSize:10, color:THEME.text2 }}>
                             {row.price ? row.price.toFixed(2) : "—"} {row.currency||""}
                           </div>
                           <div>
@@ -1591,9 +1608,9 @@ function ImportExportModal({ portfolios, activePortfolioIds, user, onClose, onIm
                               ↳ Bestehend (ID {ex.id})
                             </div>
                             <div/>
-                            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9,
+                            <div style={{ fontFamily:"var(--font-mono)", fontSize:9,
                               color:THEME.text3 }}>{ex.quantity}</div>
-                            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:9, color:THEME.text3 }}>
+                            <div style={{ fontFamily:"var(--font-mono)", fontSize:9, color:THEME.text3 }}>
                               {ex.price?.toFixed(2)} {ex.currency||""}
                             </div>
                             <div style={{ fontSize:9, color:THEME.text3 }}>
@@ -2663,14 +2680,14 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
                 <line x1={AXIS_W} y1={y} x2={w} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} strokeDasharray="4,6"/>
                 <text x={AXIS_W-6} y={y+4} textAnchor="end"
                   fill={tick>0?"rgba(74,222,128,0.55)":"rgba(248,113,113,0.55)"}
-                  fontSize={9} fontFamily="'JetBrains Mono',monospace">
+                  fontSize={9} fontFamily="var(--font-mono)">
                   {tick>0?`+${tick}`:tick} %
                 </text>
               </g>
             );
           })}
           <line x1={AXIS_W} y1={MID_Y} x2={w} y2={MID_Y} stroke="rgba(255,255,255,0.20)" strokeWidth={1.5}/>
-          <text x={AXIS_W-6} y={MID_Y+4} textAnchor="end" fill={THEME.text3} fontSize={9} fontFamily="'JetBrains Mono',monospace">0 %</text>
+          <text x={AXIS_W-6} y={MID_Y+4} textAnchor="end" fill={THEME.text3} fontSize={9} fontFamily="var(--font-mono)">0 %</text>
           {renderOrder.map(node=>{
             const key=node.symbol+node.portfolioId;
             const anim=animBars.current[key]??toTargets.get(key);
@@ -2687,26 +2704,26 @@ function BarChartView({ nodes, currency, rates, colorMode, period, onCellHover, 
                 {showPerf&&perf!=null&&(
                   <text x={x+bw/2} y={isPos?barY+13:barY+barH-5} textAnchor="middle"
                     fill={isPos?"rgba(144,255,180,0.95)":"rgba(255,160,160,0.95)"}
-                    fontSize={Math.min(10,bw*0.18)} fontWeight="700" fontFamily="'JetBrains Mono',monospace">
+                    fontSize={Math.min(10,bw*0.18)} fontWeight="700" fontFamily="var(--font-mono)">
                     {perf>=0?"+":""}{perf.toFixed(1)}%
                   </text>
                 )}
                 {showSym&&(
                   <text x={x+bw/2} y={isPos?MID_Y+16:MID_Y-5} textAnchor="middle"
-                    fill={THEME.text2} fontSize={Math.min(11,Math.max(8,bw*0.16))} fontWeight="700" fontFamily="'Syne',sans-serif">
+                    fill={THEME.text2} fontSize={Math.min(11,Math.max(8,bw*0.16))} fontWeight="700" fontFamily="'Fira Sans',sans-serif">
                     {node.symbol.length>8?node.symbol.slice(0,7)+"…":node.symbol}
                   </text>
                 )}
                 {showVal&&(
                   <text x={x+bw/2} y={isPos?MID_Y+27:MID_Y+16} textAnchor="middle"
-                    fill={THEME.text3} fontSize={8} fontFamily="'JetBrains Mono',monospace">
+                    fill={THEME.text3} fontSize={8} fontFamily="var(--font-mono)">
                     {cSym}{((node.valueUSD??0)*rate/1000).toFixed(0)}K
                   </text>
                 )}
               </g>
             );
           })}
-          <text x={w-8} y={16} textAnchor="end" fill="rgba(255,255,255,0.12)" fontSize={10} fontWeight="700" fontFamily="'Syne',sans-serif" letterSpacing="0.08em">
+          <text x={w-8} y={16} textAnchor="end" fill="rgba(255,255,255,0.12)" fontSize={10} fontWeight="700" fontFamily="'Fira Sans',sans-serif" letterSpacing="0.08em">
             {colorMode==="gainloss"?"G&L vs. Cost":period==="Intraday"?"1D vs Prev Close":`${period} Performance`}
             {subView==="size"?"  ·  sorted by size":""}
           </text>
@@ -2870,7 +2887,7 @@ function Tooltip({ data, x, y, currency, rates, period, chartData, chartDataIntr
             )}
             {data.isin && (
               <div style={{ fontSize:9, color:"rgba(255,255,255,0.38)", marginTop:2,
-                fontFamily:"'JetBrains Mono',monospace", letterSpacing:"0.04em" }}>
+                fontFamily:"var(--font-mono)", letterSpacing:"0.04em" }}>
                 {data.isin}
               </div>
             )}
@@ -7053,7 +7070,7 @@ function SaveEtfModal({ etf, onClose, user, onLogin, onSaved }) {
       background:"rgba(59,130,246,0.08)", border:`1px solid rgba(59,130,246,0.2)` }}>
       <div style={{ width:32, height:32, borderRadius:7, background:"rgba(59,130,246,0.15)",
         display:"flex", alignItems:"center", justifyContent:"center",
-        fontFamily:"'JetBrains Mono',monospace", fontSize:8, fontWeight:800,
+        fontFamily:"var(--font-mono)", fontSize:8, fontWeight:800,
         color:THEME.accent, flexShrink:0 }}>
         {etf.ticker.slice(0,5).replace(/\.(DE|SW|L|PA)$/,'')}
       </div>
@@ -7187,13 +7204,13 @@ function DeleteEtfModal({ etf, onConfirm, onCancel }) {
           <div style={{ width:36, height:36, borderRadius:8, flexShrink:0,
             background:"rgba(59,130,246,0.12)", display:"flex",
             alignItems:"center", justifyContent:"center" }}>
-            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:7,
+            <span style={{ fontFamily:"var(--font-mono)", fontSize:7,
               fontWeight:800, color:"#60a5fa", textAlign:"center", lineHeight:1.1 }}>
               {etf.ticker.replace(/\.(DE|SW|L|PA)$/,"").slice(0,5)}
             </span>
           </div>
           <div>
-            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
+            <div style={{ fontFamily:"var(--font-mono)", fontSize:11,
               fontWeight:700, color:"#60a5fa", letterSpacing:"0.05em" }}>{etf.ticker}</div>
             <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
               {etf.name || etf.ticker}
@@ -7301,7 +7318,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
         borderRadius:8, display:"flex", alignItems:"center",
         justifyContent:"center", padding:"0 2px",
       }}>
-        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:7,
+        <span style={{ fontFamily:"var(--font-mono)", fontSize:7,
           lineHeight:1.1, textAlign:"center", fontWeight:800,
           color: isActive?THEME.accent:THEME.text2 }}>
           {etf.ticker.length <= 5
@@ -7461,7 +7478,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
           <div style={{ padding:"14px 8px", textAlign:"center", color:THEME.text3,
             fontSize:11, lineHeight:1.5 }}>
             {t("etf.noResults")}<br/>
-            <span style={{ fontFamily:"'JetBrains Mono',monospace",
+            <span style={{ fontFamily:"var(--font-mono)",
               color:THEME.text2 }}>"{search}"</span>
           </div>
         )}
@@ -7623,7 +7640,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                     ?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.06)",
                   display:"flex", alignItems:"center", justifyContent:"center",
                 }}>
-                  <span style={{ fontFamily:"'JetBrains Mono',monospace",
+                  <span style={{ fontFamily:"var(--font-mono)",
                     fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
                     color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
                     {etf.ticker.replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
@@ -7656,7 +7673,7 @@ function EtfRail({ open, onToggle, selectedTicker, onSelect, currency, onCurrenc
                     border:selectedTicker===etf.ticker
                       ?"1px solid rgba(59,130,246,0.4)":"1px solid rgba(255,255,255,0.08)",
                   }}>
-                    <span style={{ fontFamily:"'JetBrains Mono',monospace",
+                    <span style={{ fontFamily:"var(--font-mono)",
                       fontSize:6.5, fontWeight:800, textAlign:"center", lineHeight:1.1,
                       color:selectedTicker===etf.ticker?THEME.accent:THEME.text2 }}>
                       {(etf.ticker||"").replace(".DE","").replace(".SW","").replace(".LON","").slice(0,5)}
@@ -8140,7 +8157,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
                   {/* # */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
                     color:THEME.text3, fontSize:10,
-                    fontFamily:"'JetBrains Mono',monospace" }}>{i+1}</td>
+                    fontFamily:"var(--font-mono)" }}>{i+1}</td>
 
                   {/* Symbol + shortName */}
                   <td style={{ padding:"6px 12px", whiteSpace:"nowrap" }}>
@@ -8149,7 +8166,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
                         background:getPerfColor(h.perf??0) }}/>
                       <div>
                         <div style={{ fontWeight:700, color:THEME.text1,
-                          fontFamily:"'JetBrains Mono',monospace",
+                          fontFamily:"var(--font-mono)",
                           fontSize:11, lineHeight:1.2 }}>{h.symbol}</div>
                         {h.shortName && (
                           <div style={{ fontSize:9, color:THEME.text3, lineHeight:1.2,
@@ -8172,7 +8189,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
                       <div style={{ height:4, borderRadius:2, flexShrink:0,
                         width:Math.max(4, Math.round(h.weight*8)),
                         background:`rgba(59,130,246,${0.3+h.weight/20})` }}/>
-                      <span style={{ fontFamily:"'JetBrains Mono',monospace",
+                      <span style={{ fontFamily:"var(--font-mono)",
                         color:THEME.text1, fontSize:11, minWidth:44, textAlign:"right" }}>
                         {h.weight.toFixed(2)}%
                       </span>
@@ -8190,14 +8207,14 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
                   {/* Price */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace",
+                    fontFamily:"var(--font-mono)",
                     color:h.price?THEME.text1:THEME.text3 }}>
                     {h.price ? `${cSym}${(h.price*rate).toFixed(2)}` : "—"}
                   </td>
 
                   {/* Period perf */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace", color:pColor,
+                    fontFamily:"var(--font-mono)", color:pColor,
                     fontWeight:600 }}>
                     {h.perf!=null
                       ? `${h.perf>=0?"+":""}${h.perf.toFixed(2)}%`
@@ -8206,7 +8223,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
                   {/* Div. Yield */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace" }}>
+                    fontFamily:"var(--font-mono)" }}>
                     {h.div === undefined
                       ? <span style={{color:THEME.text3,fontSize:10}}>…</span>
                       : h.div?.yieldPct != null
@@ -8218,7 +8235,7 @@ function EtfHoldingsTable({ holdings, quotes, currency, rates,
 
                   {/* Ex-Date */}
                   <td style={{ padding:"6px 12px", textAlign:"right",
-                    fontFamily:"'JetBrains Mono',monospace", fontSize:10,
+                    fontFamily:"var(--font-mono)", fontSize:10,
                     color:THEME.text3 }}>
                     {h.div === undefined ? "" :
                       h.div?.exDate
@@ -8480,7 +8497,7 @@ function EtfExplorer({ onBack, user, savedEtfs: initialSavedEtfs, onLogin, onSwi
             {selectedTicker && (
               <div style={{ fontSize:11, color:THEME.text3 }}>
                 <span style={{ fontWeight:700, color:THEME.accent,
-                  fontFamily:"'JetBrains Mono',monospace" }}>
+                  fontFamily:"var(--font-mono)" }}>
                   {selectedTicker}
                 </span>
                 {(etfMeta?.name || dynamicName) && (

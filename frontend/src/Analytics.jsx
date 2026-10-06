@@ -810,7 +810,7 @@ export function MonteCarlo({ allNodes, quotes, rates, divCache, currency = "USD"
           g.append("text")
             .attr("x", W+6).attr("y", yScale(lastVal)+4)
             .attr("fill", color).attr("font-size", 9)
-            .attr("font-family", "'JetBrains Mono',monospace")
+            .attr("font-family", "'Fira Code',monospace")
             .text(label);
         }
       }
